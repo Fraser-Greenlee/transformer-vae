@@ -253,7 +253,7 @@ class SetSizeLineByLineTextDataset(Dataset):
         Same as `LineByLineTextDataset` by Huggingface but modified to used fixed length sequences & to cache the result.
     """
     def __init__(
-        self, tokenizer: PreTrainedTokenizer, file_path: str, seq_split: str, set_seq_size, overwrite_cache=False, local_rank=-1
+        self, tokenizer: PreTrainedTokenizer, file_path: str, set_seq_size, overwrite_cache=False, local_rank=-1
     ):
         logger.info(f"Loading text.")
 
@@ -274,7 +274,7 @@ class SetSizeLineByLineTextDataset(Dataset):
 
             logger.info(f"Creating features from dataset file at {directory}")
 
-            seq_texts = self._get_text_sequences(file_path, seq_split)
+            seq_texts = self._get_text_sequences(file_path)
             random.shuffle(seq_texts)
 
             tokenized_seqs = []
@@ -298,7 +298,7 @@ class SetSizeLineByLineTextDataset(Dataset):
                     tokenizer.build_inputs_with_special_tokens(input_tokens)
                 )
             
-            logger.info(f"Got {len(self.examples)} examples."
+            logger.info(f"Got {len(self.examples)} examples.")
             logger.info(f"Skipped {skip_count} examples since they were too long.")
 
             start = time.time()
@@ -309,9 +309,9 @@ class SetSizeLineByLineTextDataset(Dataset):
             )
 
     @staticmethod
-    def _get_text_sequences(file_path, seq_split):
+    def _get_text_sequences(file_path):
         with open(file_path, encoding="utf-8") as f:
-            seq_texts = f.read().split(seq_split)
+            seq_texts = f.read().split('\n')
 
         # remove empty strings & strip
         seq_texts = list(filter(None, seq_texts))
@@ -727,7 +727,7 @@ class DataTrainingArguments:
 def get_dataset(args: DataTrainingArguments, tokenizer: PreTrainedTokenizer, set_seq_size, local_rank=-1):
     file_path = args.train_data_file
     return SetSizeLineByLineTextDataset(
-        tokenizer=tokenizer, file_path=file_path, seq_split=args.seq_split, set_seq_size=set_seq_size, overwrite_cache=args.overwrite_cache, local_rank=local_rank
+        tokenizer=tokenizer, file_path=file_path, set_seq_size=set_seq_size, overwrite_cache=args.overwrite_cache, local_rank=local_rank
     )
 
 
@@ -829,12 +829,6 @@ def main(alt_local_rank=None):
     if alt_local_rank is not None:
         training_args.local_rank = alt_local_rank
 
-    if data_args.eval_data_file is None and training_args.do_eval:
-        raise ValueError(
-            "Cannot do evaluation without an evaluation data file. Either supply a file to --eval_data_file "
-            "or remove the --do_eval argument."
-        )
-
     if (
         os.path.exists(training_args.output_dir)
         and os.listdir(training_args.output_dir)
@@ -903,26 +897,6 @@ def main(alt_local_rank=None):
         # so that you can share your model easily on huggingface.co/models =)
         if trainer.is_world_master():
             model.tokenizer.save_pretrained(training_args.output_dir)
-
-    # Evaluation
-    results = {}
-    if training_args.do_eval and training_args.local_rank in [-1, 0]:
-        logger.info("*** Evaluate ***")
-
-        eval_output = trainer.evaluate()
-
-        perplexity = math.exp(eval_output["eval_loss"])
-        result = {"eval_perplexity": perplexity, **eval_output}
-
-        output_eval_file = os.path.join(training_args.output_dir, "eval_results_lm.txt")
-        with open(output_eval_file, "w") as writer:
-            logger.info("***** Eval results *****")
-            for key in sorted(result.keys()):
-                logger.info("  %s = %s", key, str(result[key]))
-                writer.write("%s = %s\n" % (key, str(result[key])))
-
-        results.update(result)
-        wandb.log(results)
 
     return results
 
