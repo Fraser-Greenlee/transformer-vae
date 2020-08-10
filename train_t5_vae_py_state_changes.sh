@@ -1,6 +1,6 @@
 # Train an auto-encoder to compress code strings.
 
-export TRAIN_FILE=python_state_changes_MINI.txt
+export TRAIN_FILE=python_state_changes.txt
 # Use MODEL_PATH to load a previous run
 export MODEL_PATH=
 
