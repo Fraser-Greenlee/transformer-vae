@@ -121,7 +121,7 @@ class LatentDecoderLargeT5NormFF(nn.Module):
 
 class FullSeqAE(nn.Module):
     '''
-        An AE to add to encoder-decoder modules.
+        An VAE to add to encoder-decoder modules.
         Encodes all token encodings into a single vector & spits them back out.
 
         Switching to an autoencoder to prevent posterior collapse.
@@ -172,11 +172,11 @@ class FullSeqAE(nn.Module):
 
 
 class t5_AE(PreTrainedModel):
-    base_model_prefix = 't5_ae'
-    def __init__(self, config, t5_model, ae, set_seq_size, tokenizer):
+    base_model_prefix = 't5_vae'
+    def __init__(self, config, t5_model, vae, set_seq_size, tokenizer):
         super().__init__(config=config)
         self.t5_model = t5_model
-        self.ae = ae
+        self.vae = vae
         self.config = config
         self.set_seq_size = set_seq_size
         self.tokenizer = tokenizer
@@ -203,18 +203,18 @@ class t5_AE(PreTrainedModel):
         return loss
 
     def decoder_loss_from_latent(self, labels, latent):
-        encoding = self.ae.decoder(latent)
+        encoding = self.vae.decoder(latent)
         return self.decoder_loss(labels, encoding)
 
     def get_latent(self, input_ids):
         attention_mask = input_ids.ne(self.config.pad_token_id).long()
         encoding = self.t5_model.encoder(input_ids=input_ids, attention_mask=attention_mask)[0]
-        return self.ae(encoding, just_get_latent=True)
+        return self.vae(encoding, just_get_latent=True)
 
     def get_hidden(self, input_ids):
         attention_mask = input_ids.ne(self.config.pad_token_id).long()
         encoding = self.t5_model.encoder(input_ids=input_ids, attention_mask=attention_mask)[0]
-        return self.ae(encoding, just_get_encoding=True)
+        return self.vae(encoding, just_get_encoding=True)
 
     def _greedy_logits(self, encoding):
         # always start with 0 token
@@ -235,14 +235,14 @@ class t5_AE(PreTrainedModel):
                 input_ids = self.pad_input_ids(input_ids)
             latent = self.get_latent(input_ids)
         if encoding is None:
-            encoding = self.ae.decoder(latent.view(1,-1))
+            encoding = self.vae.decoder(latent.view(1,-1))
         return self._greedy_logits(encoding)
 
     def forward(self, input_ids):
         attention_mask = input_ids.ne(self.config.pad_token_id).long()
 
         encoding = self.t5_model.encoder(input_ids=input_ids, attention_mask=attention_mask)[0]
-        recon_loss, reg_loss, encoding = self.ae(encoding)
+        recon_loss, reg_loss, encoding = self.vae(encoding)
         decoder_ce = self.decoder_loss(input_ids, encoding, ignore_index=self.config.pad_token_id)
 
         return decoder_ce, recon_loss, reg_loss
@@ -339,9 +339,9 @@ class Seq2SeqDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
         return {"input_ids": input_ids}
 
 
-class T5_AE_Trainer(Trainer):
+class T5_VAE_Trainer(Trainer):
     '''
-        Class for training T5-AE.
+        Class for training T5-VAE.
     '''
     tokenizer = None
     start_training_mode_step = 0
@@ -360,7 +360,7 @@ class T5_AE_Trainer(Trainer):
         self, num_training_steps: int
     ) -> Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR]:
         """
-            Setup the optimizer and the learning rate scheduler, modified for when training with a AE with an input-decoder.
+            Setup the optimizer and the learning rate scheduler, modified for when training with a VAE with an input-decoder.
         """
         if self.optimizers is not None:
             return self.optimizers
@@ -707,8 +707,8 @@ class ModelArguments:
     cache_dir: Optional[str] = field(
         default=None, metadata={"help": "Where do you want to store the pretrained models downloaded from s3"}
     )
-    ae_latent_size: int = field(default=None, metadata={"help": "The size of the AE's latent space, only valid with a T5 model."})
-    set_seq_size: int = field(default=None, metadata={"help": "Set sequence size, needed for AE compression."})
+    ae_latent_size: int = field(default=None, metadata={"help": "The size of the VAE's latent space, only valid with a T5 model."})
+    set_seq_size: int = field(default=None, metadata={"help": "Set sequence size, needed for VAE compression."})
 
 
 @dataclass
@@ -791,35 +791,35 @@ def _get_ae(t5_model_config, model_args, training_args):
     return FullSeqAE(encoder, decoder, training_args)
 
 
-def _get_t5_ae_requirements(model_args, training_args):
+def _get_t5_vae_requirements(model_args, training_args):
     config = _get_config(model_args)
     t5_model, tokenizer = _get_t5_model(model_args.t5_model_name, model_args.tokenizer_name, model_args.cache_dir)
-    ae = _get_ae(t5_model.config, model_args, training_args)
-    return config, t5_model, tokenizer, ae
+    vae = _get_ae(t5_model.config, model_args, training_args)
+    return config, t5_model, tokenizer, vae
 
-def new_t5_ae(model_args, training_args):
-    config, t5_model, tokenizer, ae = _get_t5_ae_requirements(model_args, training_args)
-    return t5_AE(config, t5_model, ae, model_args.set_seq_size, tokenizer)
+def new_t5_vae(model_args, training_args):
+    config, t5_model, tokenizer, vae = _get_t5_vae_requirements(model_args, training_args)
+    return t5_AE(config, t5_model, vae, model_args.set_seq_size, tokenizer)
 
-def load_t5_ae(model_args, training_args):
-    config, t5_model, tokenizer, ae = _get_t5_ae_requirements(model_args, training_args)
+def load_t5_vae(model_args, training_args):
+    config, t5_model, tokenizer, vae = _get_t5_vae_requirements(model_args, training_args)
     return t5_AE.from_pretrained(
         model_args.model_path,
         config=config,
         t5_model=t5_model,
-        ae=ae,
+        vae=vae,
         set_seq_size=model_args.set_seq_size,
         tokenizer=tokenizer,
         cache_dir=model_args.cache_dir,
     )
 
 
-def load_t5_ae_from_args(args_list):
-    # Use to load a T5_AE from a jupyter notebook
+def load_t5_vae_from_args(args_list):
+    # Use to load a T5_VAE from a jupyter notebook
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, MyTrainingArguments))
     model_args, _, training_args = parser.parse_args_into_dataclasses(args=args_list)
     assert( model_args.model_path and os.path.isdir(model_args.model_path) )
-    return load_t5_ae(model_args, training_args)
+    return load_t5_vae(model_args, training_args)
 
 
 def main(alt_local_rank=None):
@@ -864,9 +864,9 @@ def main(alt_local_rank=None):
     # Set seed
     set_seed(training_args.seed)
     if model_args.model_path and os.path.isdir(model_args.model_path):
-        model = load_t5_ae(model_args, training_args)
+        model = load_t5_vae(model_args, training_args)
     else:
-        model = new_t5_ae(model_args, training_args)
+        model = new_t5_vae(model_args, training_args)
 
     # Get datasets
     train_dataset = (
@@ -877,7 +877,7 @@ def main(alt_local_rank=None):
     data_collator = Seq2SeqDataCollatorForLanguageModeling(tokenizer=model.tokenizer)
     data_collator.mlm = False
 
-    trainer = T5_AE_Trainer(
+    trainer = T5_VAE_Trainer(
         model=model,
         args=training_args,
         data_collator=data_collator,

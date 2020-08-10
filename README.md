@@ -15,7 +15,7 @@ The default script uses [Weights & Biasis]() for logging.
 
 Then enter:
 ```bash
-bash train_t5_ae.sh
+bash train_t5_vae.sh
 ```
 
 To explore the produced latent space open it using `explore_latent_space.ipynb`.

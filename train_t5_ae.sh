@@ -1,14 +1,15 @@
 # Train an auto-encoder to compress code strings.
 
-export TRAIN_FILE=simple_state_changes.txt
+export TRAIN_FILE=new_all_states_MINI.txt
+# Use MODEL_PATH to load a previous run
 export MODEL_PATH=
 
 export MODEL_NAME=python_state_changes
-#export MODEL_PATH=state_ae__base_infoVAE
+#export MODEL_PATH=python_state_changes
 export T5_MODEL_NAME=t5-large
 
-python t5_ae.py \
-    --project_name=diff_interp \
+python t5_vae.py \
+    --project_name="T5-VAE" \
     --output_dir=$MODEL_NAME \
     --model_path=$MODEL_PATH \
     --t5_model_name=t5-large \
