@@ -1,6 +1,6 @@
 # Train an auto-encoder to compress code strings.
 
-export TRAIN_FILE=1k_rndm_zinc_drugs_clean.txt
+export TRAIN_FILE=250k_rndm_zinc_drugs_clean.txt
 # Use MODEL_PATH to load a previous run
 export MODEL_PATH=
 
