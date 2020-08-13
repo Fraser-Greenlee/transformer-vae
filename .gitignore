@@ -1,2 +1,6 @@
 *.txt
 wandb/*
+*.json
+*.model
+*.pt
+*.bin
