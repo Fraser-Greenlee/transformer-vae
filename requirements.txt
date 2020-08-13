@@ -1,3 +1,4 @@
 transformers==3.0.2
 wandb
 tqdm
+torch
