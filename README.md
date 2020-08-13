@@ -1,6 +1,6 @@
 # (WIP) T5-VAE
 
-![Diagram of the a State Autoencoder](state_ae.png)
+![Diagram of the a State Autoencoder](t5-vae.png)
 
 T5-VAE learns smooth latent spaces of structured sequences without hard-coding rules into the decoder.
 
