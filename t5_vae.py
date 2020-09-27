@@ -112,10 +112,9 @@ class LatentDecoderLargeT5NormFF(nn.Module):
 
     def forward(self, latent) -> torch.Tensor:
         batch_size = latent.size(0)
-        # shrink each tokens encoding
+        # grow each tokens encoding
         latent = self.decode_latent(latent)
         latent = self.grow_sequence(latent)
-        # TODO try using the same normalisation on the encoding as the T5-encoder already does
         return self.norm(self.grow_tokens(latent.view(batch_size, -1, 100)))
 
 
