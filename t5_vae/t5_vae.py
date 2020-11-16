@@ -64,7 +64,7 @@ MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 class LatentEncoderLargeTanh_1kLatent(nn.Module):
     def __init__(self, dim_m, set_input_size, latent_size, training_args):
         super().__init__()
-        assert(dim_m > 100)
+        assert dim_m > 100
         self.shrink_tokens = nn.Linear(dim_m, 100)
         self.shrink_sequence = nn.Linear(100 * set_input_size, latent_size)
         self.tanh = nn.Tanh()
@@ -98,12 +98,13 @@ class LatentDecoderLargeT5NormFF(nn.Module):
 
 
 class FullSeqAE(nn.Module):
-    '''
-        An VAE to add to encoder-decoder modules.
-        Encodes all token encodings into a single vector & spits them back out.
+    """
+    An VAE to add to encoder-decoder modules.
+    Encodes all token encodings into a single vector & spits them back out.
 
-        Switching to an autoencoder to prevent posterior collapse.
-    '''
+    Switching to an autoencoder to prevent posterior collapse.
+    """
+
     def __init__(self, encoder, decoder, training_args):
         super().__init__()
         self.encoder = encoder
@@ -111,7 +112,6 @@ class FullSeqAE(nn.Module):
         self.args = training_args
 
     def _model_forward(self, encoding):
-        batch_size = encoding.size(0)
         latent = self.encoder(encoding)
         return self.decoder(latent), latent
 
@@ -131,16 +131,16 @@ class FullSeqAE(nn.Module):
         y_size = y.shape[0]
         dim = x.shape[1]
 
-        tiled_x = x.view(x_size,1,dim).repeat(1, y_size,1)
-        tiled_y = y.view(1,y_size,dim).repeat(x_size, 1,1)
+        tiled_x = x.view(x_size, 1, dim).repeat(1, y_size, 1)
+        tiled_y = y.view(1, y_size, dim).repeat(x_size, 1, 1)
 
-        return torch.exp(-torch.mean((tiled_x - tiled_y)**2,dim=2)/dim*1.0)
+        return torch.exp(-torch.mean((tiled_x - tiled_y) ** 2, dim=2) / dim * 1.0)
 
     def _compute_mmd(self, x, y):
         x_kernel = self._compute_kernel(x, x)
         y_kernel = self._compute_kernel(y, y)
         xy_kernel = self._compute_kernel(x, y)
-        return torch.mean(x_kernel) + torch.mean(y_kernel) - 2*torch.mean(xy_kernel)
+        return torch.mean(x_kernel) + torch.mean(y_kernel) - 2 * torch.mean(xy_kernel)
 
     def _regularliser_loss(self, input_encoding, latent):
         loss = torch.tensor(0, dtype=torch.float).to(self.args.device)
@@ -150,7 +150,7 @@ class FullSeqAE(nn.Module):
 
 
 class t5_VAE(PreTrainedModel):
-    base_model_prefix = 't5_vae'
+    base_model_prefix = "t5_vae"
 
     def __init__(self, config, t5_model, vae, set_seq_size, tokenizer):
         super().__init__(config=config)
@@ -162,8 +162,8 @@ class t5_VAE(PreTrainedModel):
 
     def pad_input_ids(self, input_ids):
         padedd_input_tokens = torch.ones(self.set_seq_size, dtype=torch.long) * self.tokenizer.pad_token_id
-        padedd_input_tokens[:input_ids.size(0)] = input_ids
-        return padedd_input_tokens.to('cuda').view(1,-1)
+        padedd_input_tokens[: input_ids.size(0)] = input_ids
+        return padedd_input_tokens.to("cuda").view(1, -1)
 
     def _decoder_logits(self, decoder_input_ids, encoding):
         sequence_output = self.t5_model.decoder(input_ids=decoder_input_ids, encoder_hidden_states=encoding)[0]
@@ -176,7 +176,7 @@ class t5_VAE(PreTrainedModel):
     def decoder_loss(self, labels, encoding, ignore_index=-100):
         decoder_input_ids = self.t5_model._shift_right(labels)
         logits = self._decoder_logits(decoder_input_ids, encoding)
-        loss_fct = CrossEntropyLoss(ignore_index=ignore_index, reduction='none')
+        loss_fct = CrossEntropyLoss(ignore_index=ignore_index, reduction="none")
         loss = loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
         # TODO(thom): Add z_loss https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L666
         return loss
@@ -200,21 +200,21 @@ class t5_VAE(PreTrainedModel):
         decoder_input_ids = torch.tensor([[0]]).to(self.device)
         for i in range(self.set_seq_size):
             logits = self._decoder_logits(decoder_input_ids, encoding)
-            _, chosen_token = torch.topk(logits[0, i], 1) # get index of max logits[-1]
+            _, chosen_token = torch.topk(logits[0, i], 1)  # get index of max logits[-1]
             if chosen_token == self.tokenizer.eos_token_id:
                 break
-            decoder_input_ids = torch.cat((decoder_input_ids, chosen_token.view(1,-1)), 1)
+            decoder_input_ids = torch.cat((decoder_input_ids, chosen_token.view(1, -1)), 1)
         return logits
 
     def greedy_logits(self, input_ids=None, latent=None, encoding=None):
         # get logits for given input_ids or latent
-        assert(input_ids is not None or latent is not None or encoding is not None)
+        assert input_ids is not None or latent is not None or encoding is not None
         if encoding is None and latent is None:
             if len(input_ids.size()) == 1 and input_ids.size(0) < self.set_seq_size:
                 input_ids = self.pad_input_ids(input_ids)
             latent = self.get_latent(input_ids)
         if encoding is None:
-            encoding = self.vae.decoder(latent.view(1,-1))
+            encoding = self.vae.decoder(latent.view(1, -1))
         return self._greedy_logits(encoding)
 
     def forward(self, input_ids):
@@ -229,15 +229,19 @@ class t5_VAE(PreTrainedModel):
 
 class SetSizeLineByLineTextDataset(Dataset):
     """
-        Same as `LineByLineTextDataset` by Huggingface but modified to used fixed length sequences & to cache the result.
+    Same as `LineByLineTextDataset` by Huggingface but modified to used fixed length sequences & to cache the result.
     """
+
     def __init__(
         self, tokenizer: PreTrainedTokenizer, file_path: str, set_seq_size, overwrite_cache=False, local_rank=-1
     ):
-        logger.info(f"Loading text.")
+        logger.info("Loading text.")
 
         directory, filename = os.path.split(file_path)
-        cached_features_file = os.path.join(directory, f"cached_set_size_line_by_line_{tokenizer.__class__.__name__}_set_seq_size_{set_seq_size}_{filename}")
+        cached_features_file = os.path.join(
+            directory,
+            f"cached_set_size_line_by_line_{tokenizer.__class__.__name__}_set_seq_size_{set_seq_size}_{filename}",
+        )
 
         if os.path.exists(cached_features_file) and not overwrite_cache:
             start = time.time()
@@ -248,7 +252,9 @@ class SetSizeLineByLineTextDataset(Dataset):
 
         else:
             if not os.path.isfile(file_path):
-                raise Exception(f"Can't find true file:\n{file_path}\nAlso can't find cahced file:\n{cached_features_file}")
+                raise Exception(
+                    f"Can't find true file:\n{file_path}\nAlso can't find cahced file:\n{cached_features_file}"
+                )
             # don't create cache when running in parallel
 
             logger.info(f"Creating features from dataset file at {directory}")
@@ -258,9 +264,7 @@ class SetSizeLineByLineTextDataset(Dataset):
 
             tokenized_seqs = []
             for text in tqdm(seq_texts, desc="Tokenizing each sequence."):
-                tokenized_seqs.append(
-                    tokenizer.convert_tokens_to_ids(tokenizer.tokenize(text))
-                )
+                tokenized_seqs.append(tokenizer.convert_tokens_to_ids(tokenizer.tokenize(text)))
 
             logger.info(f"Max sequence length in dataset: {max([len(seq)+1 for seq in tokenized_seqs])}")
 
@@ -273,9 +277,7 @@ class SetSizeLineByLineTextDataset(Dataset):
                     skip_count += 1
                     continue
                 input_tokens = self._pad_tokens(set_seq_size, torch.tensor(tokens), pad_token)
-                self.examples.append(
-                    tokenizer.build_inputs_with_special_tokens(input_tokens)
-                )
+                self.examples.append(tokenizer.build_inputs_with_special_tokens(input_tokens))
 
             logger.info(f"Got {len(self.examples)} examples.")
             logger.info(f"Skipped {skip_count} examples since they were too long.")
@@ -283,14 +285,12 @@ class SetSizeLineByLineTextDataset(Dataset):
             start = time.time()
             with open(cached_features_file, "wb") as handle:
                 pickle.dump(self.examples, handle, protocol=pickle.HIGHEST_PROTOCOL)
-            logger.info(
-                f"Saving features into cached file %s [took %.3f s]", cached_features_file, time.time() - start
-            )
+            logger.info("Saving features into cached file %s [took %.3f s]", cached_features_file, time.time() - start)
 
     @staticmethod
     def _get_text_sequences(file_path):
         with open(file_path, encoding="utf-8") as f:
-            seq_texts = f.read().split('\n')
+            seq_texts = f.read().split("\n")
 
         # remove empty strings & strip
         seq_texts = list(filter(None, seq_texts))
@@ -301,7 +301,7 @@ class SetSizeLineByLineTextDataset(Dataset):
     @staticmethod
     def _pad_tokens(set_size, tokens_tensor, pad_token):
         padedd = torch.ones(set_size, dtype=torch.long) * pad_token
-        padedd[:tokens_tensor.size(0)] = tokens_tensor
+        padedd[: tokens_tensor.size(0)] = tokens_tensor
         return padedd
 
     def __len__(self):
@@ -320,17 +320,18 @@ class Seq2SeqDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
 
 
 class T5_VAE_Trainer(Trainer):
-    '''
-        Class for training T5-VAE.
-    '''
+    """
+    Class for training T5-VAE.
+    """
+
     tokenizer = None
     start_training_mode_step = 0
     log_stores = {
-        'decoder_ce': [],
-        'decoder_ce_sum': [],
-        'recon_loss': [],
-        'reg_loss': [],
-        'reg_loss_w': [],
+        "decoder_ce": [],
+        "decoder_ce_sum": [],
+        "recon_loss": [],
+        "reg_loss": [],
+        "reg_loss_w": [],
     }
 
     def _setup_wandb(self):
@@ -341,7 +342,7 @@ class T5_VAE_Trainer(Trainer):
         self, num_training_steps: int
     ) -> Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR]:
         """
-            Setup the optimizer and the learning rate scheduler, modified for when training with a VAE with an input-decoder.
+        Setup the optimizer and the learning rate scheduler, modified for when training with a VAE with an input-decoder.
         """
         if self.optimizers is not None:
             return self.optimizers
@@ -368,12 +369,12 @@ class T5_VAE_Trainer(Trainer):
     def _regulariser_loss_weight_schedule(self):
         if self.args.reg_constant_weight is not None:
             return self.args.reg_constant_weight
-        return torch.sigmoid(torch.tensor(self.global_step * self.args.reg_schedule_k - self.args.reg_schedule_b)).item()
+        return torch.sigmoid(
+            torch.tensor(self.global_step * self.args.reg_schedule_k - self.args.reg_schedule_b)
+        ).item()
 
-    def _run_training_step(
-        self, model: nn.Module, inputs: Dict[str, torch.Tensor], log=True
-    ) -> float:
-        input_ids = inputs['input_ids'].to(self.args.device)
+    def _run_training_step(self, model: nn.Module, inputs: Dict[str, torch.Tensor], log=True) -> float:
+        input_ids = inputs["input_ids"].to(self.args.device)
 
         decoder_ce, recon_loss, reg_loss = model(input_ids)
 
@@ -383,11 +384,11 @@ class T5_VAE_Trainer(Trainer):
             loss += recon_loss
 
         if log and self.is_world_master():
-            self.log_stores['decoder_ce_sum'].append(decoder_ce.sum().detach() / input_ids.size(0))
-            self.log_stores['decoder_ce'].append(decoder_ce.mean().detach())
-            self.log_stores['recon_loss'].append(recon_loss.detach())
-            self.log_stores['reg_loss'].append(reg_loss.detach())
-            self.log_stores['reg_loss_w'].append(reg_loss_w)
+            self.log_stores["decoder_ce_sum"].append(decoder_ce.sum().detach() / input_ids.size(0))
+            self.log_stores["decoder_ce"].append(decoder_ce.mean().detach())
+            self.log_stores["recon_loss"].append(recon_loss.detach())
+            self.log_stores["reg_loss"].append(reg_loss.detach())
+            self.log_stores["reg_loss_w"].append(reg_loss_w)
 
         if self.args.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
@@ -397,19 +398,17 @@ class T5_VAE_Trainer(Trainer):
         loss.backward()
         return loss.detach()
 
-    def _training_step(
-        self, *args
-    ) -> float:
+    def _training_step(self, *args) -> float:
         loss = self._run_training_step(*args)
         torch.cuda.empty_cache()
         return loss
 
     def _log(self, logs: Dict[str, float], iterator: Optional[tqdm] = None) -> None:
-        '''
-            Log all loss components seperately.
-            Seperated to remove use of TB-Writer
-        '''
-        for k,v in self.log_stores.items():
+        """
+        Log all loss components seperately.
+        Seperated to remove use of TB-Writer
+        """
+        for k, v in self.log_stores.items():
             if len(v):
                 logs[k] = sum(v) / float(len(v))
             else:
@@ -429,7 +428,7 @@ class T5_VAE_Trainer(Trainer):
             logger.info(output)
 
     def save_model(self, output_dir: Optional[str] = None):
-        if self.is_world_master(): # Always save the tokenizer with the model
+        if self.is_world_master():  # Always save the tokenizer with the model
             self.model.tokenizer.save_pretrained(output_dir if output_dir is not None else self.args.output_dir)
         super().save_model(output_dir)
 
@@ -441,9 +440,7 @@ class T5_VAE_Trainer(Trainer):
             raise ValueError("Trainer: training requires a train_dataset.")
 
         train_sampler = (
-            RandomSampler(self.train_dataset)
-            if self.args.local_rank == -1
-            else DistributedSampler(self.train_dataset)
+            RandomSampler(self.train_dataset) if self.args.local_rank == -1 else DistributedSampler(self.train_dataset)
         )
 
         data_loader = DataLoader(
@@ -494,11 +491,11 @@ class T5_VAE_Trainer(Trainer):
 
         model = self.model
 
-        # multi-gpu training (should be after apex fp16 initialization)
+        # multi-gpu training
         if self.args.n_gpu > 1:
             model = torch.nn.DataParallel(model)
 
-        # Distributed training (should be after apex fp16 initialization)
+        # Distributed training
         if self.args.local_rank != -1:
             model = torch.nn.parallel.DistributedDataParallel(
                 model,
@@ -531,7 +528,9 @@ class T5_VAE_Trainer(Trainer):
             try:
                 self.global_step = int(model_path.split("-")[-1].split("/")[0])
                 epochs_trained = self.global_step // (len(train_dataloader) // self.args.gradient_accumulation_steps)
-                steps_trained_in_current_epoch = self.global_step * self.args.gradient_accumulation_steps % len(train_dataloader)
+                steps_trained_in_current_epoch = (
+                    self.global_step * self.args.gradient_accumulation_steps % len(train_dataloader)
+                )
 
                 logger.info("  Continuing training from checkpoint, will skip to saved global_step")
                 logger.info("  Continuing training from epoch %d", epochs_trained)
@@ -544,9 +543,7 @@ class T5_VAE_Trainer(Trainer):
         tr_loss = 0.0
         logging_loss = 0.0
         model.zero_grad()
-        train_iterator = trange(
-            epochs_trained, int(num_train_epochs), desc="Epoch", disable=not self.is_local_master()
-        )
+        train_iterator = trange(epochs_trained, int(num_train_epochs), desc="Epoch", disable=not self.is_local_master())
         for epoch in train_iterator:
             model.train()
             if isinstance(train_dataloader, DataLoader) and isinstance(train_dataloader.sampler, DistributedSampler):
@@ -568,10 +565,7 @@ class T5_VAE_Trainer(Trainer):
                     epoch_iterator.__len__() <= self.args.gradient_accumulation_steps
                     and (step + 1) == epoch_iterator.__len__()
                 ):
-                    if self.args.fp16:
-                        torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), self.args.max_grad_norm)
-                    else:
-                        torch.nn.utils.clip_grad_norm_(model.parameters(), self.args.max_grad_norm)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), self.args.max_grad_norm)
 
                     optimizer.step()
                     scheduler.step()
@@ -584,7 +578,9 @@ class T5_VAE_Trainer(Trainer):
                     ):
                         logs: Dict[str, float] = {}
                         tr_loss = tr_loss.item()
-                        logs["loss"] = (tr_loss - logging_loss) / (self.args.logging_steps * self.args.gradient_accumulation_steps)
+                        logs["loss"] = (tr_loss - logging_loss) / (
+                            self.args.logging_steps * self.args.gradient_accumulation_steps
+                        )
                         # backward compatibility for pytorch schedulers
                         logs["learning_rate"] = scheduler.get_last_lr()[0]
                         logging_loss = tr_loss
@@ -628,10 +624,20 @@ class T5_VAE_Trainer(Trainer):
 @dataclass
 class MyTrainingArguments(TrainingArguments):
     project_name: str = field(default=None, metadata={"help": "The Weights & Biases project name for the run."})
-    reg_schedule_k: float = field(default=0.0025, metadata={"help": "Multiplied by global_step in a sigmoid, more gradually increase regulariser loss weight."})
-    reg_schedule_b: float = field(default=6.25, metadata={"help": "Added to global step in sigmoid, further delays increase in regulariser loss weight."})
-    reg_constant_weight: Optional[float] = field(default=None, metadata={"help": "Apply a constant weight to the regulariser."})
-    use_recon_loss: bool = field(default=False, metadata={"help": "Have the reconstructed encodings match their input encodings."})
+    reg_schedule_k: float = field(
+        default=0.0025,
+        metadata={"help": "Multiplied by global_step in a sigmoid, more gradually increase regulariser loss weight."},
+    )
+    reg_schedule_b: float = field(
+        default=6.25,
+        metadata={"help": "Added to global step in sigmoid, further delays increase in regulariser loss weight."},
+    )
+    reg_constant_weight: Optional[float] = field(
+        default=None, metadata={"help": "Apply a constant weight to the regulariser."}
+    )
+    use_recon_loss: bool = field(
+        default=False, metadata={"help": "Have the reconstructed encodings match their input encodings."}
+    )
 
 
 @dataclass
@@ -639,6 +645,7 @@ class ModelArguments:
     """
     Arguments pertaining to which model/config/tokenizer we are going to fine-tune, or train from scratch.
     """
+
     model_path: Optional[str] = field(
         default=None,
         metadata={
@@ -647,12 +654,10 @@ class ModelArguments:
     )
     t5_model_name: Optional[str] = field(
         default=None,
-        metadata={
-            "help": "Name of the T5 model being using for encoding & decoding."
-        },
+        metadata={"help": "Name of the T5 model being using for encoding & decoding."},
     )
     model_type: Optional[str] = field(
-        default='t5',
+        default="t5",
         metadata={"help": "If training from scratch, pass a model type from the list: " + ", ".join(MODEL_TYPES)},
     )
     config_name: Optional[str] = field(
@@ -664,7 +669,9 @@ class ModelArguments:
     cache_dir: Optional[str] = field(
         default=None, metadata={"help": "Where do you want to store the pretrained models downloaded from s3"}
     )
-    ae_latent_size: int = field(default=None, metadata={"help": "The size of the VAE's latent space, only valid with a T5 model."})
+    ae_latent_size: int = field(
+        default=None, metadata={"help": "The size of the VAE's latent space, only valid with a T5 model."}
+    )
     set_seq_size: int = field(default=None, metadata={"help": "Set sequence size, needed for VAE compression."})
 
 
@@ -673,39 +680,36 @@ class DataTrainingArguments:
     """
     Arguments pertaining to what data we are going to input our model for training and eval.
     """
+
     train_data_file: Optional[str] = field(
         default=None, metadata={"help": "The input training data file (a text file)."}
     )
-    overwrite_cache: bool = field(
-        default=False, metadata={"help": "Overwrite the cached training and evaluation sets"}
-    )
+    overwrite_cache: bool = field(default=False, metadata={"help": "Overwrite the cached training and evaluation sets"})
 
 
 def get_dataset(args: DataTrainingArguments, tokenizer: PreTrainedTokenizer, set_seq_size, local_rank=-1):
     file_path = args.train_data_file
     return SetSizeLineByLineTextDataset(
-        tokenizer=tokenizer, file_path=file_path, set_seq_size=set_seq_size, overwrite_cache=args.overwrite_cache, local_rank=local_rank
+        tokenizer=tokenizer,
+        file_path=file_path,
+        set_seq_size=set_seq_size,
+        overwrite_cache=args.overwrite_cache,
+        local_rank=local_rank,
     )
 
 
 def _log_load_failures(model, missing_keys, unexpected_keys, error_msgs):
     if len(missing_keys) > 0:
         logger.info(
-            "Weights of {} not initialized from pretrained model: {}".format(
-                model.__class__.__name__, missing_keys
-            )
+            "Weights of {} not initialized from pretrained model: {}".format(model.__class__.__name__, missing_keys)
         )
     if len(unexpected_keys) > 0:
         logger.info(
-            "Weights from pretrained model not used in {}: {}".format(
-                model.__class__.__name__, unexpected_keys
-            )
+            "Weights from pretrained model not used in {}: {}".format(model.__class__.__name__, unexpected_keys)
         )
     if len(error_msgs) > 0:
         raise RuntimeError(
-            "Error(s) in loading state_dict for {}:\n\t{}".format(
-                model.__class__.__name__, "\n\t".join(error_msgs)
-            )
+            "Error(s) in loading state_dict for {}:\n\t{}".format(model.__class__.__name__, "\n\t".join(error_msgs))
         )
 
 
@@ -754,9 +758,11 @@ def _get_t5_vae_requirements(model_args, training_args):
     vae = _get_ae(t5_model.config, model_args, training_args)
     return config, t5_model, tokenizer, vae
 
+
 def new_t5_vae(model_args, training_args):
     config, t5_model, tokenizer, vae = _get_t5_vae_requirements(model_args, training_args)
     return t5_VAE(config, t5_model, vae, model_args.set_seq_size, tokenizer)
+
 
 def load_t5_vae(model_args, training_args):
     config, t5_model, tokenizer, vae = _get_t5_vae_requirements(model_args, training_args)
@@ -775,7 +781,7 @@ def load_t5_vae_from_args(args_list):
     # Use to load a T5_VAE from a jupyter notebook
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, MyTrainingArguments))
     model_args, _, training_args = parser.parse_args_into_dataclasses(args=args_list)
-    assert( model_args.model_path and os.path.isdir(model_args.model_path) )
+    assert model_args.model_path and os.path.isdir(model_args.model_path)
     return load_t5_vae(model_args, training_args)
 
 
@@ -821,7 +827,12 @@ def main(alt_local_rank=None):
 
     # Get datasets
     train_dataset = (
-        get_dataset(data_args, tokenizer=model.tokenizer, set_seq_size=model_args.set_seq_size, local_rank=training_args.local_rank)
+        get_dataset(
+            data_args,
+            tokenizer=model.tokenizer,
+            set_seq_size=model_args.set_seq_size,
+            local_rank=training_args.local_rank,
+        )
         if training_args.do_train
         else None
     )
@@ -835,11 +846,15 @@ def main(alt_local_rank=None):
         train_dataset=train_dataset,
         eval_dataset=None,
         prediction_loss_only=True,
-        tb_writer=MagicMock()
+        tb_writer=MagicMock(),
     )
 
     if trainer.is_world_master():
-        wandb.init(project=training_args.project_name, name=training_args.output_dir, config={**vars(training_args), **vars(data_args), **vars(model_args)})
+        wandb.init(
+            project=training_args.project_name,
+            name=training_args.output_dir,
+            config={**vars(training_args), **vars(data_args), **vars(model_args)},
+        )
 
     # Training
     if training_args.do_train:
