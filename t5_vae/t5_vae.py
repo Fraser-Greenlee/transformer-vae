@@ -1,38 +1,13 @@
-# coding=utf-8
-# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
-# Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-"""
-    Modified version of Huggingface's run_lm.py for make a T5-based MMD-VAE.
-"""
-
 import os
 import logging
 import wandb
 from dataclasses import dataclass, field
-from typing import Optional, Dict, List, Tuple
-import random
-import time
-import pickle
+from typing import Optional, Dict
 from tqdm.auto import tqdm, trange
 import torch
 from torch import nn
-from torch.nn import CrossEntropyLoss
-from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler
-from torch.utils.data.dataset import Dataset
 from torch.utils.data.dataloader import DataLoader
 from unittest.mock import MagicMock
 
@@ -42,16 +17,13 @@ from transformers import (
     AutoConfig,
     AutoModelForSeq2SeqLM,
     AutoTokenizer,
-    DataCollatorForLanguageModeling,
     HfArgumentParser,
     PreTrainedTokenizer,
     Trainer,
     TrainingArguments,
     set_seed,
 )
-from transformers.modeling_utils import PreTrainedModel
 from transformers.optimization import AdamW, get_linear_schedule_with_warmup
-from transformers.modeling_t5 import T5LayerFF
 from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR, TrainOutput
 
 
@@ -59,264 +31,6 @@ logger = logging.getLogger(__name__)
 
 MODEL_CONFIG_CLASSES = list(MODEL_WITH_LM_HEAD_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
-
-
-class LatentEncoderLargeTanh_1kLatent(nn.Module):
-    def __init__(self, dim_m, set_input_size, latent_size, training_args):
-        super().__init__()
-        assert dim_m > 100
-        self.shrink_tokens = nn.Linear(dim_m, 100)
-        self.shrink_sequence = nn.Linear(100 * set_input_size, latent_size)
-        self.tanh = nn.Tanh()
-
-    def forward(self, encoding) -> torch.Tensor:
-        batch_size = encoding.size(0)
-        # shrink each tokens encoding
-        encoding = self.shrink_tokens(encoding)
-        encoding = self.shrink_sequence(encoding.view(batch_size, -1))
-        return self.tanh(encoding)
-
-
-class LatentDecoderLargeT5NormFF(nn.Module):
-    def __init__(self, dim_m, set_input_size, latent_size, training_args, config):
-        super().__init__()
-        self.decode_latent = nn.Linear(latent_size, 10 * set_input_size)
-        self.grow_sequence = nn.Linear(10 * set_input_size, 100 * set_input_size)
-        self.grow_tokens = nn.Linear(100, dim_m)
-
-        old_drop = config.dropout_rate
-        config.dropout_rate = 0
-        self.norm = T5LayerFF(config)
-        config.dropout_rate = old_drop
-
-    def forward(self, latent) -> torch.Tensor:
-        batch_size = latent.size(0)
-        # grow each tokens encoding
-        latent = self.decode_latent(latent)
-        latent = self.grow_sequence(latent)
-        return self.norm(self.grow_tokens(latent.view(batch_size, -1, 100)))
-
-
-class FullSeqAE(nn.Module):
-    """
-    An VAE to add to encoder-decoder modules.
-    Encodes all token encodings into a single vector & spits them back out.
-
-    Switching to an autoencoder to prevent posterior collapse.
-    """
-
-    def __init__(self, encoder, decoder, training_args):
-        super().__init__()
-        self.encoder = encoder
-        self.decoder = decoder
-        self.args = training_args
-
-    def _model_forward(self, encoding):
-        latent = self.encoder(encoding)
-        return self.decoder(latent), latent
-
-    def forward(self, input_encoding: torch.Tensor, just_get_latent=False, just_get_encoding=False):
-        recon_encoding, latent = self._model_forward(input_encoding)
-        if just_get_latent:
-            return latent
-        if just_get_encoding:
-            return recon_encoding
-        recon_loss = torch.nn.MSELoss(reduction="mean")(input_encoding, recon_encoding)
-        reg_loss = self._regularliser_loss(input_encoding, latent)
-        return recon_loss, reg_loss, recon_encoding
-
-    @staticmethod
-    def _compute_kernel(x, y):
-        x_size = x.shape[0]
-        y_size = y.shape[0]
-        dim = x.shape[1]
-
-        tiled_x = x.view(x_size, 1, dim).repeat(1, y_size, 1)
-        tiled_y = y.view(1, y_size, dim).repeat(x_size, 1, 1)
-
-        return torch.exp(-torch.mean((tiled_x - tiled_y) ** 2, dim=2) / dim * 1.0)
-
-    def _compute_mmd(self, x, y):
-        x_kernel = self._compute_kernel(x, x)
-        y_kernel = self._compute_kernel(y, y)
-        xy_kernel = self._compute_kernel(x, y)
-        return torch.mean(x_kernel) + torch.mean(y_kernel) - 2 * torch.mean(xy_kernel)
-
-    def _regularliser_loss(self, input_encoding, latent):
-        loss = torch.tensor(0, dtype=torch.float).to(self.args.device)
-        true_samples = torch.randn(latent.size()).to(latent.device)
-        loss += self._compute_mmd(true_samples, latent)
-        return loss
-
-
-class t5_VAE(PreTrainedModel):
-    base_model_prefix = "t5_vae"
-
-    def __init__(self, config, t5_model, vae, set_seq_size, tokenizer):
-        super().__init__(config=config)
-        self.t5_model = t5_model
-        self.vae = vae
-        self.config = config
-        self.set_seq_size = set_seq_size
-        self.tokenizer = tokenizer
-
-    def pad_input_ids(self, input_ids):
-        padedd_input_tokens = torch.ones(self.set_seq_size, dtype=torch.long) * self.tokenizer.pad_token_id
-        padedd_input_tokens[: input_ids.size(0)] = input_ids
-        return padedd_input_tokens.to("cuda").view(1, -1)
-
-    def _decoder_logits(self, decoder_input_ids, encoding):
-        sequence_output = self.t5_model.decoder(input_ids=decoder_input_ids, encoder_hidden_states=encoding)[0]
-        # Rescale output before projecting on vocab
-        # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
-        sequence_output = sequence_output * (self.t5_model.model_dim ** -0.5)
-        logits = self.t5_model.lm_head(sequence_output)
-        return logits
-
-    def decoder_loss(self, labels, encoding, ignore_index=-100):
-        decoder_input_ids = self.t5_model._shift_right(labels)
-        logits = self._decoder_logits(decoder_input_ids, encoding)
-        loss_fct = CrossEntropyLoss(ignore_index=ignore_index, reduction="none")
-        loss = loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
-        # TODO(thom): Add z_loss https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L666
-        return loss
-
-    def decoder_loss_from_latent(self, labels, latent):
-        encoding = self.vae.decoder(latent)
-        return self.decoder_loss(labels, encoding)
-
-    def get_latent(self, input_ids):
-        attention_mask = input_ids.ne(self.config.pad_token_id).long()
-        encoding = self.t5_model.encoder(input_ids=input_ids, attention_mask=attention_mask)[0]
-        return self.vae(encoding, just_get_latent=True)
-
-    def get_hidden(self, input_ids):
-        attention_mask = input_ids.ne(self.config.pad_token_id).long()
-        encoding = self.t5_model.encoder(input_ids=input_ids, attention_mask=attention_mask)[0]
-        return self.vae(encoding, just_get_encoding=True)
-
-    def _greedy_logits(self, encoding):
-        # always start with 0 token
-        decoder_input_ids = torch.tensor([[0]]).to(self.device)
-        for i in range(self.set_seq_size):
-            logits = self._decoder_logits(decoder_input_ids, encoding)
-            _, chosen_token = torch.topk(logits[0, i], 1)  # get index of max logits[-1]
-            if chosen_token == self.tokenizer.eos_token_id:
-                break
-            decoder_input_ids = torch.cat((decoder_input_ids, chosen_token.view(1, -1)), 1)
-        return logits
-
-    def greedy_logits(self, input_ids=None, latent=None, encoding=None):
-        # get logits for given input_ids or latent
-        assert input_ids is not None or latent is not None or encoding is not None
-        if encoding is None and latent is None:
-            if len(input_ids.size()) == 1 and input_ids.size(0) < self.set_seq_size:
-                input_ids = self.pad_input_ids(input_ids)
-            latent = self.get_latent(input_ids)
-        if encoding is None:
-            encoding = self.vae.decoder(latent.view(1, -1))
-        return self._greedy_logits(encoding)
-
-    def forward(self, input_ids):
-        attention_mask = input_ids.ne(self.config.pad_token_id).long()
-
-        encoding = self.t5_model.encoder(input_ids=input_ids, attention_mask=attention_mask)[0]
-        recon_loss, reg_loss, encoding = self.vae(encoding)
-        decoder_ce = self.decoder_loss(input_ids, encoding, ignore_index=self.config.pad_token_id)
-
-        return decoder_ce, recon_loss, reg_loss
-
-
-class SetSizeLineByLineTextDataset(Dataset):
-    """
-    Same as `LineByLineTextDataset` by Huggingface but modified to used fixed length sequences & to cache the result.
-    """
-
-    def __init__(
-        self, tokenizer: PreTrainedTokenizer, file_path: str, set_seq_size, overwrite_cache=False, local_rank=-1
-    ):
-        logger.info("Loading text.")
-
-        directory, filename = os.path.split(file_path)
-        cached_features_file = os.path.join(
-            directory,
-            f"cached_set_size_line_by_line_{tokenizer.__class__.__name__}_set_seq_size_{set_seq_size}_{filename}",
-        )
-
-        if os.path.exists(cached_features_file) and not overwrite_cache:
-            start = time.time()
-            logger.info(f"Loading features from cached file {cached_features_file}...")
-            with open(cached_features_file, "rb") as handle:
-                self.examples = pickle.load(handle)
-            logger.info("[took %.3f s]", time.time() - start)
-
-        else:
-            if not os.path.isfile(file_path):
-                raise Exception(
-                    f"Can't find true file:\n{file_path}\nAlso can't find cahced file:\n{cached_features_file}"
-                )
-            # don't create cache when running in parallel
-
-            logger.info(f"Creating features from dataset file at {directory}")
-
-            seq_texts = self._get_text_sequences(file_path)
-            random.shuffle(seq_texts)
-
-            tokenized_seqs = []
-            for text in tqdm(seq_texts, desc="Tokenizing each sequence."):
-                tokenized_seqs.append(tokenizer.convert_tokens_to_ids(tokenizer.tokenize(text)))
-
-            logger.info(f"Max sequence length in dataset: {max([len(seq)+1 for seq in tokenized_seqs])}")
-
-            pad_token = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
-            skip_count = 0
-            self.examples = []
-            for tokens in tqdm(tokenized_seqs, desc="Making sequence labels."):
-                tokens.append(tokenizer.eos_token_id)
-                if len(tokens) > set_seq_size:
-                    skip_count += 1
-                    continue
-                input_tokens = self._pad_tokens(set_seq_size, torch.tensor(tokens), pad_token)
-                self.examples.append(tokenizer.build_inputs_with_special_tokens(input_tokens))
-
-            logger.info(f"Got {len(self.examples)} examples.")
-            logger.info(f"Skipped {skip_count} examples since they were too long.")
-
-            start = time.time()
-            with open(cached_features_file, "wb") as handle:
-                pickle.dump(self.examples, handle, protocol=pickle.HIGHEST_PROTOCOL)
-            logger.info("Saving features into cached file %s [took %.3f s]", cached_features_file, time.time() - start)
-
-    @staticmethod
-    def _get_text_sequences(file_path):
-        with open(file_path, encoding="utf-8") as f:
-            seq_texts = f.read().split("\n")
-
-        # remove empty strings & strip
-        seq_texts = list(filter(None, seq_texts))
-        seq_texts = [txt.strip() for txt in seq_texts]
-
-        return seq_texts
-
-    @staticmethod
-    def _pad_tokens(set_size, tokens_tensor, pad_token):
-        padedd = torch.ones(set_size, dtype=torch.long) * pad_token
-        padedd[: tokens_tensor.size(0)] = tokens_tensor
-        return padedd
-
-    def __len__(self):
-        return len(self.examples)
-
-    def __getitem__(self, i):
-        return self.examples[i]
-
-
-class Seq2SeqDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
-    mlm: bool = False
-
-    def __call__(self, examples: List[torch.Tensor]) -> Dict[str, torch.Tensor]:
-        input_ids = pad_sequence(examples, batch_first=True, padding_value=self.tokenizer.pad_token_id)
-        return {"input_ids": input_ids}
 
 
 class T5_VAE_Trainer(Trainer):
@@ -337,34 +51,6 @@ class T5_VAE_Trainer(Trainer):
     def _setup_wandb(self):
         # Overriding this to get all training args in the run.
         pass
-
-    def get_optimizers(
-        self, num_training_steps: int
-    ) -> Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR]:
-        """
-        Setup the optimizer and the learning rate scheduler, modified for when training with a VAE with an input-decoder.
-        """
-        if self.optimizers is not None:
-            return self.optimizers
-
-        parameters = list(self.model.named_parameters())
-        no_decay = ["bias", "LayerNorm.weight"]
-        optimizer_grouped_parameters = [
-            {
-                "params": [p for n, p in parameters if not any(nd in n for nd in no_decay)],
-                "weight_decay": self.args.weight_decay,
-            },
-            {
-                "params": [p for n, p in parameters if any(nd in n for nd in no_decay)],
-                "weight_decay": 0.0,
-            },
-        ]
-
-        optimizer = AdamW(optimizer_grouped_parameters, lr=self.args.learning_rate, eps=self.args.adam_epsilon)
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer, num_warmup_steps=self.args.warmup_steps, num_training_steps=num_training_steps
-        )
-        return optimizer, scheduler
 
     def _regulariser_loss_weight_schedule(self):
         if self.args.reg_constant_weight is not None:
@@ -749,7 +435,7 @@ def _get_t5_model(t5_model_name, tokenizer_name=None, cache_dir=None):
 
 def _get_ae(t5_model_config, model_args, training_args):
     encoder, decoder = _get_ae_encoder_decoder(t5_model_config, model_args, training_args)
-    return FullSeqAE(encoder, decoder, training_args)
+    return SeqVAE(encoder, decoder, training_args)
 
 
 def _get_t5_vae_requirements(model_args, training_args):

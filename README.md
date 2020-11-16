@@ -59,7 +59,7 @@ python -e t5_vae \
     --project_name="T5-VAE" \
     --output_dir=poet \
     --do_train \
-    --huggingface_dataset=poems \
+    --dataset=poems \
     --content_key text
 ```
 
