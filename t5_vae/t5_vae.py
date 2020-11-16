@@ -17,23 +17,18 @@
     Modified version of Huggingface's run_lm.py for make a T5-based MMD-VAE.
 """
 
-import logging
-import math
 import os
-import copy
+import logging
 import wandb
 from dataclasses import dataclass, field
 from typing import Optional, Dict, List, Tuple
 import random
 import time
 import pickle
-from tqdm import tqdm
-import numpy as np
-from filelock import FileLock
+from tqdm.auto import tqdm, trange
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
-from torch.nn import functional as F
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler
@@ -49,33 +44,16 @@ from transformers import (
     AutoTokenizer,
     DataCollatorForLanguageModeling,
     HfArgumentParser,
-    LineByLineTextDataset,
     PreTrainedTokenizer,
-    TextDataset,
     Trainer,
     TrainingArguments,
     set_seed,
-    torch_distributed_zero_first,
 )
 from transformers.modeling_utils import PreTrainedModel
 from transformers.optimization import AdamW, get_linear_schedule_with_warmup
-from transformers.trainer_utils import EvalPrediction, PredictionOutput
-from transformers.modeling_t5 import T5LayerNorm, T5LayerFF
-
-from tqdm.auto import tqdm, trange
+from transformers.modeling_t5 import T5LayerFF
 from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR, TrainOutput
 
-try:
-    import torch_xla.core.xla_model as xm
-    _torch_tpu_available = True
-except ImportError:
-    _torch_tpu_available = False
-
-
-if _torch_tpu_available:
-    import torch_xla.core.xla_model as xm
-    import torch_xla.debug.metrics as met
-    import torch_xla.distributed.parallel_loader as pl
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +75,7 @@ class LatentEncoderLargeTanh_1kLatent(nn.Module):
         encoding = self.shrink_tokens(encoding)
         encoding = self.shrink_sequence(encoding.view(batch_size, -1))
         return self.tanh(encoding)
+
 
 class LatentDecoderLargeT5NormFF(nn.Module):
     def __init__(self, dim_m, set_input_size, latent_size, training_args, config):
@@ -170,8 +149,9 @@ class FullSeqAE(nn.Module):
         return loss
 
 
-class t5_AE(PreTrainedModel):
+class t5_VAE(PreTrainedModel):
     base_model_prefix = 't5_vae'
+
     def __init__(self, config, t5_model, vae, set_seq_size, tokenizer):
         super().__init__(config=config)
         self.t5_model = t5_model
@@ -296,7 +276,7 @@ class SetSizeLineByLineTextDataset(Dataset):
                 self.examples.append(
                     tokenizer.build_inputs_with_special_tokens(input_tokens)
                 )
-            
+
             logger.info(f"Got {len(self.examples)} examples.")
             logger.info(f"Skipped {skip_count} examples since they were too long.")
 
@@ -333,6 +313,7 @@ class SetSizeLineByLineTextDataset(Dataset):
 
 class Seq2SeqDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
     mlm: bool = False
+
     def __call__(self, examples: List[torch.Tensor]) -> Dict[str, torch.Tensor]:
         input_ids = pad_sequence(examples, batch_first=True, padding_value=self.tokenizer.pad_token_id)
         return {"input_ids": input_ids}
@@ -351,6 +332,7 @@ class T5_VAE_Trainer(Trainer):
         'reg_loss': [],
         'reg_loss_w': [],
     }
+
     def _setup_wandb(self):
         # Overriding this to get all training args in the run.
         pass
@@ -419,8 +401,7 @@ class T5_VAE_Trainer(Trainer):
         self, *args
     ) -> float:
         loss = self._run_training_step(*args)
-        if not _torch_tpu_available:
-            torch.cuda.empty_cache()
+        torch.cuda.empty_cache()
         return loss
 
     def _log(self, logs: Dict[str, float], iterator: Optional[tqdm] = None) -> None:
@@ -453,15 +434,7 @@ class T5_VAE_Trainer(Trainer):
         super().save_model(output_dir)
 
     def _get_epoch_iterator(self, train_dataloader):
-        if _torch_tpu_available:
-            parallel_loader = pl.ParallelLoader(train_dataloader, [self.args.device]).per_device_loader(
-                self.args.device
-            )
-            epoch_iterator = tqdm(parallel_loader, desc="Iteration", disable=not self.is_local_master())
-            epoch_iterator.__len__ = lambda: len(train_dataloader) # replace len since I'm using the std version of XLA
-        else:
-            epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=not self.is_local_master())
-        return epoch_iterator
+        return tqdm(train_dataloader, desc="Iteration", disable=not self.is_local_master())
 
     def get_train_dataloader(self) -> DataLoader:
         if self.train_dataset is None:
@@ -526,7 +499,7 @@ class T5_VAE_Trainer(Trainer):
             model = torch.nn.DataParallel(model)
 
         # Distributed training (should be after apex fp16 initialization)
-        if self.args.local_rank != -1 and not _torch_tpu_available:
+        if self.args.local_rank != -1:
             model = torch.nn.parallel.DistributedDataParallel(
                 model,
                 device_ids=[self.args.local_rank],
@@ -535,14 +508,11 @@ class T5_VAE_Trainer(Trainer):
             )
 
         # Train!
-        if _torch_tpu_available:
-            total_train_batch_size = self.args.train_batch_size * xm.xrt_world_size()
-        else:
-            total_train_batch_size = (
-                self.args.train_batch_size
-                * self.args.gradient_accumulation_steps
-                * (torch.distributed.get_world_size() if self.args.local_rank != -1 else 1)
-            )
+        total_train_batch_size = (
+            self.args.train_batch_size
+            * self.args.gradient_accumulation_steps
+            * (torch.distributed.get_world_size() if self.args.local_rank != -1 else 1)
+        )
         logger.info("***** Running training *****")
         logger.info("  Num examples = %d", self.num_examples(train_dataloader))
         logger.info("  Num Epochs = %d", num_train_epochs)
@@ -603,11 +573,7 @@ class T5_VAE_Trainer(Trainer):
                     else:
                         torch.nn.utils.clip_grad_norm_(model.parameters(), self.args.max_grad_norm)
 
-                    if _torch_tpu_available:
-                        xm.optimizer_step(optimizer)
-                    else:
-                        optimizer.step()
-
+                    optimizer.step()
                     scheduler.step()
                     model.zero_grad()
                     self.global_step += 1
@@ -645,13 +611,8 @@ class T5_VAE_Trainer(Trainer):
                             self.model.tokenizer.save_pretrained(self.args.output_dir)
                             self._rotate_checkpoints()
 
-                        if _torch_tpu_available:
-                            xm.rendezvous("saving_optimizer_states")
-                            xm.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
-                            xm.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
-                        elif self.is_world_master():
-                            torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
-                            torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
+                        torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
+                        torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
 
                 if self.args.max_steps > 0 and self.global_step > self.args.max_steps:
                     epoch_iterator.close()
@@ -659,9 +620,6 @@ class T5_VAE_Trainer(Trainer):
             if self.args.max_steps > 0 and self.global_step > self.args.max_steps:
                 train_iterator.close()
                 break
-            if self.args.tpu_metrics_debug:
-                # tpu-comment: Logging debug metrics for PyTorch/XLA (compile, execute times, ops, etc.)
-                xm.master_print(met.metrics_report())
 
         logger.info("\n\nTraining completed. Do not forget to share your model on huggingface.co/models =)\n\n")
         return TrainOutput(self.global_step, tr_loss / self.global_step)
@@ -798,11 +756,11 @@ def _get_t5_vae_requirements(model_args, training_args):
 
 def new_t5_vae(model_args, training_args):
     config, t5_model, tokenizer, vae = _get_t5_vae_requirements(model_args, training_args)
-    return t5_AE(config, t5_model, vae, model_args.set_seq_size, tokenizer)
+    return t5_VAE(config, t5_model, vae, model_args.set_seq_size, tokenizer)
 
 def load_t5_vae(model_args, training_args):
     config, t5_model, tokenizer, vae = _get_t5_vae_requirements(model_args, training_args)
-    return t5_AE.from_pretrained(
+    return t5_VAE.from_pretrained(
         model_args.model_path,
         config=config,
         t5_model=t5_model,
@@ -896,13 +854,6 @@ def main(alt_local_rank=None):
         # so that you can share your model easily on huggingface.co/models =)
         if trainer.is_world_master():
             model.tokenizer.save_pretrained(training_args.output_dir)
-
-    return results
-
-
-def _mp_fn(index):
-    # For xla_spawn (TPUs)
-    main(index)
 
 
 if __name__ == "__main__":
