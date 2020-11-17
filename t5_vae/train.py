@@ -24,6 +24,7 @@ from transformers import (
 )
 from transformers.trainer_utils import is_main_process
 from t5_vae.model import T5_VAE, T5_VAE_ModelArguments
+from t5_vae.config import T5_VAE_Config
 
 
 logger = logging.getLogger(__name__)
@@ -142,11 +143,11 @@ def main():
     # The .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
     if model_args.config_name:
-        config = AutoConfig.from_pretrained(model_args.config_name, cache_dir=model_args.cache_dir)
+        config = T5_VAE_Config.from_pretrained(model_args.config_name, cache_dir=model_args.cache_dir)
     elif model_args.model_name_or_path:
-        config = AutoConfig.from_pretrained(model_args.model_name_or_path, cache_dir=model_args.cache_dir)
+        config = T5_VAE_Config.from_pretrained(model_args.model_name_or_path, cache_dir=model_args.cache_dir)
     else:
-        config = CONFIG_MAPPING[model_args.model_type]()
+        config = T5_VAE_Config()
         logger.warning("You are instantiating a new config instance from scratch.")
 
     if model_args.tokenizer_name:

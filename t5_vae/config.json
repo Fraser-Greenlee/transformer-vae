@@ -1,0 +1,6 @@
+{
+    "t5_model_name": "t5-base",
+    "latent_size": 1000,
+    "n_positions": 60,
+    "additional_latent_models": [],
+}
