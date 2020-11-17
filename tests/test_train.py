@@ -16,11 +16,10 @@ logger = logging.getLogger()
 
 
 class TrainTests(TestCasePlus):
-
     def test_train_txt(self):
-        '''
-            Does a test training run and checks it works.
-        '''
+        """
+        Does a test training run and checks it works.
+        """
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
 
@@ -34,7 +33,7 @@ class TrainTests(TestCasePlus):
             --per_device_train_batch_size 5
             --per_device_eval_batch_size 5
             --num_train_epochs 2
-            --set_seq_size 3
+            --set_seq_size 4
             --output_dir {tmp_dir}
             --overwrite_output_dir
             """.split()
@@ -49,6 +48,7 @@ class TrainTests(TestCasePlus):
         with patch.object(sys, "argv", testargs):
             result = main()
             self.assertLess(result["perplexity"], 100)
+
 
 #    def test_train_csv(self):
 #        '''
@@ -67,7 +67,7 @@ class TrainTests(TestCasePlus):
 #            --per_device_train_batch_size 5
 #            --per_device_eval_batch_size 5
 #            --num_train_epochs 2
-#            --set_seq_size 4
+#            --set_seq_size 5
 #            --output_dir {tmp_dir}
 #            --overwrite_output_dir
 #            """.split()
@@ -100,7 +100,7 @@ class TrainTests(TestCasePlus):
 #            --per_device_train_batch_size 5
 #            --per_device_eval_batch_size 5
 #            --num_train_epochs 2
-#            --set_seq_size 3
+#            --set_seq_size 4
 #            --output_dir {tmp_dir}
 #            --overwrite_output_dir
 #            """.split()

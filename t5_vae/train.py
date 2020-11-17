@@ -21,7 +21,7 @@ from transformers import (
     set_seed,
 )
 from transformers.trainer_utils import is_main_process
-from t5_vae.model import T5_VAE, T5_VAE_ModelArguments
+from t5_vae.model import T5_VAE_Model
 from t5_vae.config import T5_VAE_Config
 
 
@@ -31,6 +31,64 @@ logger = logging.getLogger(__name__)
 # You should update this to your particular problem to have better documentation of `model_type`
 MODEL_CONFIG_CLASSES = list(MODEL_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
+
+
+@dataclass
+class T5_VAE_ModelArguments:
+    """
+    Arguments pertaining to which model/config/tokenizer we are going to fine-tune, or train from scratch.
+    """
+
+    model_path: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "The model checkpoint for weights initialization. Leave None if you want to train a model from scratch."
+        },
+    )
+    t5_model_name: Optional[str] = field(
+        default="t5-base",
+        metadata={"help": "Name of the T5 model being using for encoding & decoding."},
+    )
+    # TODO allow using Funnel-Transformer here
+    """
+    base_model_type: Optional[str] = field(
+        default="t5",
+        metadata={"help": "If training from scratch, pass a model type from the list: " + ", ".join(MODEL_TYPES)},
+    )
+    """
+    config_path: Optional[str] = field(
+        default=None, metadata={"help": "Pretrained config path if not the same as model_name"}
+    )
+    tokenizer_name: Optional[str] = field(
+        default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
+    )
+    cache_dir: Optional[str] = field(
+        default=None, metadata={"help": "Where do you want to store the pretrained models downloaded from s3"}
+    )
+    use_fast_tokenizer: bool = field(
+        default=True,
+        metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
+    )
+    latent_size: int = field(default=None, metadata={"help": "The size of the VAE's latent space."})
+    set_seq_size: int = field(default=None, metadata={"help": "Set sequence size."})
+    # Arguments used during training
+    n_previous_latent_codes: int = field(
+        default=3,
+        metadata={
+            "help": "Use N previous batches of latent codes when calculating MMD loss, required when using small batches."
+        },
+    )
+    reg_schedule_k: float = field(
+        default=0.0025,
+        metadata={"help": "Multiplied by global_step in a sigmoid, more gradually increase regulariser loss weight."},
+    )
+    reg_schedule_b: float = field(
+        default=6.25,
+        metadata={"help": "Added to global step in sigmoid, further delays increase in regulariser loss weight."},
+    )
+    reg_constant_weight: Optional[float] = field(
+        default=None, metadata={"help": "Apply a constant weight to the regulariser."}
+    )
 
 
 @dataclass
@@ -144,7 +202,7 @@ def main():
     elif model_args.model_path:
         config = T5_VAE_Config.from_pretrained(model_args.model_path, cache_dir=model_args.cache_dir)
     else:
-        config = T5_VAE_Config()
+        config = T5_VAE_Config(latent_size=model_args.latent_size, set_seq_size=model_args.set_seq_size)
         logger.warning("You are instantiating a new config instance from scratch.")
 
     if model_args.tokenizer_name:
@@ -166,7 +224,7 @@ def main():
         )
 
     if model_args.model_path:
-        model = T5_VAE.from_pretrained(
+        model = T5_VAE_Model.from_pretrained(
             model_args.model_path,
             from_tf=bool(".ckpt" in model_args.model_path),
             config=config,
@@ -174,9 +232,10 @@ def main():
         )
     else:
         logger.info("Training new model from scratch")
-        model = T5_VAE.from_config(config)
+        model = T5_VAE_Model(config)
 
     model.resize_token_embeddings(len(tokenizer))
+    tokenizer.model_max_length = config.set_seq_size
 
     # Preprocessing the datasets.
     # First we tokenize all the texts.
@@ -189,9 +248,6 @@ def main():
     def tokenize_function(examples):
         return tokenizer(examples[text_column_name], padding="max_length", truncation=True)
 
-    # TODO have this tokenize to size set_seq_size
-    import pdb
-    pdb.set_trace()
     tokenized_datasets = datasets.map(
         tokenize_function,
         batched=True,
@@ -215,9 +271,7 @@ def main():
 
     # Training
     if training_args.do_train:
-        trainer.train(
-            model_path=model_args.model_path if os.path.isdir(model_args.model_path) else None
-        )
+        trainer.train(model_path=model_args.model_path if os.path.isdir(model_args.model_path) else None)
         trainer.save_model()  # Saves the tokenizer too for easy upload
 
     # Evaluation

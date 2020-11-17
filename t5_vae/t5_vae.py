@@ -447,12 +447,12 @@ def _get_t5_vae_requirements(model_args, training_args):
 
 def new_t5_vae(model_args, training_args):
     config, t5_model, tokenizer, vae = _get_t5_vae_requirements(model_args, training_args)
-    return T5_VAE(config, t5_model, vae, model_args.set_seq_size, tokenizer)
+    return T5_VAE_Model(config, t5_model, vae, model_args.set_seq_size, tokenizer)
 
 
 def load_t5_vae(model_args, training_args):
     config, t5_model, tokenizer, vae = _get_t5_vae_requirements(model_args, training_args)
-    return T5_VAE.from_pretrained(
+    return T5_VAE_Model.from_pretrained(
         model_args.model_path,
         config=config,
         t5_model=t5_model,
@@ -464,7 +464,7 @@ def load_t5_vae(model_args, training_args):
 
 
 def load_t5_vae_from_args(args_list):
-    # Use to load a T5_VAE from a jupyter notebook
+    # Use to load a T5_VAE_Model from a jupyter notebook
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, MyTrainingArguments))
     model_args, _, training_args = parser.parse_args_into_dataclasses(args=args_list)
     assert model_args.model_path and os.path.isdir(model_args.model_path)

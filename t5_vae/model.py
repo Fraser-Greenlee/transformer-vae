@@ -7,69 +7,9 @@ import torch
 from torch import nn
 from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_t5 import T5LayerFF
-from transformers.utils.dummy_pt_objects import AutoModel
+from transformers import AutoModelForSeq2SeqLM
 
 from t5_vae.config import T5_VAE_Config
-
-
-@dataclass
-class T5_VAE_ModelArguments:
-    """
-    Arguments pertaining to which model/config/tokenizer we are going to fine-tune, or train from scratch.
-    """
-
-    model_path: Optional[str] = field(
-        default=None,
-        metadata={
-            "help": "The model checkpoint for weights initialization. Leave None if you want to train a model from scratch."
-        },
-    )
-    t5_model_name: Optional[str] = field(
-        default='t5-base',
-        metadata={"help": "Name of the T5 model being using for encoding & decoding."},
-    )
-    # TODO allow using Funnel-Transformer here
-    """
-    base_model_type: Optional[str] = field(
-        default="t5",
-        metadata={"help": "If training from scratch, pass a model type from the list: " + ", ".join(MODEL_TYPES)},
-    )
-    """
-    config_path: Optional[str] = field(
-        default=None, metadata={"help": "Pretrained config path if not the same as model_name"}
-    )
-    tokenizer_name: Optional[str] = field(
-        default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
-    )
-    cache_dir: Optional[str] = field(
-        default=None, metadata={"help": "Where do you want to store the pretrained models downloaded from s3"}
-    )
-    use_fast_tokenizer: bool = field(
-        default=True,
-        metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
-    )
-    ae_latent_size: int = field(
-        default=None, metadata={"help": "The size of the VAE's latent space, only valid with a T5 model."}
-    )
-    set_seq_size: int = field(default=None, metadata={"help": "Set sequence size."})
-    # Arguments used during training
-    n_previous_latent_codes: int = field(
-        default=3,
-        metadata={
-            "help": "Use N previous batches of latent codes when calculating MMD loss, required when using small batches."
-        },
-    )
-    reg_schedule_k: float = field(
-        default=0.0025,
-        metadata={"help": "Multiplied by global_step in a sigmoid, more gradually increase regulariser loss weight."},
-    )
-    reg_schedule_b: float = field(
-        default=6.25,
-        metadata={"help": "Added to global step in sigmoid, further delays increase in regulariser loss weight."},
-    )
-    reg_constant_weight: Optional[float] = field(
-        default=None, metadata={"help": "Apply a constant weight to the regulariser."}
-    )
 
 
 class LatentEncoderLargeTanh_1kLatent(nn.Module):
@@ -157,7 +97,7 @@ class EncoderDecoderVAE(nn.Module):
         return loss
 
 
-class T5_VAE(PreTrainedModel):
+class T5_VAE_Model(PreTrainedModel):
     r"""
     The T5-VAE model was proposed in `Transformers as Variational Autoencoders
     <https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html>`__ by Fraser Greenlee.
@@ -178,18 +118,26 @@ class T5_VAE(PreTrainedModel):
             weights.
     """
     base_model_prefix = "t5_vae"
+    config_class = T5_VAE_Config
 
     def __init__(self, config: T5_VAE_Config):
         super().__init__(config=config)
-        self.t5_model = AutoModel.from_pretrained(config.t5_model_name)
+        self.t5_model = AutoModelForSeq2SeqLM.from_config(config.t5_config)
         self.vae = EncoderDecoderVAE(
             self.t5_model.encoder,
             self.t5_model.decoder,
         )
         self.set_seq_size = config.set_seq_size
-        self.tokenizer = self.t5_model.tokenizer
         self.config = config
-        self.init_weights()
+
+    def get_input_embeddings(self):
+        return self.t5_model.shared
+
+    def set_input_embeddings(self, new_embeddings):
+        return self.t5_model.set_input_embeddings(new_embeddings)
+
+    def _init_weights(self, module):
+        return self.t5_model._init_weights(module)
 
     def decoder_loss(self, labels, encoding, ignore_index=-100):
         decoder_input_ids = self.t5_model._shift_right(labels)
