@@ -105,7 +105,7 @@ class T5_VAE_Model(PreTrainedModel):
 
     This model inherits from :class:`~transformers.PreTrainedModel`. Check the superclass documentation for the generic
     methods the library implements for all its model (such as downloading or saving, resizing the input embeddings,
-    pruning heads etc.)
+    pruning heads etc).
 
     This model is also a PyTorch `torch.nn.Module <https://pytorch.org/docs/stable/nn.html#torch.nn.Module>`__
     subclass. Use it as a regular PyTorch Module and refer to the PyTorch documentation for all matter related to
@@ -124,8 +124,12 @@ class T5_VAE_Model(PreTrainedModel):
         super().__init__(config=config)
         self.t5_model = AutoModelForSeq2SeqLM.from_config(config.t5_config)
         self.vae = EncoderDecoderVAE(
-            self.t5_model.encoder,
-            self.t5_model.decoder,
+            LatentEncoderLargeTanh_1kLatent(
+                self.t5_model.config.d_model, self.config.set_seq_size, self.config.latent_size
+            ),
+            LatentDecoderLargeT5NormFF(
+                self.t5_model.config.d_model, self.config.set_seq_size, self.config.latent_size, self.t5_model.config
+            )
         )
         self.set_seq_size = config.set_seq_size
         self.config = config
@@ -162,10 +166,9 @@ class T5_VAE_Model(PreTrainedModel):
         return self.vae(encoding, just_get_encoding=True)
 
     def forward(self, input_ids):
-        attention_mask = input_ids.ne(self.config.pad_token_id).long()
-
+        attention_mask = input_ids.ne(self.t5_model.config.pad_token_id).long()
         encoding = self.t5_model.encoder(input_ids=input_ids, attention_mask=attention_mask)[0]
         recon_loss, reg_loss, encoding = self.vae(encoding)
         decoder_ce = self.decoder_loss(input_ids, encoding, ignore_index=self.config.pad_token_id)
 
-        return decoder_ce, recon_loss, reg_loss
+        return (decoder_ce + recon_loss + reg_loss,)

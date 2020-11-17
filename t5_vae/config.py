@@ -29,8 +29,8 @@ class T5_VAE_Config(PretrainedConfig):
     model_type = "t5_vae"
 
     def __init__(self, latent_size=1_000, set_seq_size=60, additional_latent_models=[], **t5_config_kwargs):
-        super().__init__(**t5_config_kwargs)
         t5_config_kwargs["n_positions"] = set_seq_size
+        super().__init__(**t5_config_kwargs)
         self.t5_config = T5Config(**t5_config_kwargs)
         self.latent_size = latent_size
         self.set_seq_size = set_seq_size

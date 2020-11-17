@@ -271,7 +271,7 @@ def main():
 
     # Training
     if training_args.do_train:
-        trainer.train(model_path=model_args.model_path if os.path.isdir(model_args.model_path) else None)
+        trainer.train(model_path=model_args.model_path if model_args.model_path and os.path.isdir(model_args.model_path) else None)
         trainer.save_model()  # Saves the tokenizer too for easy upload
 
     # Evaluation
