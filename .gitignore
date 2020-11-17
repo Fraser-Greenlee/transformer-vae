@@ -20,3 +20,4 @@ __pycache__/
 .cache
 
 !t5_vae/config.json
+!tests/fixtures/*
