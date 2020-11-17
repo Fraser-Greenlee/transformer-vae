@@ -7,6 +7,9 @@ import torch
 from torch import nn
 from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_t5 import T5LayerFF
+from transformers.utils.dummy_pt_objects import AutoModel
+
+from t5_vae.config import T5_VAE_Config
 
 
 @dataclass
@@ -45,7 +48,11 @@ class T5_VAE_ModelArguments:
         default=None, metadata={"help": "The size of the VAE's latent space, only valid with a T5 model."}
     )
     set_seq_size: int = field(default=None, metadata={"help": "Set sequence size."})
-    # args used during training
+    # Arguments used during training
+    n_previous_latent_codes: int = field(
+        default=3,
+        metadata={"help": "Use N previous batches of latent codes when calculating MMD loss, required when using small batches."},
+    )
     reg_schedule_k: float = field(
         default=0.0025,
         metadata={"help": "Multiplied by global_step in a sigmoid, more gradually increase regulariser loss weight."},
@@ -101,11 +108,10 @@ class EncoderDecoderVAE(nn.Module):
     Encodes all token encodings into a single latent & spits them back out.
     """
 
-    def __init__(self, encoder, decoder, training_args):
+    def __init__(self, encoder, decoder):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
-        self.args = training_args
 
     def _model_forward(self, encoding):
         latent = self.encoder(encoding)
@@ -139,39 +145,46 @@ class EncoderDecoderVAE(nn.Module):
         return torch.mean(x_kernel) + torch.mean(y_kernel) - 2 * torch.mean(xy_kernel)
 
     def _regularliser_loss(self, input_encoding, latent):
-        loss = torch.tensor(0, dtype=torch.float).to(self.args.device)
+        loss = torch.tensor(0, dtype=torch.float).to(input_encoding.device)
         true_samples = torch.randn(latent.size()).to(latent.device)
         loss += self._compute_mmd(true_samples, latent)
         return loss
 
 
-class t5_VAE(PreTrainedModel):
+class T5_VAE(PreTrainedModel):
+    r"""
+    The T5-VAE model was proposed in `Transformers as Variational Autoencoders
+    <https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html>`__ by Fraser Greenlee.
+    It is a modified T5 model that uses an MMD-VAE on sequence encodings to learn smooth latent spaces of discrete squences.
+
+    This model inherits from :class:`~transformers.PreTrainedModel`. Check the superclass documentation for the generic
+    methods the library implements for all its model (such as downloading or saving, resizing the input embeddings,
+    pruning heads etc.)
+
+    This model is also a PyTorch `torch.nn.Module <https://pytorch.org/docs/stable/nn.html#torch.nn.Module>`__
+    subclass. Use it as a regular PyTorch Module and refer to the PyTorch documentation for all matter related to
+    general usage and behavior.
+
+    Parameters:
+        config (:class:`~t5_vae.T5_VAE_Config`): Model configuration class with all the parameters of the model.
+            Initializing with a config file does not load the weights associated with the model, only the
+            configuration. Check out the :meth:`~transformers.PreTrainedModel.from_pretrained` method to load the model
+            weights.
+    """
     base_model_prefix = "t5_vae"
 
-    def __init__(self, config, t5_model, vae, set_seq_size, tokenizer):
+    def __init__(self, config: T5_VAE_Config):
         super().__init__(config=config)
-        self.t5_model = t5_model
-        self.vae = vae
+        self.t5_model = AutoModel.from_pretrained(config.t5_model_name)
+        self.vae = EncoderDecoderVAE(self.t5_model.encoder, self.t5_model.decoder, )
+        self.set_seq_size = config.n_positions
+        self.tokenizer = self.t5_model.tokenizer
         self.config = config
-        self.set_seq_size = set_seq_size
-        self.tokenizer = tokenizer
-
-    def pad_input_ids(self, input_ids):
-        padedd_input_tokens = torch.ones(self.set_seq_size, dtype=torch.long) * self.tokenizer.pad_token_id
-        padedd_input_tokens[: input_ids.size(0)] = input_ids
-        return padedd_input_tokens.to("cuda").view(1, -1)
-
-    def _decoder_logits(self, decoder_input_ids, encoding):
-        sequence_output = self.t5_model.decoder(input_ids=decoder_input_ids, encoder_hidden_states=encoding)[0]
-        # Rescale output before projecting on vocab
-        # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
-        sequence_output = sequence_output * (self.t5_model.model_dim ** -0.5)
-        logits = self.t5_model.lm_head(sequence_output)
-        return logits
+        self.init_weights()
 
     def decoder_loss(self, labels, encoding, ignore_index=-100):
         decoder_input_ids = self.t5_model._shift_right(labels)
-        logits = self._decoder_logits(decoder_input_ids, encoding)
+        logits = self.decoder_logits(decoder_input_ids, encoding)
         loss_fct = nn.CrossEntropyLoss(ignore_index=ignore_index, reduction="none")
         loss = loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
         # TODO(thom): Add z_loss https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L666
@@ -190,28 +203,6 @@ class t5_VAE(PreTrainedModel):
         attention_mask = input_ids.ne(self.config.pad_token_id).long()
         encoding = self.t5_model.encoder(input_ids=input_ids, attention_mask=attention_mask)[0]
         return self.vae(encoding, just_get_encoding=True)
-
-    def _greedy_logits(self, encoding):
-        # always start with 0 token
-        decoder_input_ids = torch.tensor([[0]]).to(self.device)
-        for i in range(self.set_seq_size):
-            logits = self._decoder_logits(decoder_input_ids, encoding)
-            _, chosen_token = torch.topk(logits[0, i], 1)  # get index of max logits[-1]
-            if chosen_token == self.tokenizer.eos_token_id:
-                break
-            decoder_input_ids = torch.cat((decoder_input_ids, chosen_token.view(1, -1)), 1)
-        return logits
-
-    def greedy_logits(self, input_ids=None, latent=None, encoding=None):
-        # get logits for given input_ids or latent
-        assert input_ids is not None or latent is not None or encoding is not None
-        if encoding is None and latent is None:
-            if len(input_ids.size()) == 1 and input_ids.size(0) < self.set_seq_size:
-                input_ids = self.pad_input_ids(input_ids)
-            latent = self.get_latent(input_ids)
-        if encoding is None:
-            encoding = self.vae.decoder(latent.view(1, -1))
-        return self._greedy_logits(encoding)
 
     def forward(self, input_ids):
         attention_mask = input_ids.ne(self.config.pad_token_id).long()

@@ -27,9 +27,9 @@ python -e t5_vae \
 ```
 Or you can import T5-VAE to use as a package much like a Huggingface model.
 ```python
-from t5_vae import t5_VAE
+from t5_vae import T5_VAE
 
-model = t5_VAE.from_pretrained('t5-vae-poet')
+model = T5_VAE.from_pretrained('t5-vae-poet')
 ```
 ## Training
 Setup [Weights & Biasis](https://app.wandb.ai/) for logging, see [client](https://github.com/wandb/client).
