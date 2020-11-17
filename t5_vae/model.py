@@ -10,10 +10,11 @@ from transformers.modeling_t5 import T5LayerFF
 
 
 @dataclass
-class T5VAE_ModelArguments:
+class T5_VAE_ModelArguments:
     """
     Arguments pertaining to which model/config/tokenizer we are going to fine-tune, or train from scratch.
     """
+
     model_path: Optional[str] = field(
         default=None,
         metadata={
@@ -25,12 +26,12 @@ class T5VAE_ModelArguments:
         metadata={"help": "Name of the T5 model being using for encoding & decoding."},
     )
     # TODO allow using Funnel-Transformer here
-    '''
+    """
     base_model_type: Optional[str] = field(
         default="t5",
         metadata={"help": "If training from scratch, pass a model type from the list: " + ", ".join(MODEL_TYPES)},
     )
-    '''
+    """
     config_name: Optional[str] = field(
         default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"}
     )

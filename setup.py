@@ -13,16 +13,18 @@ def file_to_string(*path):
 
 # can't import __version__ so extract it manually
 contents = file_to_string(package, "__init__.py")
-__version__ = re.search(r"__version__ = '([.\d]+)'", contents).group(1)
+__version__ = re.search(r'__version__ = "([.\d]+)"', contents).group(1)
 
 install_requires = [
     "transformers==3.5.1",
-    "wandb",
-    "tqdm",
-    "torch",
+    "datasets==1.1.2",
+    "wandb==0.10.10",
+    "torch==1.7.0",
 ]
 
 tests_require = ["pytest", "flake8", "flake8-mypy", "black"]
+
+# TODO allow executing training directly
 
 setup(
     name=package,
