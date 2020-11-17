@@ -69,8 +69,8 @@ class T5_VAE_ModelArguments:
         default=True,
         metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
     )
-    latent_size: int = field(default=None, metadata={"help": "The size of the VAE's latent space."})
-    set_seq_size: int = field(default=None, metadata={"help": "Set sequence size."})
+    latent_size: int = field(default=1_000, metadata={"help": "The size of the VAE's latent space."})
+    set_seq_size: int = field(default=60, metadata={"help": "Set sequence size."})
     # Arguments used during training
     n_previous_latent_codes: int = field(
         default=3,
@@ -204,6 +204,8 @@ def main():
     else:
         config = T5_VAE_Config(latent_size=model_args.latent_size, set_seq_size=model_args.set_seq_size)
         logger.warning("You are instantiating a new config instance from scratch.")
+
+    import pdb; pdb.set_trace()
 
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(

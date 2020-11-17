@@ -13,11 +13,13 @@ from t5_vae.config import T5_VAE_Config
 
 
 class LatentEncoderLargeTanh_1kLatent(nn.Module):
-    def __init__(self, dim_m, set_input_size, latent_size):
+    def __init__(self, dim_m, set_seq_size, latent_size):
         super().__init__()
         assert dim_m > 100
+        import pdb;
+        pdb.set_trace()
         self.shrink_tokens = nn.Linear(dim_m, 100)
-        self.shrink_sequence = nn.Linear(100 * set_input_size, latent_size)
+        self.shrink_sequence = nn.Linear(100 * set_seq_size, latent_size)
         self.tanh = nn.Tanh()
 
     def forward(self, encoding) -> torch.Tensor:
@@ -29,10 +31,10 @@ class LatentEncoderLargeTanh_1kLatent(nn.Module):
 
 
 class LatentDecoderLargeT5NormFF(nn.Module):
-    def __init__(self, dim_m, set_input_size, latent_size, config):
+    def __init__(self, dim_m, set_seq_size, latent_size, config):
         super().__init__()
-        self.decode_latent = nn.Linear(latent_size, 10 * set_input_size)
-        self.grow_sequence = nn.Linear(10 * set_input_size, 100 * set_input_size)
+        self.decode_latent = nn.Linear(latent_size, 10 * set_seq_size)
+        self.grow_sequence = nn.Linear(10 * set_seq_size, 100 * set_seq_size)
         self.grow_tokens = nn.Linear(100, dim_m)
 
         old_drop = config.dropout_rate
@@ -121,8 +123,11 @@ class T5_VAE_Model(PreTrainedModel):
     config_class = T5_VAE_Config
 
     def __init__(self, config: T5_VAE_Config):
+        import pdb;
+        pdb.set_trace()
         super().__init__(config=config)
         self.t5_model = AutoModelForSeq2SeqLM.from_config(config.t5_config)
+        pdb.set_trace()
         self.vae = EncoderDecoderVAE(
             LatentEncoderLargeTanh_1kLatent(
                 self.t5_model.config.d_model, self.config.set_seq_size, self.config.latent_size
@@ -132,7 +137,6 @@ class T5_VAE_Model(PreTrainedModel):
             )
         )
         self.set_seq_size = config.set_seq_size
-        self.config = config
 
     def get_input_embeddings(self):
         return self.t5_model.shared

@@ -1,3 +1,4 @@
+import copy
 from datasets.load import import_main_class
 from transformers.configuration_utils import PretrainedConfig
 from transformers.configuration_t5 import T5Config
@@ -27,6 +28,7 @@ class T5_VAE_Config(PretrainedConfig):
             These are sent to `T5Config` to configure the T5 Model.
     """
     model_type = "t5_vae"
+    is_composition = True
 
     def __init__(self, latent_size=1_000, set_seq_size=60, additional_latent_models=[], **t5_config_kwargs):
         t5_config_kwargs["n_positions"] = set_seq_size
@@ -35,3 +37,15 @@ class T5_VAE_Config(PretrainedConfig):
         self.latent_size = latent_size
         self.set_seq_size = set_seq_size
         self.additional_latent_models = additional_latent_models
+
+    def to_dict(self):
+        """
+        Serializes this instance to a Python dictionary. Override the default `to_dict()` from `PretrainedConfig`.
+
+        Returns:
+            :obj:`Dict[str, any]`: Dictionary of all the attributes that make up this configuration instance,
+        """
+        output = copy.deepcopy(self.__dict__)
+        output["t5_config"] = self.t5_config.to_dict()
+        output["model_type"] = self.__class__.model_type
+        return output
