@@ -16,7 +16,7 @@ class T5_VAE_Config(PretrainedConfig):
             Name of the T5 model to use as encoder & decoder.
         latent_size (:obj:`int`, `optional`, defaults to 1,000):
             Number of dimensions to use for the sequences latent code.
-        n_positions (:obj:`int`, `optional`, defaults to 60):
+        set_seq_size (:obj:`int`, `optional`, defaults to 60):
             NOTE: Here it is the set sequence size, every sample must be padded to be equal to this length.
         additional_latent_models (:obj:`str`, `optional`, defaults to empty list):
             List of models that take the latent code and return a loss.
@@ -24,14 +24,8 @@ class T5_VAE_Config(PretrainedConfig):
     """
     model_type = "t5_vae"
 
-    def __init__(
-        self,
-        t5_model_name='t5-base',
-        latent_size=1_000,
-        n_positions=60,
-        additional_latent_models=[]
-    ):
+    def __init__(self, t5_model_name="t5-base", latent_size=1_000, set_seq_size=60, additional_latent_models=[]):
         self.t5_model_name = t5_model_name
         self.latent_size = latent_size
-        self.n_positions = n_positions
+        self.set_seq_size = set_seq_size
         self.additional_latent_models = additional_latent_models

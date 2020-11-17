@@ -25,7 +25,7 @@ class T5_VAE_ModelArguments:
         },
     )
     t5_model_name: Optional[str] = field(
-        default=None,
+        default='t5-base',
         metadata={"help": "Name of the T5 model being using for encoding & decoding."},
     )
     # TODO allow using Funnel-Transformer here
@@ -35,14 +35,18 @@ class T5_VAE_ModelArguments:
         metadata={"help": "If training from scratch, pass a model type from the list: " + ", ".join(MODEL_TYPES)},
     )
     """
-    config_name: Optional[str] = field(
-        default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"}
+    config_path: Optional[str] = field(
+        default=None, metadata={"help": "Pretrained config path if not the same as model_name"}
     )
     tokenizer_name: Optional[str] = field(
         default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
     )
     cache_dir: Optional[str] = field(
         default=None, metadata={"help": "Where do you want to store the pretrained models downloaded from s3"}
+    )
+    use_fast_tokenizer: bool = field(
+        default=True,
+        metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
     )
     ae_latent_size: int = field(
         default=None, metadata={"help": "The size of the VAE's latent space, only valid with a T5 model."}
@@ -51,7 +55,9 @@ class T5_VAE_ModelArguments:
     # Arguments used during training
     n_previous_latent_codes: int = field(
         default=3,
-        metadata={"help": "Use N previous batches of latent codes when calculating MMD loss, required when using small batches."},
+        metadata={
+            "help": "Use N previous batches of latent codes when calculating MMD loss, required when using small batches."
+        },
     )
     reg_schedule_k: float = field(
         default=0.0025,
@@ -176,8 +182,11 @@ class T5_VAE(PreTrainedModel):
     def __init__(self, config: T5_VAE_Config):
         super().__init__(config=config)
         self.t5_model = AutoModel.from_pretrained(config.t5_model_name)
-        self.vae = EncoderDecoderVAE(self.t5_model.encoder, self.t5_model.decoder, )
-        self.set_seq_size = config.n_positions
+        self.vae = EncoderDecoderVAE(
+            self.t5_model.encoder,
+            self.t5_model.decoder,
+        )
+        self.set_seq_size = config.set_seq_size
         self.tokenizer = self.t5_model.tokenizer
         self.config = config
         self.init_weights()

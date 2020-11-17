@@ -12,9 +12,7 @@ from datasets import load_dataset
 
 import transformers
 from transformers import (
-    CONFIG_MAPPING,
     MODEL_MAPPING,
-    AutoConfig,
     AutoTokenizer,
     HfArgumentParser,
     Trainer,
@@ -52,9 +50,7 @@ class DataTrainingArguments:
         default=None,
         metadata={"help": "An optional input evaluation data file to evaluate the perplexity on (a text file)."},
     )
-    overwrite_cache: bool = field(
-        default=False, metadata={"help": "Overwrite the cached training and evaluation sets"}
-    )
+    overwrite_cache: bool = field(default=False, metadata={"help": "Overwrite the cached training and evaluation sets"})
     preprocessing_num_workers: Optional[int] = field(
         default=None,
         metadata={"help": "The number of processes to use for the preprocessing."},
@@ -133,6 +129,7 @@ def main():
         extension = data_args.train_file.split(".")[-1]
         if extension == "txt":
             extension = "text"
+        # TODO have this dataset split samples on some substring
         datasets = load_dataset(extension, data_files=data_files)
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
@@ -142,10 +139,10 @@ def main():
     # Distributed training:
     # The .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
-    if model_args.config_name:
-        config = T5_VAE_Config.from_pretrained(model_args.config_name, cache_dir=model_args.cache_dir)
-    elif model_args.model_name_or_path:
-        config = T5_VAE_Config.from_pretrained(model_args.model_name_or_path, cache_dir=model_args.cache_dir)
+    if model_args.config_path:
+        config = T5_VAE_Config.from_pretrained(model_args.config_path, cache_dir=model_args.cache_dir)
+    elif model_args.model_path:
+        config = T5_VAE_Config.from_pretrained(model_args.model_path, cache_dir=model_args.cache_dir)
     else:
         config = T5_VAE_Config()
         logger.warning("You are instantiating a new config instance from scratch.")
@@ -154,9 +151,13 @@ def main():
         tokenizer = AutoTokenizer.from_pretrained(
             model_args.tokenizer_name, cache_dir=model_args.cache_dir, use_fast=model_args.use_fast_tokenizer
         )
-    elif model_args.model_name_or_path:
+    elif model_args.model_path:
         tokenizer = AutoTokenizer.from_pretrained(
-            model_args.model_name_or_path, cache_dir=model_args.cache_dir, use_fast=model_args.use_fast_tokenizer
+            model_args.model_path, cache_dir=model_args.cache_dir, use_fast=model_args.use_fast_tokenizer
+        )
+    elif model_args.t5_model_name:
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_args.t5_model_name, cache_dir=model_args.cache_dir, use_fast=model_args.use_fast_tokenizer
         )
     else:
         raise ValueError(
@@ -164,10 +165,10 @@ def main():
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
 
-    if model_args.model_name_or_path:
+    if model_args.model_path:
         model = T5_VAE.from_pretrained(
-            model_args.model_name_or_path,
-            from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            model_args.model_path,
+            from_tf=bool(".ckpt" in model_args.model_path),
             config=config,
             cache_dir=model_args.cache_dir,
         )
@@ -188,6 +189,9 @@ def main():
     def tokenize_function(examples):
         return tokenizer(examples[text_column_name], padding="max_length", truncation=True)
 
+    # TODO have this tokenize to size set_seq_size
+    import pdb
+    pdb.set_trace()
     tokenized_datasets = datasets.map(
         tokenize_function,
         batched=True,
@@ -212,7 +216,7 @@ def main():
     # Training
     if training_args.do_train:
         trainer.train(
-            model_path=model_args.model_name_or_path if os.path.isdir(model_args.model_name_or_path) else None
+            model_path=model_args.model_path if os.path.isdir(model_args.model_path) else None
         )
         trainer.save_model()  # Saves the tokenizer too for easy upload
 
