@@ -19,7 +19,7 @@ pip install t5_vae
 
 You can exececute the module to easily train it on your own data.
 ```bash
-python -e t5_vae \
+python -m t5_vae \
     --project_name="T5-VAE" \
     --output_dir=poet \
     --do_train \
@@ -38,7 +38,7 @@ Get a dataset to model, must be represented with text. This is what we will be i
 
 This can be a text file with each line representing a sample.
 ```bash
-python -e t5_vae \
+python -m t5_vae \
     --project_name="T5-VAE" \
     --output_dir=poet \
     --do_train \
@@ -46,7 +46,7 @@ python -e t5_vae \
 ```
 Alternatively seperate each sample with a line containing only `<|endoftext|>` seperating samples:
 ```bash
-python -e t5_vae \
+python -m t5_vae \
     --project_name="T5-VAE" \
     --output_dir=poet \
     --do_train \
@@ -55,7 +55,7 @@ python -e t5_vae \
 ```
 Alternatively provide a Huggingface dataset.
 ```bash
-python -e t5_vae \
+python -m t5_vae \
     --project_name="T5-VAE" \
     --output_dir=poet \
     --do_train \
