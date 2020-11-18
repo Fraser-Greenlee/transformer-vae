@@ -11,6 +11,8 @@ class T5_VAE_Config(PretrainedConfig):
     Instantiating a configuration with the defaults will yield a similar configuration
     to that of the T5 `t5-vae-base architecture.
 
+    To be able to use `transformer.trainer.Trainer` we need some specific training logic & config in the model.
+
     Configuration objects inherit from :class:`~transformers.PretrainedConfig` and can be used to control the model
     outputs. Read the documentation from :class:`~transformers.PretrainedConfig` for more information.
 
@@ -23,20 +25,42 @@ class T5_VAE_Config(PretrainedConfig):
             NOTE: Here it is the set sequence size, every sample must be padded to be equal to this length.
         additional_latent_models (:obj:`list[nn.Module]`, `optional`, defaults to empty list):
             List of models that take the latent code and return a loss.
-            Use this to condition the latent code on another model optimising the latent space further.
+            Use this to condition the latent code on another model, optimising the latent space further.
+        *** Training Args ***
+        n_previous_latent_codes (:obj:`int`, `optional`, defaults to 3):
+            Number of batches of previous latent codes to keep for MMD regularisation loss.
+        reg_schedule_k (:obj:`float`, `optional`, defaults to 0.0025):
+            Multiplied by global_step in a sigmoid, more gradually increase regulariser loss weight.
+        reg_schedule_b (:obj:`float`, `optional`, defaults to 6.25):
+            Added to global step in sigmoid, further delays increase in regulariser loss weight.
+        *** End ***
         t5_config_kwargs
             These are sent to `T5Config` to configure the T5 Model.
     """
     model_type = "t5_vae"
     is_composition = True
 
-    def __init__(self, latent_size=1_000, set_seq_size=60, additional_latent_models=[], **t5_config_kwargs):
+    def __init__(
+        self,
+        latent_size=1_000,
+        set_seq_size=60,
+        t5_decoder_start_token_id=0,
+        additional_latent_models=[],
+        n_previous_latent_codes=3,
+        reg_schedule_k=0.0025,
+        reg_schedule_b=6.25,
+        **t5_config_kwargs,
+    ):
         t5_config_kwargs["n_positions"] = set_seq_size
+        t5_config_kwargs["decoder_start_token_id"] = t5_decoder_start_token_id
         super().__init__(**t5_config_kwargs)
         self.t5_config = T5Config(**t5_config_kwargs)
         self.latent_size = latent_size
         self.set_seq_size = set_seq_size
         self.additional_latent_models = additional_latent_models
+        self.n_previous_latent_codes = n_previous_latent_codes
+        self.reg_schedule_k = reg_schedule_k
+        self.reg_schedule_b = reg_schedule_b
 
     def to_dict(self):
         """
@@ -49,3 +73,44 @@ class T5_VAE_Config(PretrainedConfig):
         output["t5_config"] = self.t5_config.to_dict()
         output["model_type"] = self.__class__.model_type
         return output
+
+
+'''
+TODO decide if this is needed
+
+class T5_VAE_Trainable_Config(T5_VAE_Config):
+    r"""
+    To be able to use `transformer.trainer.Trainer` we need a way of handling multiple losses with varied weighting in each training step.
+    This is done by subclassing the model to add aditional training-specific logic there.
+    Here I've added some training configuration info.
+
+    Arguments:
+        batch_size (:obj:`int`):
+            Batch size the model will recieve.
+        gradient_accumulation_steps (:obj:`int`):
+            Number of calls the model will recieve per training step.
+        n_previous_latent_codes (:obj:`int`, `optional`, defaults to 3):
+            Number of batches of previous latent codes to keep for MMD regularisation loss.
+        reg_schedule_k (:obj:`float`, `optional`, defaults to 0.0025):
+            Multiplied by global_step in a sigmoid, more gradually increase regulariser loss weight.
+        reg_schedule_b (:obj:`float`, `optional`, defaults to 6.25):
+            Added to global step in sigmoid, further delays increase in regulariser loss weight.
+        t5_vae_kwargs
+            These are sent to `T5_VAE_Config` to configure the T5-VAE Model.
+    """
+    def __init__(
+        self,
+        batch_size,
+        gradient_accumulation_steps,
+        n_previous_latent_codes=3,
+        reg_schedule_k=0.0025,
+        reg_schedule_b=6.25,
+        **t5_vae_kwargs
+    ):
+        super().__init__(**t5_vae_kwargs)
+        self.batch_size = batch_size
+        self.gradient_accumulation_steps = gradient_accumulation_steps
+        self.n_previous_latent_codes = n_previous_latent_codes
+        self.reg_schedule_k = reg_schedule_k
+        self.reg_schedule_b = reg_schedule_b
+'''

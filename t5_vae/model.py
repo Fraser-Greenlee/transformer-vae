@@ -8,7 +8,9 @@ from torch import nn
 from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_t5 import T5LayerFF
 from transformers import AutoModelForSeq2SeqLM
+from transformers.modeling_outputs import BaseModelOutput
 
+from t5_vae.modelling_outputs import BaseVAEOutput, VAE_Seq2SeqLMOutput
 from t5_vae.config import T5_VAE_Config
 
 
@@ -16,8 +18,6 @@ class LatentEncoderLargeTanh_1kLatent(nn.Module):
     def __init__(self, dim_m, set_seq_size, latent_size):
         super().__init__()
         assert dim_m > 100
-        import pdb;
-        pdb.set_trace()
         self.shrink_tokens = nn.Linear(dim_m, 100)
         self.shrink_sequence = nn.Linear(100 * set_seq_size, latent_size)
         self.tanh = nn.Tanh()
@@ -56,24 +56,31 @@ class EncoderDecoderVAE(nn.Module):
     Encodes all token encodings into a single latent & spits them back out.
     """
 
-    def __init__(self, encoder, decoder):
+    batch_size = None
+
+    def __init__(self, encoder, decoder, use_n_previous_latent_codes):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
+        self.use_n_previous_latent_codes = use_n_previous_latent_codes
+        self.prev_latents = None
+        self.prev_latents_index = 0
 
-    def _model_forward(self, encoding):
-        latent = self.encoder(encoding)
+    def _model_forward(self, encoding, latent=None):
+        if not latent:
+            latent = self.encoder(encoding)
         return self.decoder(latent), latent
 
-    def forward(self, input_encoding: torch.Tensor, just_get_latent=False, just_get_encoding=False):
-        recon_encoding, latent = self._model_forward(input_encoding)
-        if just_get_latent:
-            return latent
-        if just_get_encoding:
-            return recon_encoding
-        recon_loss = torch.nn.MSELoss(reduction="mean")(input_encoding, recon_encoding)
-        reg_loss = self._regularliser_loss(input_encoding, latent)
-        return recon_loss, reg_loss, recon_encoding
+    def forward(
+        self,
+        input_encoding=None,
+        latent_code=None,
+    ):
+        if not input_encoding and not latent_code:
+            raise ValueError("Null input_encoding & latent_code sent to VAE.")
+        recon_encoding, latent = self._model_forward(input_encoding, latent=latent_code)
+        reg_loss = self._regularliser_loss(latent)
+        return BaseVAEOutput(latent_code=latent, reconstructed_encoding=recon_encoding, reg_loss=reg_loss)
 
     @staticmethod
     def _compute_kernel(x, y):
@@ -92,11 +99,32 @@ class EncoderDecoderVAE(nn.Module):
         xy_kernel = self._compute_kernel(x, y)
         return torch.mean(x_kernel) + torch.mean(y_kernel) - 2 * torch.mean(xy_kernel)
 
-    def _regularliser_loss(self, input_encoding, latent):
-        loss = torch.tensor(0, dtype=torch.float).to(input_encoding.device)
-        true_samples = torch.randn(latent.size()).to(latent.device)
-        loss += self._compute_mmd(true_samples, latent)
-        return loss
+    def _get_combined_latents(self, latent):
+        if not self.prev_latents:
+            # if no previous latents use this call to get the training batch size
+            assert len(latent.size()) == 2
+            self.batch_size = latent.size(0)
+            self.prev_latents = torch.zeros((self.batch_size * self.use_n_previous_latent_codes, latent.size(1)))
+            # start by setting all previous to the first latent
+            for i in range(self.use_n_previous_latent_codes):
+                self.prev_latents[(i - 1) * self.batch_size : i * self.batch_size] = latent.detach()
+        # update prev_latents to include new latents, overwriting the oldest ones
+        return torch.cat((latent, self.prev_latents), 0)
+
+    def _update_prev_latents(self, latent):
+        self.prev_latents[
+            (self.prev_latents_index - 1) * self.batch_size : self.prev_latents_index * self.batch_size
+        ] = latent.detach()
+        self.prev_latents_index += 1
+        if self.prev_latents_index >= self.use_n_previous_latent_codes:
+            self.prev_latents_index = 0
+
+    def _regularliser_loss(self, latent):
+        combined_latent = self._get_combined_latents(latent)
+        true_samples = torch.randn(combined_latent.size()).to(combined_latent.device)
+        result = self._compute_mmd(true_samples, combined_latent)
+        self._update_prev_latents(latent)
+        return result
 
 
 class T5_VAE_Model(PreTrainedModel):
@@ -104,6 +132,8 @@ class T5_VAE_Model(PreTrainedModel):
     The T5-VAE model was proposed in `Transformers as Variational Autoencoders
     <https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html>`__ by Fraser Greenlee.
     It is a modified T5 model that uses an MMD-VAE on sequence encodings to learn smooth latent spaces of discrete squences.
+
+    NOTE: Must be trained with the `TellModelGlobalStep` for MMD regulariser loss scheduling.
 
     This model inherits from :class:`~transformers.PreTrainedModel`. Check the superclass documentation for the generic
     methods the library implements for all its model (such as downloading or saving, resizing the input embeddings,
@@ -121,22 +151,20 @@ class T5_VAE_Model(PreTrainedModel):
     """
     base_model_prefix = "t5_vae"
     config_class = T5_VAE_Config
+    global_step = None
 
     def __init__(self, config: T5_VAE_Config):
-        import pdb;
-        pdb.set_trace()
         super().__init__(config=config)
         self.t5_model = AutoModelForSeq2SeqLM.from_config(config.t5_config)
-        pdb.set_trace()
         self.vae = EncoderDecoderVAE(
             LatentEncoderLargeTanh_1kLatent(
                 self.t5_model.config.d_model, self.config.set_seq_size, self.config.latent_size
             ),
             LatentDecoderLargeT5NormFF(
                 self.t5_model.config.d_model, self.config.set_seq_size, self.config.latent_size, self.t5_model.config
-            )
+            ),
+            self.config.n_previous_latent_codes,
         )
-        self.set_seq_size = config.set_seq_size
 
     def get_input_embeddings(self):
         return self.t5_model.shared
@@ -147,32 +175,75 @@ class T5_VAE_Model(PreTrainedModel):
     def _init_weights(self, module):
         return self.t5_model._init_weights(module)
 
-    def decoder_loss(self, labels, encoding, ignore_index=-100):
-        decoder_input_ids = self.t5_model._shift_right(labels)
-        logits = self.decoder_logits(decoder_input_ids, encoding)
-        loss_fct = nn.CrossEntropyLoss(ignore_index=ignore_index, reduction="none")
-        loss = loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
-        # TODO(thom): Add z_loss https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L666
-        return loss
+    def decoder_logits(self, decoder_input_ids, encoding):
+        sequence_output = self.t5_model.decoder(input_ids=decoder_input_ids, encoder_hidden_states=encoding)[0]
+        # Rescale output before projecting on vocab
+        # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
+        sequence_output = sequence_output * (self.t5_model.model_dim ** -0.5)
+        logits = self.t5_model.lm_head(sequence_output)
+        return logits
 
-    def decoder_loss_from_latent(self, labels, latent):
-        encoding = self.vae.decoder(latent)
-        return self.decoder_loss(labels, encoding)
+    def _regulariser_loss_weight_schedule(self):
+        if not self.global_step:
+            return 1
+        return torch.sigmoid(
+            torch.tensor(self.global_step * self.args.reg_schedule_k - self.args.reg_schedule_b)
+        ).item()
 
-    def get_latent(self, input_ids):
-        attention_mask = input_ids.ne(self.config.pad_token_id).long()
-        encoding = self.t5_model.encoder(input_ids=input_ids, attention_mask=attention_mask)[0]
-        return self.vae(encoding, just_get_latent=True)
+    def forward(
+        self,
+        input_ids=None,
+        labels=None,
+        attention_mask=None,
+        encoder_outputs=None,
+        decoder_input_ids=None,
+        latent_code=None,
+    ):
+        if input_ids:
+            if not attention_mask:
+                attention_mask = input_ids.ne(self.t5_model.config.pad_token_id).long()
+            if not encoder_outputs:
+                encoder_outputs = self.t5_model.encoder(
+                    input_ids=input_ids, attention_mask=attention_mask, return_dict=True
+                )
+        if encoder_outputs and not isinstance(encoder_outputs, BaseModelOutput):
+            encoder_outputs = BaseModelOutput(
+                last_hidden_state=encoder_outputs[0],
+                hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
+                attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
+            )
 
-    def get_hidden(self, input_ids):
-        attention_mask = input_ids.ne(self.config.pad_token_id).long()
-        encoding = self.t5_model.encoder(input_ids=input_ids, attention_mask=attention_mask)[0]
-        return self.vae(encoding, just_get_encoding=True)
+        vae_outputs = self.vae(
+            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent_code=latent_code
+        )
 
-    def forward(self, input_ids):
-        attention_mask = input_ids.ne(self.t5_model.config.pad_token_id).long()
-        encoding = self.t5_model.encoder(input_ids=input_ids, attention_mask=attention_mask)[0]
-        recon_loss, reg_loss, encoding = self.vae(encoding)
-        decoder_ce = self.decoder_loss(input_ids, encoding, ignore_index=self.config.pad_token_id)
+        if labels is not None and decoder_input_ids is None:
+            # get decoder inputs from shifting lm labels to the right
+            decoder_input_ids = self.t5_model._shift_right(labels) if labels else None
 
-        return (decoder_ce + recon_loss + reg_loss,)
+        decoder_outputs = self.t5_model.decoder(
+            input_ids=decoder_input_ids,
+            encoder_hidden_states=vae_outputs.reconstructed_encoding,
+        )
+
+        sequence_output = decoder_outputs[0]
+        # Rescale output before projecting on vocab
+        # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
+        sequence_output = sequence_output * (self.model_dim ** -0.5)
+        lm_logits = self.lm_head(sequence_output)
+
+        decoder_ce = torch.tensor(0.0, device=lm_logits.device)
+        if labels is not None:
+            loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
+            decoder_ce = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), labels.view(-1))
+            # TODO(thom): Add z_loss https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L666
+
+        loss = decoder_ce + vae_outputs.reg_loss * self._regulariser_loss_weight_schedule()
+
+        return VAE_Seq2SeqLMOutput(
+            latnet_code=vae_outputs.latent_code,
+            reg_loss=vae_outputs.reg_loss,
+            decoder_ce=decoder_ce,
+            reconstructed_encoding=vae_outputs.reconstructed_encoding,
+            loss=loss,
+        )

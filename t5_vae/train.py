@@ -21,6 +21,7 @@ from transformers import (
     set_seed,
 )
 from transformers.trainer_utils import is_main_process
+from t5_vae.trainer_callback import TellModelGlobalStep
 from t5_vae.model import T5_VAE_Model
 from t5_vae.config import T5_VAE_Config
 
@@ -85,9 +86,6 @@ class T5_VAE_ModelArguments:
     reg_schedule_b: float = field(
         default=6.25,
         metadata={"help": "Added to global step in sigmoid, further delays increase in regulariser loss weight."},
-    )
-    reg_constant_weight: Optional[float] = field(
-        default=None, metadata={"help": "Apply a constant weight to the regulariser."}
     )
 
 
@@ -205,8 +203,6 @@ def main():
         config = T5_VAE_Config(latent_size=model_args.latent_size, set_seq_size=model_args.set_seq_size)
         logger.warning("You are instantiating a new config instance from scratch.")
 
-    import pdb; pdb.set_trace()
-
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(
             model_args.tokenizer_name, cache_dir=model_args.cache_dir, use_fast=model_args.use_fast_tokenizer
@@ -269,11 +265,14 @@ def main():
         eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
+        callbacks=[TellModelGlobalStep],
     )
 
     # Training
     if training_args.do_train:
-        trainer.train(model_path=model_args.model_path if model_args.model_path and os.path.isdir(model_args.model_path) else None)
+        trainer.train(
+            model_path=model_args.model_path if model_args.model_path and os.path.isdir(model_args.model_path) else None
+        )
         trainer.save_model()  # Saves the tokenizer too for easy upload
 
     # Evaluation
