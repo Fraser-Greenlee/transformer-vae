@@ -17,7 +17,7 @@ from transformers import (
     HfArgumentParser,
     Trainer,
     TrainingArguments,
-    default_data_collator,
+    DataCollatorForLanguageModeling,
     set_seed,
 )
 from transformers.trainer_utils import is_main_process
@@ -111,6 +111,9 @@ class DataTrainingArguments:
         default=None,
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
+    mlm_probability: float = field(
+        default=0.05, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
+    )
 
     def __post_init__(self):
         if self.dataset_name is None and self.train_file is None and self.validation_file is None:
@@ -200,7 +203,13 @@ def main():
     elif model_args.model_path:
         config = T5_VAE_Config.from_pretrained(model_args.model_path, cache_dir=model_args.cache_dir)
     else:
-        config = T5_VAE_Config(latent_size=model_args.latent_size, set_seq_size=model_args.set_seq_size)
+        config = T5_VAE_Config(
+            latent_size=model_args.latent_size,
+            set_seq_size=model_args.set_seq_size,
+            n_previous_latent_codes=model_args.n_previous_latent_codes,
+            reg_schedule_k=model_args.reg_schedule_k,
+            reg_schedule_b=model_args.reg_schedule_b
+        )
         logger.warning("You are instantiating a new config instance from scratch.")
 
     if model_args.tokenizer_name:
@@ -234,6 +243,7 @@ def main():
 
     model.resize_token_embeddings(len(tokenizer))
     tokenizer.model_max_length = config.set_seq_size
+    tokenizer.mask_token = tokenizer.unk_token
 
     # Preprocessing the datasets.
     # First we tokenize all the texts.
@@ -255,7 +265,7 @@ def main():
     )
 
     # Data collator
-    data_collator = default_data_collator
+    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
 
     # Initialize our Trainer
     trainer = Trainer(

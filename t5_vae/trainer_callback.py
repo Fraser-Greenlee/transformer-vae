@@ -19,4 +19,6 @@ class TellModelGlobalStep(TrainerCallback):
         eval_dataloader=None,
         **kwargs,
     ):
-        self.model.global_step = state.global_step
+        if not model:
+            raise ValueError('Need to be sent model to update global step.')
+        model.global_step = state.global_step
