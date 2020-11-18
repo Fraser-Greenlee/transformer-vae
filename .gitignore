@@ -21,3 +21,5 @@ __pycache__/
 
 !t5_vae/config.json
 !tests/fixtures/*
+
+.DS_Store

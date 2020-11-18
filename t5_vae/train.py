@@ -101,6 +101,9 @@ class DataTrainingArguments:
     dataset_config_name: Optional[str] = field(
         default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
     )
+    text_column: Optional[str] = field(
+        default=None, metadata={"help": "Use this dataset column as 'text'."}
+    )
     train_file: Optional[str] = field(default=None, metadata={"help": "The input training data file (a text file)."})
     validation_file: Optional[str] = field(
         default=None,
@@ -251,7 +254,13 @@ def main():
         column_names = datasets["train"].column_names
     else:
         column_names = datasets["validation"].column_names
-    text_column_name = "text" if "text" in column_names else column_names[0]
+    if data_args.text_column is not None:
+        text_column_name = data_args.text_column
+    else:
+        text_column_name = "text" if "text" in column_names else column_names[0]
+
+    if text_column_name != "text":
+        logger.info(f'Using column f"{text_column_name}" as text column.')
 
     def tokenize_function(examples):
         return tokenizer(examples[text_column_name], padding="max_length", truncation=True)

@@ -1,5 +1,4 @@
 import copy
-from datasets.load import import_main_class
 from transformers.configuration_utils import PretrainedConfig
 from transformers.configuration_t5 import T5Config
 
@@ -73,44 +72,3 @@ class T5_VAE_Config(PretrainedConfig):
         output["t5_config"] = self.t5_config.to_dict()
         output["model_type"] = self.__class__.model_type
         return output
-
-
-'''
-TODO decide if this is needed
-
-class T5_VAE_Trainable_Config(T5_VAE_Config):
-    r"""
-    To be able to use `transformer.trainer.Trainer` we need a way of handling multiple losses with varied weighting in each training step.
-    This is done by subclassing the model to add aditional training-specific logic there.
-    Here I've added some training configuration info.
-
-    Arguments:
-        batch_size (:obj:`int`):
-            Batch size the model will recieve.
-        gradient_accumulation_steps (:obj:`int`):
-            Number of calls the model will recieve per training step.
-        n_previous_latent_codes (:obj:`int`, `optional`, defaults to 3):
-            Number of batches of previous latent codes to keep for MMD regularisation loss.
-        reg_schedule_k (:obj:`float`, `optional`, defaults to 0.0025):
-            Multiplied by global_step in a sigmoid, more gradually increase regulariser loss weight.
-        reg_schedule_b (:obj:`float`, `optional`, defaults to 6.25):
-            Added to global step in sigmoid, further delays increase in regulariser loss weight.
-        t5_vae_kwargs
-            These are sent to `T5_VAE_Config` to configure the T5-VAE Model.
-    """
-    def __init__(
-        self,
-        batch_size,
-        gradient_accumulation_steps,
-        n_previous_latent_codes=3,
-        reg_schedule_k=0.0025,
-        reg_schedule_b=6.25,
-        **t5_vae_kwargs
-    ):
-        super().__init__(**t5_vae_kwargs)
-        self.batch_size = batch_size
-        self.gradient_accumulation_steps = gradient_accumulation_steps
-        self.n_previous_latent_codes = n_previous_latent_codes
-        self.reg_schedule_k = reg_schedule_k
-        self.reg_schedule_b = reg_schedule_b
-'''

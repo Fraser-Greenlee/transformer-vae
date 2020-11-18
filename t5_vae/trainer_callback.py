@@ -20,5 +20,5 @@ class TellModelGlobalStep(TrainerCallback):
         **kwargs,
     ):
         if not model:
-            raise ValueError('Need to be sent model to update global step.')
+            raise ValueError('Need to be sent `model` to update global step.')
         model.global_step = state.global_step
