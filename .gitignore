@@ -23,3 +23,5 @@ __pycache__/
 !tests/fixtures/*
 
 .DS_Store
+
+t5_vae_env/
