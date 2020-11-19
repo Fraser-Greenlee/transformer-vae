@@ -139,6 +139,32 @@ class DataTrainingArguments:
                 assert extension in ["csv", "json", "txt"], "`validation_file` should be a csv, a json or a txt file."
 
 
+def check_seq_size(tokenizer, text_column_name, data_args, datasets, set_seq_size):
+    def tokenize_function(examples):
+        return tokenizer(examples[text_column_name], padding="longest", truncation=True)
+
+    tokenized_datasets = datasets.map(
+        tokenize_function,
+        batched=True,
+        num_proc=data_args.preprocessing_num_workers,
+        remove_columns=[text_column_name],
+        load_from_cache_file=not data_args.overwrite_cache,
+    )
+
+    max_seq_size = len(tokenized_datasets['train']['input_ids'][0])
+
+    if max_seq_size > set_seq_size:
+        logger.warn(
+            'Model has too short a sequence size for dataset, run with truncating & joining examples.\n'
+            f'Dataset max text column size: {max_seq_size} Model max sequence size: {set_seq_size}'
+        )
+    elif set_seq_size > max_seq_size:
+        logger.info(
+            'Model can handle larger sequence size than present in the dataset.\n'
+            f'Dataset max text column size: {max_seq_size} Model max sequence size: {set_seq_size}'
+        )
+
+
 def main():
     parser = HfArgumentParser((T5_VAE_ModelArguments, DataTrainingArguments, TrainingArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
@@ -270,7 +296,9 @@ def main():
         text_column_name = "text" if "text" in column_names else column_names[0]
 
     if text_column_name != "text":
-        logger.info(f'Using column f"{text_column_name}" as text column.')
+        logger.info(f'Using column "{text_column_name}" as text column.')
+
+    check_seq_size(tokenizer, text_column_name, data_args, datasets, config.set_seq_size)
 
     def tokenize_function(examples):
         return tokenizer(examples[text_column_name], padding="max_length", truncation=True)

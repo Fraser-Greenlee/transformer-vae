@@ -25,3 +25,5 @@ __pycache__/
 .DS_Store
 
 t5_vae_env/
+runs/
+experiments/*/wandb/

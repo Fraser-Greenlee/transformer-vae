@@ -106,7 +106,7 @@ class EncoderDecoderVAE(nn.Module):
             # if no previous latents use this call to get the training batch size
             assert len(latent.size()) == 2
             self.batch_size = latent.size(0)
-            self.prev_latents = torch.zeros((self.batch_size * self.use_n_previous_latent_codes, latent.size(1)))
+            self.prev_latents = torch.zeros((self.batch_size * self.use_n_previous_latent_codes, latent.size(1)), device=latent.device)
             # start by setting all previous to the first latent
             for i in range(self.use_n_previous_latent_codes):
                 self.prev_latents[i * self.batch_size : (i + 1) * self.batch_size] = latent.detach()
