@@ -163,7 +163,7 @@ class T5_VAE_Model(PreTrainedModel):
             configuration. Check out the :meth:`~transformers.PreTrainedModel.from_pretrained` method to load the model
             weights.
     """
-    base_model_prefix = "t5_vae"
+    base_model_prefix = "t5_model"
     config_class = T5_VAE_Config
     global_step = None
     _globalstep_last_logged = 0
@@ -186,6 +186,10 @@ class T5_VAE_Model(PreTrainedModel):
             ),
             self.config.n_previous_latent_codes,
         )
+
+    def resize_token_embeddings(self, *args, **kwargs):
+        super().resize_token_embeddings(*args, **kwargs)
+        self.t5_model.resize_token_embeddings(*args, **kwargs)
 
     def get_input_embeddings(self):
         return self.t5_model.shared
