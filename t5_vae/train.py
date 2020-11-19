@@ -11,22 +11,33 @@ from typing import Optional
 from datasets import load_dataset
 
 import transformers
+from transformers.integrations import WandbCallback
 from transformers import (
     MODEL_MAPPING,
     AutoTokenizer,
     HfArgumentParser,
-    Trainer,
     TrainingArguments,
     DataCollatorForLanguageModeling,
     set_seed,
 )
+from transformers import trainer as trainer_script
 from transformers.trainer_utils import is_main_process
-from t5_vae.trainer_callback import TellModelGlobalStep
+from t5_vae.trainer_callback import TellModelGlobalStep, WandbCallbackUseModelLogs
 from t5_vae.model import T5_VAE_Model
 from t5_vae.config import T5_VAE_Config
 
 
 logger = logging.getLogger(__name__)
+
+
+if WandbCallback in trainer_script.DEFAULT_CALLBACKS:
+    # Allow tracking extra training losses via the model's `get_latest_logs` method
+    trainer_script.DEFAULT_CALLBACKS.remove(WandbCallback)
+    trainer_script.DEFAULT_CALLBACKS.append(WandbCallbackUseModelLogs)
+    using_wandb = True
+else:
+    using_wandb = False
+    logger.warn("Not using Wandb this will give you incomplete logs.")
 
 
 # You should update this to your particular problem to have better documentation of `model_type`
@@ -101,9 +112,7 @@ class DataTrainingArguments:
     dataset_config_name: Optional[str] = field(
         default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
     )
-    text_column: Optional[str] = field(
-        default=None, metadata={"help": "Use this dataset column as 'text'."}
-    )
+    text_column: Optional[str] = field(default=None, metadata={"help": "Use this dataset column as 'text'."})
     train_file: Optional[str] = field(default=None, metadata={"help": "The input training data file (a text file)."})
     validation_file: Optional[str] = field(
         default=None,
@@ -211,7 +220,8 @@ def main():
             set_seq_size=model_args.set_seq_size,
             n_previous_latent_codes=model_args.n_previous_latent_codes,
             reg_schedule_k=model_args.reg_schedule_k,
-            reg_schedule_b=model_args.reg_schedule_b
+            reg_schedule_b=model_args.reg_schedule_b,
+            use_extra_logs=using_wandb,
         )
         logger.warning("You are instantiating a new config instance from scratch.")
 
@@ -277,7 +287,7 @@ def main():
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
 
     # Initialize our Trainer
-    trainer = Trainer(
+    trainer = trainer_script.Trainer(
         model=model,
         args=training_args,
         train_dataset=tokenized_datasets["train"] if training_args.do_train else None,

@@ -49,9 +49,9 @@ class TrainTests(TestCasePlus):
             self.assertAlmostEqual(result["epoch"], 2.0)
 
     def test_train_csv(self):
-        '''
-            Does a test training run and checks it works.
-        '''
+        """
+        Does a test training run and checks it works.
+        """
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
 
@@ -82,9 +82,9 @@ class TrainTests(TestCasePlus):
             self.assertAlmostEqual(result["epoch"], 2.0)
 
     def test_train_json(self):
-        '''
-            Does a test training run and checks it works.
-        '''
+        """
+        Does a test training run and checks it works.
+        """
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
 

@@ -115,18 +115,26 @@ class EncoderDecoderVAE(nn.Module):
 
     def _update_prev_latents(self, latent):
         if latent.size(0) < self.batch_size:
-            logger.warn(f'Latent call has inconsistant batch size, skipping update previous latents. Expected: {self.batch_size} Got: {latent.size(0)}')
+            logger.warn(
+                f"Latent call has inconsistant batch size, skipping update previous latents. Expected: {self.batch_size} Got: {latent.size(0)}"
+            )
             return None
-        self.prev_latents[self.prev_latents_index * self.batch_size : (self.prev_latents_index + 1) * self.batch_size] = latent.detach()
+        self.prev_latents[
+            self.prev_latents_index * self.batch_size : (self.prev_latents_index + 1) * self.batch_size
+        ] = latent.detach()
         self.prev_latents_index += 1
         if self.prev_latents_index >= self.use_n_previous_latent_codes:
             self.prev_latents_index = 0
 
     def _regularliser_loss(self, latent):
-        combined_latent = self._get_combined_latents(latent)
+        if self.training:
+            combined_latent = self._get_combined_latents(latent)
+        else:
+            combined_latent = latent
         true_samples = torch.randn(combined_latent.size()).to(combined_latent.device)
         result = self._compute_mmd(true_samples, combined_latent)
-        self._update_prev_latents(latent)
+        if self.training:
+            self._update_prev_latents(latent)
         return result
 
 
@@ -136,7 +144,10 @@ class T5_VAE_Model(PreTrainedModel):
     <https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html>`__ by Fraser Greenlee.
     It is a modified T5 model that uses an MMD-VAE on sequence encodings to learn smooth latent spaces of discrete squences.
 
-    NOTE: Must be trained with the `TellModelGlobalStep` for MMD regulariser loss scheduling.
+    NOTE: To work nicely with `huggingface.Trainer` this model handles lots some of its training logic here.
+    - Must be trained with the `t5_vae.TellModelGlobalStep` for MMD regularising loss scheduling & log normalizing.
+    - Must use `t5_vae.WandbCallbackUseModelLogs` for logging as it stores some of its own logs internally, using
+      `get_latest_logs` to get the normalised logs and refresh the internal logs.
 
     This model inherits from :class:`~transformers.PreTrainedModel`. Check the superclass documentation for the generic
     methods the library implements for all its model (such as downloading or saving, resizing the input embeddings,
@@ -155,6 +166,13 @@ class T5_VAE_Model(PreTrainedModel):
     base_model_prefix = "t5_vae"
     config_class = T5_VAE_Config
     global_step = None
+    _globalstep_last_logged = 0
+    latest_logs = {
+        "decoder_ce": 0,
+        "reg_loss_w": 0,
+        "reg_loss": 0,
+    }
+    _last_logs = {}
 
     def __init__(self, config: T5_VAE_Config):
         super().__init__(config=config)
@@ -192,6 +210,26 @@ class T5_VAE_Model(PreTrainedModel):
         return torch.sigmoid(
             torch.tensor(self.global_step * self.config.reg_schedule_k - self.config.reg_schedule_b)
         ).item()
+
+    def _update_logs(self, **logs):
+        for k, v in logs.items():
+            self.latest_logs[k] = self.latest_logs.get(k, 0) + v
+
+    def get_latest_logs(self):
+        """
+        Gets latest logs and refreshes the log values.
+        """
+        assert self.config.use_extra_logs
+
+        result = dict(self.latest_logs)
+        for k, v in result.items():
+            result[k] = (v - self._last_logs.get(k, 0)) / (self.global_step - self._globalstep_last_logged)
+
+        self._globalstep_last_logged = self.global_step
+        self._last_logs = dict(self.latest_logs)
+        self.latest_logs = {}
+
+        return result
 
     def forward(
         self,
@@ -241,7 +279,11 @@ class T5_VAE_Model(PreTrainedModel):
             decoder_ce = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), labels.view(-1))
             # TODO(thom): Add z_loss https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L666
 
-        loss = decoder_ce + vae_outputs.reg_loss * self._regulariser_loss_weight_schedule()
+        reg_loss_w = self._regulariser_loss_weight_schedule()
+        loss = decoder_ce + vae_outputs.reg_loss * reg_loss_w
+
+        if self.training and self.config.use_extra_logs:
+            self._update_logs(decoder_ce=decoder_ce.item(), reg_loss=vae_outputs.reg_loss.item(), reg_loss_w=reg_loss_w)
 
         return VAE_Seq2SeqLMOutput(
             reg_loss=vae_outputs.reg_loss,

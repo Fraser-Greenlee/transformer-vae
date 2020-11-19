@@ -32,6 +32,8 @@ class T5_VAE_Config(PretrainedConfig):
             Multiplied by global_step in a sigmoid, more gradually increase regulariser loss weight.
         reg_schedule_b (:obj:`float`, `optional`, defaults to 6.25):
             Added to global step in sigmoid, further delays increase in regulariser loss weight.
+        use_extra_logs (:obj:`bool`, `optional`, defaults to False):
+            Store extra logs during training inference.
         *** End ***
         t5_config_kwargs
             These are sent to `T5Config` to configure the T5 Model.
@@ -48,6 +50,7 @@ class T5_VAE_Config(PretrainedConfig):
         n_previous_latent_codes=3,
         reg_schedule_k=0.0025,
         reg_schedule_b=6.25,
+        use_extra_logs=False,
         **t5_config_kwargs,
     ):
         t5_config_kwargs["n_positions"] = set_seq_size
@@ -60,6 +63,7 @@ class T5_VAE_Config(PretrainedConfig):
         self.n_previous_latent_codes = n_previous_latent_codes
         self.reg_schedule_k = reg_schedule_k
         self.reg_schedule_b = reg_schedule_b
+        self.use_extra_logs = use_extra_logs
 
     def to_dict(self):
         """

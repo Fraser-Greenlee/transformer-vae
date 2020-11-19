@@ -17,6 +17,7 @@ class BaseVAEOutput(ModelOutput):
         reg_loss (:obj:`torch.FloatTensor` of shape :obj:`(batch_size)`):
             MMD-VAE regularisation loss for this step.
     """
+
     latent_code: torch.FloatTensor = None
     reconstructed_encoding: torch.FloatTensor = None
     reg_loss: torch.FloatTensor = None
@@ -39,6 +40,7 @@ class VAE_Seq2SeqLMOutput(Seq2SeqLMOutput):
         reg_loss (:obj:`torch.FloatTensor` of shape :obj:`(batch_size)`):
             MMD-VAE regularisation loss for this step.
     """
+
     loss: torch.FloatTensor = None
     latnet: torch.FloatTensor = None
     reconstructed_encoding: torch.FloatTensor = None
