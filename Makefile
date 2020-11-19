@@ -5,6 +5,7 @@ test:
 	WANDB_DISABLED=true python -m pytest -s -v ./tests/
 
 install-dev:
+	pip uninstall -y t5_vae
 	pip install -e .[test]
 
 run-sample:
