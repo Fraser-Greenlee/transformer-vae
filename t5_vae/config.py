@@ -21,7 +21,7 @@ class T5_VAE_Config(PretrainedConfig):
         latent_size (:obj:`int`, `optional`, defaults to 1,000):
             Number of dimensions to use for the sequences latent code.
         set_seq_size (:obj:`int`, `optional`, defaults to 60):
-            NOTE: Here it is the set sequence size, every sample must be padded to be equal to this length.
+            NOTE: Every input sequence must be padded to be equal to this length.
         additional_latent_models (:obj:`list[nn.Module]`, `optional`, defaults to empty list):
             List of models that take the latent code and return a loss.
             Use this to condition the latent code on another model, optimising the latent space further.
@@ -33,7 +33,7 @@ class T5_VAE_Config(PretrainedConfig):
         reg_schedule_b (:obj:`float`, `optional`, defaults to 6.25):
             Added to global step in sigmoid, further delays increase in regulariser loss weight.
         use_extra_logs (:obj:`bool`, `optional`, defaults to False):
-            Store extra logs during training inference.
+            Store extra logs during each training inference.
         *** End ***
         t5_config_kwargs
             These are sent to `T5Config` to configure the T5 Model.
