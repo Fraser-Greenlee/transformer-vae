@@ -13,7 +13,6 @@ from datasets import load_dataset
 import transformers
 from transformers.integrations import WandbCallback
 from transformers import (
-    MODEL_MAPPING,
     AutoTokenizer,
     HfArgumentParser,
     TrainingArguments,
@@ -23,8 +22,8 @@ from transformers import (
 from transformers import trainer as trainer_script
 from transformers.trainer_utils import is_main_process
 from transformer_vae.trainer_callback import TellModelGlobalStep, WandbCallbackUseModelLogs
-from transformer_vae.model import T5_VAE_Model, Funnel_VAE_Model
-from transformer_vae.config import T5_VAE_Config, Funnel_VAE_Config
+from transformer_vae.model import T5_VAE_Model, Funnel_VAE_Model, Funnel_T5_VAE_Model
+from transformer_vae.config import T5_VAE_Config, Funnel_VAE_Config, Funnel_T5_VAE_Config
 
 
 logger = logging.getLogger(__name__)
@@ -42,11 +41,13 @@ else:
 
 CONFIG = {
     't5': T5_VAE_Config,
-    'funnel': Funnel_VAE_Config
+    'funnel': Funnel_VAE_Config,
+    'funnel-t5': Funnel_T5_VAE_Config
 }
 MODEL = {
     't5': T5_VAE_Model,
-    'funnel': Funnel_VAE_Model
+    'funnel': Funnel_VAE_Model,
+    'funnel-t5': Funnel_T5_VAE_Model
 }
 
 
@@ -59,7 +60,7 @@ class ModelArguments:
     transformer_type: Optional[str] = field(
         default='t5',
         metadata={
-            "help": "The transfromer type to base the VAE off (currently only 't5' & 'funnel' supported)."
+            "help": f"The transfromer type to base the VAE on. Only {', '.join(CONFIG.keys())} supported."
         },
     )
     model_path: Optional[str] = field(
@@ -70,7 +71,7 @@ class ModelArguments:
     )
     transformer_name: Optional[str] = field(
         default="t5-base",
-        metadata={"help": "Name of the transformer model being using for encoding & decoding (currently only T5 & Funnel transfromers supported)."},
+        metadata={"help": "Name of the transformer model being using for encoding & decoding (only T5 & Funnel transfromers supported)."},
     )
     config_path: Optional[str] = field(
         default=None, metadata={"help": "Pretrained config path if not the same as model_name"}

@@ -365,7 +365,7 @@ class Funnel_VAE_Model(Transformer_VAE_Base_Model):
         )
 
 
-class Funnel_VAE_T5_Model(Transformer_VAE_Base_Model):
+class Funnel_T5_VAE_Model(Transformer_VAE_Base_Model):
     r"""
     The Funnel-VAE model was proposed in `Transformers as Variational Autoencoders
     <https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html>`__ by Fraser Greenlee.

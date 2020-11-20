@@ -126,7 +126,7 @@ class Funnel_VAE_Config(Transformer_VAE_Config):
         assert(self.transformer_config.model_type == 'funnel')
 
 
-class Funnel_VAE_T5_Config(Transformer_VAE_Config):
+class Funnel_T5_VAE_Config(Transformer_VAE_Config):
     r"""
     Arguments:
         encoded_seq_size (:obj:`int`, `optional`, defaults to 15):
