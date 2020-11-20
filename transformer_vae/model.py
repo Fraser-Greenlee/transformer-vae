@@ -7,12 +7,13 @@ from torch import nn
 from transformers.modeling_utils import PreTrainedModel
 from transformers import AutoModelForSeq2SeqLM
 from transformers.modeling_outputs import BaseModelOutput
+from transformers.modeling_funnel import upsample
 
 from transformer_vae.autoencoders import VAE_ENCODER_MODELS, VAE_DECODER_MODELS
 from transformer_vae.model_outputs import BaseVAEOutput, VAE_Seq2SeqLMOutput
 from transformer_vae.config import Transformer_VAE_Config
 
-from transformer_vae.config import T5_VAE_Config, Funnel_VAE_Config
+from transformer_vae.config import T5_VAE_Config, Funnel_VAE_Config, Funnel_VAE_T5_Config
 
 
 logger = logging.getLogger(__name__)
@@ -294,13 +295,13 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
 
 class Funnel_VAE_Model(Transformer_VAE_Base_Model):
     r"""
-    The Funnel-VAE model was proposed in `Transformers as Variational Autoencoders
+    The Funnel-VAE-T5 model was proposed in `Transformers as Variational Autoencoders
     <https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html>`__ by Fraser Greenlee.
-    It is a modified Funnel-Transformer model that uses an MMD-VAE on sequence encodings to learn smooth latent spaces of discrete squences.
+    It is a modified Funnel-Transformer model that uses an MMD-VAE on its sequence encodings and a T5 decoder.
 
     Funnel-VAE has its input sequence compressed & then upsampled by Funnel-Transformer.
     This makes it better able to model long sequences.
-    Funnel-Transformer's decoder is non auto-regressive meaning it generates all tokens in parallel, this is likely worse for generation.
+    Its decoder is autoregressive making it natually effective at generating sequences.
     """
     config_class = Funnel_VAE_Config
 
@@ -333,10 +334,12 @@ class Funnel_VAE_Model(Transformer_VAE_Base_Model):
             input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent_code=latent_code
         )
 
+        initial_encoding_size = encoder_outputs.hidden_states[self.transformer_config.block_sizes[0]].size()
+
         decoder_outputs = self.transformer.decoder(
             final_hidden=vae_outputs.reconstructed_encoding,
             # Don't allow for residual connections, instead just send an empty tensor.
-            first_block_hidden=torch.zeros(encoder_outputs.hidden_states[self.config.block_sizes[0]].size(), device=vae_outputs.reconstructed_encoding.device),
+            first_block_hidden=torch.zeros(initial_encoding_size, device=vae_outputs.reconstructed_encoding.device),
         )
 
         last_hidden_state = decoder_outputs[0]
@@ -345,7 +348,99 @@ class Funnel_VAE_Model(Transformer_VAE_Base_Model):
         decoder_ce = torch.tensor(0.0, device=prediction_logits.device)
         if labels is not None:
             loss_fct = nn.CrossEntropyLoss()  # -100 index = padding token
-            decoder_ce = loss_fct(prediction_logits.view(-1, self.config.vocab_size), labels.view(-1))
+            decoder_ce = loss_fct(prediction_logits.view(-1, self.transformer_config.vocab_size), labels.view(-1))
+
+        reg_loss_w = self._regulariser_loss_weight_schedule()
+        loss = decoder_ce + vae_outputs.reg_loss * reg_loss_w
+
+        if self.training and self.config.use_extra_logs:
+            self._update_logs(decoder_ce=decoder_ce.item(), reg_loss=vae_outputs.reg_loss.item(), reg_loss_w=reg_loss_w)
+
+        return VAE_Seq2SeqLMOutput(
+            reg_loss=vae_outputs.reg_loss,
+            decoder_ce=decoder_ce,
+            reconstructed_encoding=vae_outputs.reconstructed_encoding,
+            loss=loss,
+            latnet=vae_outputs.latent_code,
+        )
+
+
+class Funnel_VAE_T5_Model(Transformer_VAE_Base_Model):
+    r"""
+    The Funnel-VAE model was proposed in `Transformers as Variational Autoencoders
+    <https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html>`__ by Fraser Greenlee.
+    It is a modified Funnel-Transformer model that uses an MMD-VAE on sequence encodings to learn smooth latent spaces of discrete squences.
+
+    Funnel-VAE has its input sequence compressed & then upsampled by Funnel-Transformer.
+    This makes it better able to model long sequences.
+    Funnel-Transformer's decoder is non auto-regressive meaning it generates all tokens in parallel, this is likely worse for generation.
+    """
+    config_class = Funnel_VAE_T5_Config
+
+    def __init__(self, config: Funnel_VAE_T5_Config):
+        super().__init__(config=config)
+        # Use T5's decoder instead of Funnel's default one
+        assert(config.decoder_config.model_type == 't5')
+        assert(self.transformer.config.d_model == config.decoder_config.d_model)
+        self.transformer.decoder = AutoModelForSeq2SeqLM.from_config(config.decoder_config).decoder
+
+    def forward(
+        self,
+        input_ids=None,
+        labels=None,
+        attention_mask=None,
+        encoder_outputs=None,
+        decoder_input_ids=None,
+        latent_code=None,
+    ):
+        if input_ids is not None:
+            if decoder_input_ids is not None and input_ids.equal(decoder_input_ids) is False:
+                raise ValueError('`input_ids` and `decoder_input_ids` do not match. Funnel-VAE only takes input_ids.')
+            if attention_mask is None:
+                attention_mask = input_ids.ne(self.transformer.config.pad_token_id).long()
+            if encoder_outputs is None:
+                encoder_outputs = self.transformer.encoder(
+                    input_ids=input_ids, attention_mask=attention_mask, return_dict=True
+                )
+        if encoder_outputs is not None and not isinstance(encoder_outputs, BaseModelOutput):
+            encoder_outputs = BaseModelOutput(
+                last_hidden_state=encoder_outputs[0],
+                hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
+                attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
+            )
+
+        vae_outputs = self.vae(
+            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent_code=latent_code
+        )
+
+        initial_encoding_size = encoder_outputs.hidden_states[self.config.block_sizes[0]].size()
+
+        upsampled_encoding = upsample(
+            vae_outputs.reconstructed_encoding,
+            stride=2 ** (len(self.config.block_sizes) - 1),
+            target_len=initial_encoding_size[1],
+            separate_cls=self.config.separate_cls,
+            truncate_seq=self.config.truncate_seq,
+        )
+
+        # Switch to T5 decoder
+
+        decoder_outputs = self.transformer.decoder(
+            input_ids=decoder_input_ids,
+            encoder_hidden_states=upsampled_encoding,
+        )
+
+        sequence_output = decoder_outputs[0]
+        # Rescale output before projecting on vocab
+        # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
+        sequence_output = sequence_output * (self.transformer.model_dim ** -0.5)
+        lm_logits = self.transformer.lm_head(sequence_output)
+
+        decoder_ce = torch.tensor(0.0, device=lm_logits.device)
+        if labels is not None:
+            loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
+            decoder_ce = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), labels.view(-1))
+            # TODO(thom): Add z_loss https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L666
 
         reg_loss_w = self._regulariser_loss_weight_schedule()
         loss = decoder_ce + vae_outputs.reg_loss * reg_loss_w

@@ -22,8 +22,8 @@ class Transformer_VAE_Config(PretrainedConfig):
     Arguments:
         latent_size (:obj:`int`, `optional`, defaults to 1,000):
             Number of dimensions to use for the sequences latent code.
-        t5_model_name (:obj:`str`, `optional`, defaults to t5-base):
-            Name of the T5 model to use as encoder & decoder.
+        transformer_name (:obj:`str`, `optional`, defaults to t5-base):
+            Name of the transformer model to use as encoder & decoder.
         encoder_model (:obj:`str`, `optional`, defaults to None):
             Name of the model to encode T5 hidden states into latent codes.
         decoder_model (:obj:`str`, `optional`, defaults to None):
@@ -43,8 +43,6 @@ class Transformer_VAE_Config(PretrainedConfig):
         use_extra_logs (:obj:`bool`, `optional`, defaults to False):
             Store extra logs during each training inference.
         *** End ***
-        t5_config_kwargs
-            These are sent to `T5Config` to configure the T5 Model.
     """
     model_type = "transformer_vae"
     is_composition = True
@@ -52,7 +50,7 @@ class Transformer_VAE_Config(PretrainedConfig):
     def __init__(
         self,
         latent_size=1_000,
-        transformer_model_name=None,
+        transformer_name=None,
         encoder_model=None,
         decoder_model=None,
         set_seq_size=60,
@@ -63,12 +61,12 @@ class Transformer_VAE_Config(PretrainedConfig):
         reg_schedule_b=6.25,
         use_extra_logs=False,
         cache_dir=None,
-        **t5_config_kwargs,
+        **kwargs,
     ):
         assert(encoder_model in VAE_ENCODER_MODELS)
         assert(decoder_model in VAE_DECODER_MODELS)
-        super().__init__(**t5_config_kwargs)
-        self.transformer_config = AutoConfig.from_pretrained(transformer_model_name, cache_dir=cache_dir)
+        super().__init__(**kwargs)
+        self.transformer_config = AutoConfig.from_pretrained(transformer_name, cache_dir=cache_dir)
         self.transformer_config.n_positions = set_seq_size
         self.transformer_config.decoder_start_token_id = decoder_start_token_id
         self.latent_size = latent_size
@@ -97,11 +95,11 @@ class Transformer_VAE_Config(PretrainedConfig):
 class T5_VAE_Config(Transformer_VAE_Config):
     def __init__(
         self,
-        transformer_model_name='t5-base',
+        transformer_name='t5-base',
         **kwargs
     ):
-        assert(transformer_model_name[:3] == 't5-')
         super().__init__(**kwargs)
+        assert(self.transformer_config.model_type == 't5')
 
 
 class Funnel_VAE_Config(Transformer_VAE_Config):
@@ -114,9 +112,46 @@ class Funnel_VAE_Config(Transformer_VAE_Config):
     def __init__(
         self,
         encoded_seq_size=60 // 4,
-        transformer_model_name='funnel-transformer/large',
+        transformer_name='funnel-transformer/large',
         **kwargs
     ):
-        split_name = transformer_model_name.split('/')
-        assert(len(split_name) == 2 and split_name[0] == 'funnel-transformer')
         super().__init__(**kwargs)
+        assert(self.transformer_config.model_type == 'funnel')
+
+
+class Funnel_VAE_T5_Config(Transformer_VAE_Config):
+    r"""
+    Arguments:
+        encoded_seq_size (:obj:`int`, `optional`, defaults to 15):
+            Size of the encoding sequence after all Funnel encoder blocks.
+            Usually 1/4 of your input size.
+        transformer_decoder_name (:obj:`str`, `optional`, defaults to t5-base):
+            Name of the Transformer model to use as encoder & decoder.
+    """
+    def __init__(
+        self,
+        encoded_seq_size=60 // 4,
+        transformer_decoder_name='funnel-transformer/large',
+        set_seq_size=60,
+        decoder_start_token_id=0,
+        cache_dir=None,
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+        assert(self.transformer_config.model_type == 'funnel')
+        self.transformer_decoder_config = AutoConfig.from_pretrained(transformer_decoder_name, cache_dir=cache_dir)
+        self.transformer_decoder_config.n_positions = set_seq_size
+        self.transformer_decoder_config.decoder_start_token_id = decoder_start_token_id
+
+    def to_dict(self):
+        """
+        Serializes this instance to a Python dictionary. Override the default `to_dict()` from `PretrainedConfig`.
+
+        Returns:
+            :obj:`Dict[str, any]`: Dictionary of all the attributes that make up this configuration instance,
+        """
+        output = copy.deepcopy(self.__dict__)
+        output["transformer_config"] = self.transformer_config.to_dict()
+        output["transformer_decoder_config"] = self.transformer_decoder_config.to_dict()
+        output["model_type"] = self.__class__.model_type
+        return output
