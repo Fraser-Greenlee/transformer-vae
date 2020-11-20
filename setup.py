@@ -2,7 +2,7 @@ import os
 import re
 from setuptools import setup
 
-package = "t5_vae"
+package = "transformer_vae"
 dirname = os.path.dirname(__file__)
 
 

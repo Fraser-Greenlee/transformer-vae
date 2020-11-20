@@ -8,7 +8,7 @@ export MODEL_NAME=python_assignments
 # export MODEL_PATH=python_assignments/checkpoint-3250
 export T5_MODEL_NAME=t5-large
 
-python t5_vae.py \
+python transformer_vae.py \
     --project_name="T5-VAE" \
     --output_dir=$MODEL_NAME \
     --model_path=$MODEL_PATH \

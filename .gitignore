@@ -19,7 +19,7 @@ __pycache__/
 .tox
 .cache
 
-!t5_vae/config.json
+!transformer_vae/config.json
 !tests/fixtures/*
 
 .DS_Store

@@ -12,14 +12,14 @@ To see how it works checkout [this blog post](https://fraser-greenlee.github.io/
 
 Install using pip:
 ```
-pip install t5_vae
+pip install transformer_vae
 ```
 
 ## Usage
 
 You can exececute the module to easily train it on your own data.
 ```bash
-python -m t5_vae \
+python -m transformer_vae \
     --project_name="T5-VAE" \
     --output_dir=poet \
     --do_train \
@@ -27,7 +27,7 @@ python -m t5_vae \
 ```
 Or you can import T5-VAE to use as a package much like a Huggingface model.
 ```python
-from t5_vae import T5_VAE_Model
+from transformer_vae import T5_VAE_Model
 
 model = T5_VAE_Model.from_pretrained('t5-vae-poet')
 ```
@@ -38,7 +38,7 @@ Get a dataset to model, must be represented with text. This is what we will be i
 
 This can be a text file with each line representing a sample.
 ```bash
-python -m t5_vae \
+python -m transformer_vae \
     --project_name="T5-VAE" \
     --output_dir=poet \
     --do_train \
@@ -46,7 +46,7 @@ python -m t5_vae \
 ```
 Alternatively seperate each sample with a line containing only `<|endoftext|>` seperating samples:
 ```bash
-python -m t5_vae \
+python -m transformer_vae \
     --project_name="T5-VAE" \
     --output_dir=poet \
     --do_train \
@@ -55,7 +55,7 @@ python -m t5_vae \
 ```
 Alternatively provide a Huggingface dataset.
 ```bash
-python -m t5_vae \
+python -m transformer_vae \
     --project_name="T5-VAE" \
     --output_dir=poet \
     --do_train \

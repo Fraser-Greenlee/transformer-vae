@@ -4,7 +4,7 @@ from unittest.mock import patch
 import torch
 from transformers.testing_utils import TestCasePlus, torch_device
 
-from t5_vae.train import main
+from transformer_vae.train import main
 
 
 logging.basicConfig(level=logging.DEBUG)

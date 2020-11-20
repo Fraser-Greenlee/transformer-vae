@@ -22,9 +22,9 @@ from transformers import (
 )
 from transformers import trainer as trainer_script
 from transformers.trainer_utils import is_main_process
-from t5_vae.trainer_callback import TellModelGlobalStep, WandbCallbackUseModelLogs
-from t5_vae.model import T5_VAE_Model
-from t5_vae.config import T5_VAE_Config
+from transformer_vae.trainer_callback import TellModelGlobalStep, WandbCallbackUseModelLogs
+from transformer_vae.model import T5_VAE_Model
+from transformer_vae.config import T5_VAE_Config
 
 
 logger = logging.getLogger(__name__)

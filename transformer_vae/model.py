@@ -1,7 +1,6 @@
 """
-    Define the T5-VAE model & all its variations.
+    Base transformer-VAE model.
 """
-import pdb
 import logging
 import torch
 from torch import nn
@@ -9,9 +8,11 @@ from transformers.modeling_utils import PreTrainedModel
 from transformers import AutoModelForSeq2SeqLM
 from transformers.modeling_outputs import BaseModelOutput
 
-from t5_vae.autoencoders import VAE_ENCODER_MODELS, VAE_DECODER_MODELS
-from t5_vae.modelling_outputs import BaseVAEOutput, VAE_Seq2SeqLMOutput
-from t5_vae.config import T5_VAE_Config
+from transformer_vae.autoencoders import VAE_ENCODER_MODELS, VAE_DECODER_MODELS
+from transformer_vae.model_outputs import BaseVAEOutput, VAE_Seq2SeqLMOutput
+from transformer_vae.config import Transformer_VAE_Config
+
+from transformer_vae.config import T5_VAE_Config, Funnel_VAE_Config
 
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,6 @@ class EncoderDecoderVAE(nn.Module):
     An MMD-VAE used with encoder-decoder models.
     Encodes all token encodings into a single latent & spits them back out.
     """
-
     batch_size = None
 
     def __init__(self, encoder, decoder, use_n_previous_latent_codes):
@@ -102,20 +102,19 @@ class EncoderDecoderVAE(nn.Module):
         true_samples = torch.randn(combined_latent.size()).to(combined_latent.device)
         result = self._compute_mmd(true_samples, combined_latent)
         if self._using_prev_latents():
-            result = result / (self.use_n_previous_latent_codes + 1)
             self._update_prev_latents(latent)
         return result
 
 
-class T5_VAE_Model(PreTrainedModel):
+class Transformer_VAE_Base_Model(PreTrainedModel):
     r"""
-    The T5-VAE model was proposed in `Transformers as Variational Autoencoders
-    <https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html>`__ by Fraser Greenlee.
-    It is a modified T5 model that uses an MMD-VAE on sequence encodings to learn smooth latent spaces of discrete squences.
+    This is the base for Transformer-VAE's.
+    Each Transformer-VAE takes an encoder-decoder transformer and converts the encoder's encoding into a latent code & back into an encoding again.
+    These latent codes can then be modified to produce new encodings and so new sequences.
 
     NOTE: To work nicely with `huggingface.Trainer` this model handles some of its training logic here.
-    - Must be trained with the `t5_vae.TellModelGlobalStep` for MMD regularising loss scheduling & log normalizing.
-    - Must use `t5_vae.WandbCallbackUseModelLogs` for logging as it stores some of its own logs internally, using
+    - Must be trained with the `transformer_vae.TellModelGlobalStep` for MMD regularising loss scheduling & log normalizing.
+    - Must use `transformer_vae.WandbCallbackUseModelLogs` for logging as it stores some of its own logs internally, using
       `get_latest_logs` to get the normalised logs and refresh the internal logs.
 
     This model inherits from :class:`~transformers.PreTrainedModel`. Check the superclass documentation for the generic
@@ -127,13 +126,13 @@ class T5_VAE_Model(PreTrainedModel):
     general usage and behavior.
 
     Parameters:
-        config (:class:`~t5_vae.T5_VAE_Config`): Model configuration class with all the parameters of the model.
+        config (:class:`~transformer_vae.Transformer_VAE_Config`): Model configuration class with all the parameters of the model.
             Initializing with a config file does not load the weights associated with the model, only the
             configuration. Check out the :meth:`~transformers.PreTrainedModel.from_pretrained` method to load the model
             weights.
     """
-    base_model_prefix = "t5_model"
-    config_class = T5_VAE_Config
+    base_model_prefix = "transformer"
+    # config_class # impliment this!
     global_step = None
     _calls_since_last_log = 0
     latest_logs = {
@@ -143,38 +142,38 @@ class T5_VAE_Model(PreTrainedModel):
     }
     _last_logs = {}
 
-    def __init__(self, config: T5_VAE_Config):
+    def __init__(self, config: Transformer_VAE_Config):
         super().__init__(config=config)
-        self.t5_model = AutoModelForSeq2SeqLM.from_config(config.t5_config)
+        self.transformer = AutoModelForSeq2SeqLM.from_config(config.transformer_config)
         self.vae = EncoderDecoderVAE(
             VAE_ENCODER_MODELS[config.encoder_model](
-                self.t5_model.config.d_model, self.config.set_seq_size, self.config.latent_size
+                self.transformer.config.d_model, self.config.set_seq_size, self.config.latent_size
             ),
             VAE_DECODER_MODELS[config.decoder_model](
-                self.t5_model.config.d_model, self.config.set_seq_size, self.config.latent_size, self.t5_model.config
+                self.transformer.config.d_model, self.config.set_seq_size, self.config.latent_size, self.transformer.config
             ),
             self.config.n_previous_latent_codes,
         )
 
     def resize_token_embeddings(self, *args, **kwargs):
         super().resize_token_embeddings(*args, **kwargs)
-        self.t5_model.resize_token_embeddings(*args, **kwargs)
+        self.transformer.resize_token_embeddings(*args, **kwargs)
 
     def get_input_embeddings(self):
-        return self.t5_model.shared
+        return self.transformer.shared
 
     def set_input_embeddings(self, new_embeddings):
-        return self.t5_model.set_input_embeddings(new_embeddings)
+        return self.transformer.set_input_embeddings(new_embeddings)
 
     def _init_weights(self, module):
-        return self.t5_model._init_weights(module)
+        return self.transformer._init_weights(module)
 
     def decoder_logits(self, decoder_input_ids, encoding):
-        sequence_output = self.t5_model.decoder(input_ids=decoder_input_ids, encoder_hidden_states=encoding)[0]
+        sequence_output = self.transformer.decoder(input_ids=decoder_input_ids, encoder_hidden_states=encoding)[0]
         # Rescale output before projecting on vocab
         # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
-        sequence_output = sequence_output * (self.t5_model.model_dim ** -0.5)
-        logits = self.t5_model.lm_head(sequence_output)
+        sequence_output = sequence_output * (self.transformer.model_dim ** -0.5)
+        logits = self.transformer.lm_head(sequence_output)
         return logits
 
     def _regulariser_loss_weight_schedule(self):
@@ -218,9 +217,9 @@ class T5_VAE_Model(PreTrainedModel):
     ):
         if input_ids is not None:
             if attention_mask is None:
-                attention_mask = input_ids.ne(self.t5_model.config.pad_token_id).long()
+                attention_mask = input_ids.ne(self.transformer.config.pad_token_id).long()
             if encoder_outputs is None:
-                encoder_outputs = self.t5_model.encoder(
+                encoder_outputs = self.transformer.encoder(
                     input_ids=input_ids, attention_mask=attention_mask, return_dict=True
                 )
         if encoder_outputs is not None and not isinstance(encoder_outputs, BaseModelOutput):
@@ -236,9 +235,9 @@ class T5_VAE_Model(PreTrainedModel):
 
         if labels is not None and decoder_input_ids is None:
             # get decoder inputs from shifting lm labels to the right
-            decoder_input_ids = self.t5_model._shift_right(labels) if labels is not None else None
+            decoder_input_ids = self.transformer._shift_right(labels) if labels is not None else None
 
-        decoder_outputs = self.t5_model.decoder(
+        decoder_outputs = self.transformer.decoder(
             input_ids=decoder_input_ids,
             encoder_hidden_states=vae_outputs.reconstructed_encoding,
         )
@@ -246,8 +245,8 @@ class T5_VAE_Model(PreTrainedModel):
         sequence_output = decoder_outputs[0]
         # Rescale output before projecting on vocab
         # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
-        sequence_output = sequence_output * (self.t5_model.model_dim ** -0.5)
-        lm_logits = self.t5_model.lm_head(sequence_output)
+        sequence_output = sequence_output * (self.transformer.model_dim ** -0.5)
+        lm_logits = self.transformer.lm_head(sequence_output)
 
         decoder_ce = torch.tensor(0.0, device=lm_logits.device)
         if labels is not None:
@@ -257,9 +256,6 @@ class T5_VAE_Model(PreTrainedModel):
 
         reg_loss_w = self._regulariser_loss_weight_schedule()
         loss = decoder_ce + vae_outputs.reg_loss * reg_loss_w
-
-        if reg_loss_w > 1.0:
-            pdb.set_trace()
 
         if self.training and self.config.use_extra_logs:
             self._update_logs(decoder_ce=decoder_ce.item(), reg_loss=vae_outputs.reg_loss.item(), reg_loss_w=reg_loss_w)
@@ -271,3 +267,59 @@ class T5_VAE_Model(PreTrainedModel):
             loss=loss,
             latnet=vae_outputs.latent_code,
         )
+
+
+class T5_VAE_Model(Transformer_VAE_Base_Model):
+    r"""
+    The T5-VAE model was proposed in `Transformers as Variational Autoencoders
+    <https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html>`__ by Fraser Greenlee.
+    It is a modified T5 model that uses an MMD-VAE on sequence encodings to learn smooth latent spaces of discrete squences.
+
+    NOTE: To work nicely with `huggingface.Trainer` this model handles some of its training logic here.
+    - Must be trained with the `transformer_vae.TellModelGlobalStep` for MMD regularising loss scheduling & log normalizing.
+    - Must use `transformer_vae.WandbCallbackUseModelLogs` for logging as it stores some of its own logs internally, using
+      `get_latest_logs` to get the normalised logs and refresh the internal logs.
+
+    This model inherits from :class:`~transformers.PreTrainedModel`. Check the superclass documentation for the generic
+    methods the library implements for all its model (such as downloading or saving, resizing the input embeddings,
+    pruning heads etc).
+
+    This model is also a PyTorch `torch.nn.Module <https://pytorch.org/docs/stable/nn.html#torch.nn.Module>`__
+    subclass. Use it as a regular PyTorch Module and refer to the PyTorch documentation for all matter related to
+    general usage and behavior.
+
+    Parameters:
+        config (:class:`~transformer_vae.T5_VAE_Config`): Model configuration class with all the parameters of the model.
+            Initializing with a config file does not load the weights associated with the model, only the
+            configuration. Check out the :meth:`~transformers.PreTrainedModel.from_pretrained` method to load the model
+            weights.
+    """
+    config_class = T5_VAE_Config
+
+
+class Funnel_VAE_Model(Transformer_VAE_Base_Model):
+    r"""
+    The T5-VAE model was proposed in `Transformers as Variational Autoencoders
+    <https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html>`__ by Fraser Greenlee.
+    It is a modified T5 model that uses an MMD-VAE on sequence encodings to learn smooth latent spaces of discrete squences.
+
+    NOTE: To work nicely with `huggingface.Trainer` this model handles some of its training logic here.
+    - Must be trained with the `transformer_vae.TellModelGlobalStep` for MMD regularising loss scheduling & log normalizing.
+    - Must use `transformer_vae.WandbCallbackUseModelLogs` for logging as it stores some of its own logs internally, using
+      `get_latest_logs` to get the normalised logs and refresh the internal logs.
+
+    This model inherits from :class:`~transformers.PreTrainedModel`. Check the superclass documentation for the generic
+    methods the library implements for all its model (such as downloading or saving, resizing the input embeddings,
+    pruning heads etc).
+
+    This model is also a PyTorch `torch.nn.Module <https://pytorch.org/docs/stable/nn.html#torch.nn.Module>`__
+    subclass. Use it as a regular PyTorch Module and refer to the PyTorch documentation for all matter related to
+    general usage and behavior.
+
+    Parameters:
+        config (:class:`~transformer_vae.Funnel_VAE_Config`): Model configuration class with all the parameters of the model.
+            Initializing with a config file does not load the weights associated with the model, only the
+            configuration. Check out the :meth:`~transformers.PreTrainedModel.from_pretrained` method to load the model
+            weights.
+    """
+    config_class = Funnel_VAE_Config

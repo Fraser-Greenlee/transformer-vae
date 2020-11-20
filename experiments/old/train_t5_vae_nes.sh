@@ -8,7 +8,7 @@ export MODEL_NAME=nes_just_language
 #export MODEL_PATH=python_state_changes
 export T5_MODEL_NAME=t5-base
 
-python t5_vae.py \
+python transformer_vae.py \
     --project_name="T5-VAE" \
     --output_dir=$MODEL_NAME \
     --model_path=$MODEL_PATH \

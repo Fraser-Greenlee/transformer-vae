@@ -44,8 +44,14 @@ class LatentDecoder(nn.Module):
         self.decode_latent = nn.Linear(latent_size, 10 * set_seq_size)
         self.grow_sequence = nn.Linear(10 * set_seq_size, 100 * set_seq_size)
         self.grow_tokens = nn.Linear(100, dim_m)
-        config.dropout_rate = 0
-        self.norm = T5LayerFF(config)
+
+        if config.model_type == 't5':
+            config.dropout_rate = 0
+            self.norm = T5LayerFF(config)
+        elif config.model_type == 'funnel':
+            self.norm = nn.LayerNorm(config.d_model, config.layer_norm_eps)
+        else:
+            raise ValueError(f'Unknown config.model_type "{config.model_type}"')
 
     def forward(self, latent) -> torch.Tensor:
         batch_size = latent.size(0)

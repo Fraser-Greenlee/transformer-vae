@@ -14,5 +14,5 @@ test-one-case:
 	# WANDB_DISABLED=true python -m pytest -s -v ./tests/test_train.py::TrainTests::test_train_txt
 
 install-dev:
-	pip uninstall -y t5_vae
+	pip uninstall -y transformer_vae
 	pip install -e .[test]

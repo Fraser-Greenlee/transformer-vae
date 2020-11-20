@@ -1,5 +1,5 @@
 # Originally ran on 16GiB GPU
-WANDB_PROJECT="T5-VAE tests" WANDB_WATCH=false python -m t5_vae \
+WANDB_PROJECT="T5-VAE tests" WANDB_WATCH=false python -m transformer_vae \
     --output_dir=output \
     --run_name="news-category-dataset test" \
     --do_train \
