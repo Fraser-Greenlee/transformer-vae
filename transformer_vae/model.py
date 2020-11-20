@@ -10,7 +10,7 @@ from transformers.modeling_outputs import BaseModelOutput
 from transformers.modeling_funnel import upsample
 
 from transformer_vae.autoencoders import VAE_ENCODER_MODELS, VAE_DECODER_MODELS
-from transformer_vae.model_outputs import BaseVAEOutput, VAE_Seq2SeqLMOutput
+from transformer_vae.model_outputs import BaseVAE_Output, BaseTransformerVAE_Output
 from transformer_vae.config import Transformer_VAE_Config
 
 from transformer_vae.config import T5_VAE_Config, Funnel_VAE_Config, Funnel_VAE_T5_Config
@@ -48,7 +48,7 @@ class EncoderDecoderVAE(nn.Module):
             raise ValueError("Null input_encoding & latent_code sent to VAE.")
         recon_encoding, latent = self._model_forward(input_encoding, latent=latent_code)
         reg_loss = self._regularliser_loss(latent)
-        return BaseVAEOutput(latent_code=latent, reconstructed_encoding=recon_encoding, reg_loss=reg_loss)
+        return BaseVAE_Output(latent_code=latent, reconstructed_encoding=recon_encoding, reg_loss=reg_loss)
 
     @staticmethod
     def _compute_kernel(x, y):
@@ -284,7 +284,7 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
         if self.training and self.config.use_extra_logs:
             self._update_logs(decoder_ce=decoder_ce.item(), reg_loss=vae_outputs.reg_loss.item(), reg_loss_w=reg_loss_w)
 
-        return VAE_Seq2SeqLMOutput(
+        return BaseTransformerVAE_Output(
             reg_loss=vae_outputs.reg_loss,
             decoder_ce=decoder_ce,
             reconstructed_encoding=vae_outputs.reconstructed_encoding,
@@ -356,7 +356,7 @@ class Funnel_VAE_Model(Transformer_VAE_Base_Model):
         if self.training and self.config.use_extra_logs:
             self._update_logs(decoder_ce=decoder_ce.item(), reg_loss=vae_outputs.reg_loss.item(), reg_loss_w=reg_loss_w)
 
-        return VAE_Seq2SeqLMOutput(
+        return BaseTransformerVAE_Output(
             reg_loss=vae_outputs.reg_loss,
             decoder_ce=decoder_ce,
             reconstructed_encoding=vae_outputs.reconstructed_encoding,
@@ -423,7 +423,7 @@ class Funnel_VAE_T5_Model(Transformer_VAE_Base_Model):
             truncate_seq=self.config.truncate_seq,
         )
 
-        # Switch to T5 decoder
+        # Now using T5 decoder
 
         decoder_outputs = self.transformer.decoder(
             input_ids=decoder_input_ids,
@@ -448,7 +448,7 @@ class Funnel_VAE_T5_Model(Transformer_VAE_Base_Model):
         if self.training and self.config.use_extra_logs:
             self._update_logs(decoder_ce=decoder_ce.item(), reg_loss=vae_outputs.reg_loss.item(), reg_loss_w=reg_loss_w)
 
-        return VAE_Seq2SeqLMOutput(
+        return BaseTransformerVAE_Output(
             reg_loss=vae_outputs.reg_loss,
             decoder_ce=decoder_ce,
             reconstructed_encoding=vae_outputs.reconstructed_encoding,

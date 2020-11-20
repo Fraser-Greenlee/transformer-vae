@@ -5,9 +5,9 @@ from transformers.modeling_outputs import Seq2SeqLMOutput
 
 
 @dataclass
-class BaseVAEOutput(ModelOutput):
+class BaseVAE_Output(ModelOutput):
     """
-    Base class for VAE's outputs, with latent codes & encoding.
+    Base class for a VAE's outputs.
 
     Args:
         reconstructed_encoding (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, hidden_size)`):
@@ -24,9 +24,9 @@ class BaseVAEOutput(ModelOutput):
 
 
 @dataclass
-class VAE_Seq2SeqLMOutput(Seq2SeqLMOutput):
+class BaseTransformerVAE_Output(Seq2SeqLMOutput):
     """
-    Seq2SeqLMOutput extended to include VAE-specific attributed latent_code & reg_loss.
+    Base class for a Transformer-VAE's outputs.
 
     Args:
         loss (:obj:`torch.FloatTensor` of shape :obj:`(1,)`, `optional`, returned when :obj:`labels` is provided):
