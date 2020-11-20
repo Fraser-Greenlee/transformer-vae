@@ -1,6 +1,7 @@
 """
     Define the T5-VAE model & all its variations.
 """
+import pdb
 import logging
 import torch
 from torch import nn
@@ -209,7 +210,7 @@ class T5_VAE_Model(PreTrainedModel):
         return logits
 
     def _regulariser_loss_weight_schedule(self):
-        if not self.global_step:
+        if self.global_step is None:
             return 1
         return torch.sigmoid(
             torch.tensor(self.global_step * self.config.reg_schedule_k - self.config.reg_schedule_b)
@@ -224,14 +225,14 @@ class T5_VAE_Model(PreTrainedModel):
         Gets latest logs and refreshes the log values.
         """
         assert self.config.use_extra_logs
+        global_step = (self.global_step + 1)  # step gets updated on next training step so inc
 
         result = dict(self.latest_logs)
         for k, v in result.items():
-            result[k] = (v - self._last_logs.get(k, 0)) / (self.global_step - self._globalstep_last_logged)
+            result[k] = (v - self._last_logs.get(k, 0)) / (global_step - self._globalstep_last_logged)
 
-        self._globalstep_last_logged = self.global_step
+        self._globalstep_last_logged = global_step
         self._last_logs = dict(self.latest_logs)
-        self.latest_logs = {}
 
         return result
 
