@@ -11,3 +11,5 @@ WANDB_PROJECT="T5-VAE tests" WANDB_WATCH=false python -c "from t5_vae.train impo
     --set_seq_size 45 \
     --t5_model_name "t5-large" \
     --logging_steps 100 \
+    --overwrite_output_dir \
+    --encoder_model basic-attention \

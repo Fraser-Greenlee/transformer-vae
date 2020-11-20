@@ -6,51 +6,15 @@ import logging
 import torch
 from torch import nn
 from transformers.modeling_utils import PreTrainedModel
-from transformers.modeling_t5 import T5LayerFF
 from transformers import AutoModelForSeq2SeqLM
 from transformers.modeling_outputs import BaseModelOutput
 
+from t5_vae.autoencoders import VAE_ENCODER_MODELS, VAE_DECODER_MODELS
 from t5_vae.modelling_outputs import BaseVAEOutput, VAE_Seq2SeqLMOutput
 from t5_vae.config import T5_VAE_Config
 
 
 logger = logging.getLogger(__name__)
-
-
-class LatentEncoderLargeTanh_1kLatent(nn.Module):
-    def __init__(self, dim_m, set_seq_size, latent_size):
-        super().__init__()
-        assert dim_m > 100
-        self.shrink_tokens = nn.Linear(dim_m, 100)
-        self.shrink_sequence = nn.Linear(100 * set_seq_size, latent_size)
-        self.tanh = nn.Tanh()
-
-    def forward(self, encoding) -> torch.Tensor:
-        batch_size = encoding.size(0)
-        # shrink each tokens encoding
-        encoding = self.shrink_tokens(encoding)
-        encoding = self.shrink_sequence(encoding.view(batch_size, -1))
-        return self.tanh(encoding)
-
-
-class LatentDecoderLargeT5NormFF(nn.Module):
-    def __init__(self, dim_m, set_seq_size, latent_size, config):
-        super().__init__()
-        self.decode_latent = nn.Linear(latent_size, 10 * set_seq_size)
-        self.grow_sequence = nn.Linear(10 * set_seq_size, 100 * set_seq_size)
-        self.grow_tokens = nn.Linear(100, dim_m)
-
-        old_drop = config.dropout_rate
-        config.dropout_rate = 0
-        self.norm = T5LayerFF(config)
-        config.dropout_rate = old_drop
-
-    def forward(self, latent) -> torch.Tensor:
-        batch_size = latent.size(0)
-        # grow each tokens encoding
-        latent = self.decode_latent(latent)
-        latent = self.grow_sequence(latent)
-        return self.norm(self.grow_tokens(latent.view(batch_size, -1, 100)))
 
 
 class EncoderDecoderVAE(nn.Module):
@@ -167,7 +131,7 @@ class T5_VAE_Model(PreTrainedModel):
     base_model_prefix = "t5_model"
     config_class = T5_VAE_Config
     global_step = None
-    _globalstep_last_logged = 0
+    _calls_since_last_log = 0
     latest_logs = {
         "decoder_ce": 0,
         "reg_loss_w": 0,
@@ -179,10 +143,10 @@ class T5_VAE_Model(PreTrainedModel):
         super().__init__(config=config)
         self.t5_model = AutoModelForSeq2SeqLM.from_config(config.t5_config)
         self.vae = EncoderDecoderVAE(
-            LatentEncoderLargeTanh_1kLatent(
+            VAE_ENCODER_MODELS[config.encoder_model](
                 self.t5_model.config.d_model, self.config.set_seq_size, self.config.latent_size
             ),
-            LatentDecoderLargeT5NormFF(
+            VAE_DECODER_MODELS[config.decoder_model](
                 self.t5_model.config.d_model, self.config.set_seq_size, self.config.latent_size, self.t5_model.config
             ),
             self.config.n_previous_latent_codes,
@@ -217,22 +181,25 @@ class T5_VAE_Model(PreTrainedModel):
         ).item()
 
     def _update_logs(self, **logs):
+        self._calls_since_last_log += 1
         for k, v in logs.items():
             self.latest_logs[k] = self.latest_logs.get(k, 0) + v
 
     def get_latest_logs(self):
         """
-        Gets latest logs and refreshes the log values.
+            Gets latest logs and refreshes the log values.
+
+            Logs are normalised by the number of training inferences since the last log.
         """
         assert self.config.use_extra_logs
-        global_step = (self.global_step + 1)  # step gets updated on next training step so inc
 
         result = dict(self.latest_logs)
         for k, v in result.items():
-            result[k] = (v - self._last_logs.get(k, 0)) / (global_step - self._globalstep_last_logged)
+            value_increase = (v - self._last_logs.get(k, 0))
+            result[k] = value_increase / self._calls_since_last_log
 
-        self._globalstep_last_logged = global_step
         self._last_logs = dict(self.latest_logs)
+        self._calls_since_last_log = 0
 
         return result
 
@@ -286,6 +253,9 @@ class T5_VAE_Model(PreTrainedModel):
 
         reg_loss_w = self._regulariser_loss_weight_schedule()
         loss = decoder_ce + vae_outputs.reg_loss * reg_loss_w
+
+        if reg_loss_w > 1.0:
+            pdb.set_trace()
 
         if self.training and self.config.use_extra_logs:
             self._update_logs(decoder_ce=decoder_ce.item(), reg_loss=vae_outputs.reg_loss.item(), reg_loss_w=reg_loss_w)

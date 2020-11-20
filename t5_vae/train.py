@@ -83,6 +83,12 @@ class T5_VAE_ModelArguments:
     )
     latent_size: int = field(default=1_000, metadata={"help": "The size of the VAE's latent space."})
     set_seq_size: int = field(default=60, metadata={"help": "Set sequence size."})
+    encoder_model: Optional[str] = field(
+        default=None, metadata={"help": "Name of the model that converts hidden states into latent codes."}
+    )
+    decoder_model: Optional[str] = field(
+        default=None, metadata={"help": "Name of the model that converts latent codes into hidden states."}
+    )
     # Arguments used during training
     n_previous_latent_codes: int = field(
         default=3,
@@ -244,13 +250,15 @@ def main():
         config = T5_VAE_Config(
             latent_size=model_args.latent_size,
             t5_model_name=model_args.t5_model_name,
+            encoder_model=model_args.encoder_model,
+            decoder_model=model_args.decoder_model,
             set_seq_size=model_args.set_seq_size,
             n_previous_latent_codes=model_args.n_previous_latent_codes,
             reg_schedule_k=model_args.reg_schedule_k,
             reg_schedule_b=model_args.reg_schedule_b,
             use_extra_logs=using_wandb,
         )
-        logger.warning("You are instantiating a new config instance from scratch.")
+        logger.warning("You are instantiating a new config instance from scratch (still using T5 checkpoint).")
 
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(

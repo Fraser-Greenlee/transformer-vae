@@ -4,6 +4,8 @@ from transformers import (
     AutoConfig
 )
 
+from t5_vae.autoencoders import VAE_ENCODER_MODELS, VAE_DECODER_MODELS
+
 
 class T5_VAE_Config(PretrainedConfig):
     r"""
@@ -18,10 +20,14 @@ class T5_VAE_Config(PretrainedConfig):
     outputs. Read the documentation from :class:`~transformers.PretrainedConfig` for more information.
 
     Arguments:
-        t5_model_name (:obj:`str`, `optional`, defaults to t5-base):
-            Name of the T5 model to use as encoder & decoder.
         latent_size (:obj:`int`, `optional`, defaults to 1,000):
             Number of dimensions to use for the sequences latent code.
+        t5_model_name (:obj:`str`, `optional`, defaults to t5-base):
+            Name of the T5 model to use as encoder & decoder.
+        encoder_model (:obj:`str`, `optional`, defaults to None):
+            Name of the model to encode T5 hidden states into latent codes.
+        decoder_model (:obj:`str`, `optional`, defaults to None):
+            Name of the model to decode latent codes into T5 hidden states.
         set_seq_size (:obj:`int`, `optional`, defaults to 60):
             NOTE: Every input sequence must be padded to be equal to this length.
         additional_latent_models (:obj:`list[nn.Module]`, `optional`, defaults to empty list):
@@ -47,6 +53,8 @@ class T5_VAE_Config(PretrainedConfig):
         self,
         latent_size=1_000,
         t5_model_name='t5-base',
+        encoder_model=None,
+        decoder_model=None,
         set_seq_size=60,
         t5_decoder_start_token_id=0,
         additional_latent_models=[],
@@ -58,10 +66,14 @@ class T5_VAE_Config(PretrainedConfig):
         **t5_config_kwargs,
     ):
         super().__init__(**t5_config_kwargs)
+        assert(encoder_model in VAE_ENCODER_MODELS)
+        assert(decoder_model in VAE_DECODER_MODELS)
         self.t5_config = AutoConfig.from_pretrained(t5_model_name, cache_dir=cache_dir)
         self.t5_config.n_positions = set_seq_size
         self.t5_config.decoder_start_token_id = t5_decoder_start_token_id
         self.latent_size = latent_size
+        self.encoder_model = encoder_model
+        self.decoder_model = decoder_model
         self.set_seq_size = set_seq_size
         self.additional_latent_models = additional_latent_models
         self.n_previous_latent_codes = n_previous_latent_codes
