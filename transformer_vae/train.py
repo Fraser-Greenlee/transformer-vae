@@ -254,7 +254,7 @@ def main():
     else:
         config = CONFIG[model_args.transformer_type](
             latent_size=model_args.latent_size,
-            t5_model_name=model_args.t5_model_name,
+            transformer_name=model_args.transformer_name,
             encoder_model=model_args.encoder_model,
             decoder_model=model_args.decoder_model,
             set_seq_size=model_args.set_seq_size,
@@ -273,9 +273,9 @@ def main():
         tokenizer = AutoTokenizer.from_pretrained(
             model_args.model_path, cache_dir=model_args.cache_dir, use_fast=model_args.use_fast_tokenizer
         )
-    elif model_args.t5_model_name:
+    elif model_args.transformer_name:
         tokenizer = AutoTokenizer.from_pretrained(
-            model_args.t5_model_name, cache_dir=model_args.cache_dir, use_fast=model_args.use_fast_tokenizer
+            model_args.transformer_name, cache_dir=model_args.cache_dir, use_fast=model_args.use_fast_tokenizer
         )
     else:
         raise ValueError(

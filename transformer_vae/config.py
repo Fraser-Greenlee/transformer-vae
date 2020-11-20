@@ -98,7 +98,10 @@ class T5_VAE_Config(Transformer_VAE_Config):
         transformer_name='t5-base',
         **kwargs
     ):
-        super().__init__(**kwargs)
+        super().__init__(
+            transformer_name=transformer_name,
+            **kwargs
+        )
         assert(self.transformer_config.model_type == 't5')
 
 
@@ -115,7 +118,11 @@ class Funnel_VAE_Config(Transformer_VAE_Config):
         transformer_name='funnel-transformer/large',
         **kwargs
     ):
-        super().__init__(**kwargs)
+        super().__init__(
+            encoded_seq_size=encoded_seq_size,
+            transformer_name=transformer_name,
+            **kwargs
+        )
         assert(self.transformer_config.model_type == 'funnel')
 
 
@@ -137,7 +144,14 @@ class Funnel_VAE_T5_Config(Transformer_VAE_Config):
         cache_dir=None,
         **kwargs
     ):
-        super().__init__(**kwargs)
+        super().__init__(
+            encoded_seq_size=encoded_seq_size,
+            transformer_decoder_name=transformer_decoder_name,
+            set_seq_size=set_seq_size,
+            decoder_start_token_id=decoder_start_token_id,
+            cache_dir=cache_dir,
+            **kwargs
+        )
         assert(self.transformer_config.model_type == 'funnel')
         self.transformer_decoder_config = AutoConfig.from_pretrained(transformer_decoder_name, cache_dir=cache_dir)
         self.transformer_decoder_config.n_positions = set_seq_size

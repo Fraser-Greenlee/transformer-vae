@@ -32,7 +32,7 @@ class TrainTests(TestCasePlus):
             --num_train_epochs 2
             --set_seq_size 4
             --latent_size 2
-            --t5_model_name t5-small
+            --transformer_name t5-small
             --output_dir {tmp_dir}
             --overwrite_output_dir
             """.split()

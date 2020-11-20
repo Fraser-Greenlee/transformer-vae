@@ -1,5 +1,5 @@
 {
-    "t5_model_name": "t5-base",
+    "transformer_name": "t5-base",
     "latent_size": 1000,
     "set_seq_size": 60,
     "additional_latent_models": []

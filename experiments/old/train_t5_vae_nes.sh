@@ -12,7 +12,7 @@ python transformer_vae.py \
     --project_name="T5-VAE" \
     --output_dir=$MODEL_NAME \
     --model_path=$MODEL_PATH \
-    --t5_model_name=$T5_MODEL_NAME \
+    --transformer_name=$T5_MODEL_NAME \
     --do_train \
     --train_data_file=$TRAIN_FILE \
     --per_device_train_batch_size 10 \
