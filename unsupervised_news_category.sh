@@ -7,9 +7,8 @@ WANDB_PROJECT="T5-VAE tests" WANDB_WATCH=false python -c "from t5_vae.train impo
     --text_column=headline \
     --per_device_train_batch_size 10 \
     --gradient_accumulation_steps 3 \
-    --n_previous_latent_codes 3 \
+    --n_previous_latent_codes 0 \
     --set_seq_size 45 \
     --t5_model_name "t5-large" \
     --logging_steps 100 \
     --overwrite_output_dir \
-    --encoder_model basic-attention \

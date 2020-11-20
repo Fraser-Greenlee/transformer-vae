@@ -91,14 +91,18 @@ class EncoderDecoderVAE(nn.Module):
         if self.prev_latents_index >= self.use_n_previous_latent_codes:
             self.prev_latents_index = 0
 
+    def _using_prev_latents(self):
+        return self.training and self.use_n_previous_latent_codes > 0
+
     def _regularliser_loss(self, latent):
-        if self.training:
+        if self._using_prev_latents():
             combined_latent = self._get_combined_latents(latent)
         else:
             combined_latent = latent
         true_samples = torch.randn(combined_latent.size()).to(combined_latent.device)
         result = self._compute_mmd(true_samples, combined_latent)
-        if self.training:
+        if self._using_prev_latents():
+            result = result / (self.use_n_previous_latent_codes + 1)
             self._update_prev_latents(latent)
         return result
 
@@ -109,7 +113,7 @@ class T5_VAE_Model(PreTrainedModel):
     <https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html>`__ by Fraser Greenlee.
     It is a modified T5 model that uses an MMD-VAE on sequence encodings to learn smooth latent spaces of discrete squences.
 
-    NOTE: To work nicely with `huggingface.Trainer` this model handles lots some of its training logic here.
+    NOTE: To work nicely with `huggingface.Trainer` this model handles some of its training logic here.
     - Must be trained with the `t5_vae.TellModelGlobalStep` for MMD regularising loss scheduling & log normalizing.
     - Must use `t5_vae.WandbCallbackUseModelLogs` for logging as it stores some of its own logs internally, using
       `get_latest_logs` to get the normalised logs and refresh the internal logs.
