@@ -1,5 +1,5 @@
 """
-    Train T5-VAE using the Huggingface Trainer.
+    Train Transformer-VAEs using the Huggingface Trainer.
 """
 
 import logging
@@ -23,8 +23,8 @@ from transformers import (
 from transformers import trainer as trainer_script
 from transformers.trainer_utils import is_main_process
 from transformer_vae.trainer_callback import TellModelGlobalStep, WandbCallbackUseModelLogs
-from transformer_vae.model import T5_VAE_Model
-from transformer_vae.config import T5_VAE_Config
+from transformer_vae.model import T5_VAE_Model, Funnel_VAE_Model
+from transformer_vae.config import T5_VAE_Config, Funnel_VAE_Config
 
 
 logger = logging.getLogger(__name__)
@@ -40,34 +40,38 @@ else:
     logger.warn("Not using Wandb this will give you incomplete logs.")
 
 
-# You should update this to your particular problem to have better documentation of `model_type`
-MODEL_CONFIG_CLASSES = list(MODEL_MAPPING.keys())
-MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
+CONFIG = {
+    't5': T5_VAE_Config,
+    'funnel': Funnel_VAE_Config
+}
+MODEL = {
+    't5': T5_VAE_Model,
+    'funnel': Funnel_VAE_Model
+}
 
 
 @dataclass
-class T5_VAE_ModelArguments:
+class ModelArguments:
     """
     Arguments pertaining to which model/config/tokenizer we are going to fine-tune, or train from scratch.
     """
 
+    transformer_type: Optional[str] = field(
+        default='t5',
+        metadata={
+            "help": "The transfromer type to base the VAE off (currently only 't5' & 'funnel' supported)."
+        },
+    )
     model_path: Optional[str] = field(
         default=None,
         metadata={
             "help": "The model checkpoint for weights initialization. Leave None if you want to train a model from scratch."
         },
     )
-    t5_model_name: Optional[str] = field(
+    transformer_name: Optional[str] = field(
         default="t5-base",
-        metadata={"help": "Name of the T5 model being using for encoding & decoding."},
+        metadata={"help": "Name of the transformer model being using for encoding & decoding (currently only T5 & Funnel transfromers supported)."},
     )
-    # TODO allow using Funnel-Transformer here
-    """
-    base_model_type: Optional[str] = field(
-        default="t5",
-        metadata={"help": "If training from scratch, pass a model type from the list: " + ", ".join(MODEL_TYPES)},
-    )
-    """
     config_path: Optional[str] = field(
         default=None, metadata={"help": "Pretrained config path if not the same as model_name"}
     )
@@ -83,6 +87,7 @@ class T5_VAE_ModelArguments:
     )
     latent_size: int = field(default=1_000, metadata={"help": "The size of the VAE's latent space."})
     set_seq_size: int = field(default=60, metadata={"help": "Set sequence size."})
+    encoded_seq_size: int = field(default=60 // 4, metadata={"help": "Sequence size of encoded sequence, needed for Funnel-VAE."})
     encoder_model: Optional[str] = field(
         default=None, metadata={"help": "Name of the model that converts hidden states into latent codes."}
     )
@@ -172,7 +177,7 @@ def check_seq_size(tokenizer, text_column_name, data_args, datasets, set_seq_siz
 
 
 def main():
-    parser = HfArgumentParser((T5_VAE_ModelArguments, DataTrainingArguments, TrainingArguments))
+    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
         # let's parse it to get our arguments.
@@ -240,14 +245,14 @@ def main():
     # Load pretrained model and tokenizer
     #
     # Distributed training:
-    # The .from_pretrained methods guarantee that only one local process can concurrently
+    # The `.from_pretrained` methods guarantee that only one local process can concurrently
     # download model & vocab.
     if model_args.config_path:
-        config = T5_VAE_Config.from_pretrained(model_args.config_path, cache_dir=model_args.cache_dir)
+        config = CONFIG[model_args.transformer_type].from_pretrained(model_args.config_path, cache_dir=model_args.cache_dir)
     elif model_args.model_path:
-        config = T5_VAE_Config.from_pretrained(model_args.model_path, cache_dir=model_args.cache_dir)
+        config = CONFIG[model_args.transformer_type].from_pretrained(model_args.model_path, cache_dir=model_args.cache_dir)
     else:
-        config = T5_VAE_Config(
+        config = CONFIG[model_args.transformer_type](
             latent_size=model_args.latent_size,
             t5_model_name=model_args.t5_model_name,
             encoder_model=model_args.encoder_model,
@@ -279,7 +284,7 @@ def main():
         )
 
     if model_args.model_path:
-        model = T5_VAE_Model.from_pretrained(
+        model = MODEL[model_args.transformer_type].from_pretrained(
             model_args.model_path,
             from_tf=bool(".ckpt" in model_args.model_path),
             config=config,
@@ -287,7 +292,7 @@ def main():
         )
     else:
         logger.info("Training new model from scratch")
-        model = T5_VAE_Model(config)
+        model = MODEL[model_args.transformer_type](config)
 
     model.resize_token_embeddings(len(tokenizer))
     tokenizer.model_max_length = config.set_seq_size

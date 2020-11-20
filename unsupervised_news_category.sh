@@ -14,3 +14,4 @@ WANDB_PROJECT="T5-VAE tests" WANDB_WATCH=false python -c "from transformer_vae.t
     --overwrite_output_dir \
     --save_total_limit 3 \
     --save_steps 1000 \
+    --mlm_probability 0 \

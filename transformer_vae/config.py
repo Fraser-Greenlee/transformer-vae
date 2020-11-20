@@ -105,8 +105,15 @@ class T5_VAE_Config(Transformer_VAE_Config):
 
 
 class Funnel_VAE_Config(Transformer_VAE_Config):
+    r"""
+    Arguments:
+        encoded_seq_size (:obj:`int`, `optional`, defaults to 15):
+            Size of the encoding sequence after all Funnel encoder blocks.
+            Usually 1/4 of your input size.
+    """
     def __init__(
         self,
+        encoded_seq_size=60 // 4,
         transformer_model_name='funnel-transformer/large',
         **kwargs
     ):
