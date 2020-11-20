@@ -12,3 +12,5 @@ WANDB_PROJECT="T5-VAE tests" WANDB_WATCH=false python -c "from transformer_vae.t
     --t5_model_name "t5-large" \
     --logging_steps 100 \
     --overwrite_output_dir \
+    --save_total_limit 3 \
+    --save_steps 1000 \
