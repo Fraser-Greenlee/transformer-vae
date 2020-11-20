@@ -243,6 +243,7 @@ def main():
     else:
         config = T5_VAE_Config(
             latent_size=model_args.latent_size,
+            t5_model_name=model_args.t5_model_name,
             set_seq_size=model_args.set_seq_size,
             n_previous_latent_codes=model_args.n_previous_latent_codes,
             reg_schedule_k=model_args.reg_schedule_k,

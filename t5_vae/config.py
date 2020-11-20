@@ -1,6 +1,8 @@
 import copy
 from transformers.configuration_utils import PretrainedConfig
-from transformers.configuration_t5 import T5Config
+from transformers import (
+    AutoConfig
+)
 
 
 class T5_VAE_Config(PretrainedConfig):
@@ -44,6 +46,7 @@ class T5_VAE_Config(PretrainedConfig):
     def __init__(
         self,
         latent_size=1_000,
+        t5_model_name='t5-base',
         set_seq_size=60,
         t5_decoder_start_token_id=0,
         additional_latent_models=[],
@@ -51,12 +54,13 @@ class T5_VAE_Config(PretrainedConfig):
         reg_schedule_k=0.0025,
         reg_schedule_b=6.25,
         use_extra_logs=False,
+        cache_dir=None,
         **t5_config_kwargs,
     ):
-        t5_config_kwargs["n_positions"] = set_seq_size
-        t5_config_kwargs["decoder_start_token_id"] = t5_decoder_start_token_id
         super().__init__(**t5_config_kwargs)
-        self.t5_config = T5Config(**t5_config_kwargs)
+        self.t5_config = AutoConfig.from_pretrained(t5_model_name, cache_dir=cache_dir)
+        self.t5_config.n_positions = set_seq_size
+        self.t5_config.decoder_start_token_id = t5_decoder_start_token_id
         self.latent_size = latent_size
         self.set_seq_size = set_seq_size
         self.additional_latent_models = additional_latent_models
