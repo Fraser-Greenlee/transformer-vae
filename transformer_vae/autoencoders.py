@@ -19,11 +19,12 @@ class LatentEncoder(nn.Module):
 
 
 class LatentEncoderAttention(LatentEncoder):
-    '''
-        Uses attention on token-encodings before compressing them.
+    """
+    Uses attention on token-encodings before compressing them.
 
-        Should weight each individual token's expected importance for the overall sequence representation.
-    '''
+    Should weight each individual token's expected importance for the overall sequence representation.
+    """
+
     def __init__(self, dim_m, set_seq_size, latent_size):
         super().__init__(dim_m, set_seq_size, latent_size)
         assert dim_m > 100
@@ -45,10 +46,10 @@ class LatentDecoder(nn.Module):
         self.grow_sequence = nn.Linear(10 * set_seq_size, 100 * set_seq_size)
         self.grow_tokens = nn.Linear(100, dim_m)
 
-        if config.model_type == 't5':
+        if config.model_type == "t5":
             config.dropout_rate = 0
             self.norm = T5LayerFF(config)
-        elif config.model_type == 'funnel':
+        elif config.model_type == "funnel":
             self.norm = nn.LayerNorm(config.d_model, config.layer_norm_eps)
         else:
             raise ValueError(f'Unknown config.model_type "{config.model_type}"')
@@ -61,9 +62,10 @@ class LatentDecoder(nn.Module):
 
 
 class LatentDecoderMatchEncoder(LatentDecoder):
-    '''
-        Just do one jump from latent -> 100x sequence.
-    '''
+    """
+    Just do one jump from latent -> 100x sequence.
+    """
+
     def __init__(self, dim_m, set_seq_size, latent_size, config):
         super().__init__(dim_m, set_seq_size, latent_size, config)
         self.grow_sequence = nn.Linear(latent_size, 100 * set_seq_size)
@@ -75,9 +77,10 @@ class LatentDecoderMatchEncoder(LatentDecoder):
 
 
 class LatentDecoderSelfAttnGrow(LatentDecoder):
-    '''
-        Start with 10-dim tokens and grow them whith cross-attention.
-    '''
+    """
+    Start with 10-dim tokens and grow them whith cross-attention.
+    """
+
     # TODO add position bias
     def __init__(self, dim_m, set_seq_size, latent_size, config):
         super().__init__(dim_m, set_seq_size, latent_size, config)
@@ -89,22 +92,16 @@ class LatentDecoderSelfAttnGrow(LatentDecoder):
     def forward(self, latent) -> torch.Tensor:
         batch_size = latent.size(0)
         latent = self.grow_sequence(latent)
-        encoding_100_dim = self.self_attention(
-            self.norm(
-                self.grow_tokens_to_100(
-                    latent.view(batch_size, -1, 10)
-                )
-            )
-        )
+        encoding_100_dim = self.self_attention(self.norm(self.grow_tokens_to_100(latent.view(batch_size, -1, 10))))
         return self.norm(self.grow_tokens_to_dim_m(encoding_100_dim))
 
 
 VAE_ENCODER_MODELS = {
     None: LatentEncoder,
-    'basic-attention': LatentEncoderAttention,
+    "basic-attention": LatentEncoderAttention,
 }
 VAE_DECODER_MODELS = {
     None: LatentDecoder,
-    'match-encoder': LatentDecoderMatchEncoder,
-    'attention': LatentDecoderSelfAttnGrow
+    "match-encoder": LatentDecoderMatchEncoder,
+    "attention": LatentDecoderSelfAttnGrow,
 }

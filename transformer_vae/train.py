@@ -39,21 +39,13 @@ else:
     logger.warn("Not using Wandb this will give you incomplete logs.")
 
 
-CONFIG = {
-    't5': T5_VAE_Config,
-    'funnel': Funnel_VAE_Config,
-    'funnel-t5': Funnel_T5_VAE_Config
-}
-MODEL = {
-    't5': T5_VAE_Model,
-    'funnel': Funnel_VAE_Model,
-    'funnel-t5': Funnel_T5_VAE_Model
-}
+CONFIG = {"t5": T5_VAE_Config, "funnel": Funnel_VAE_Config, "funnel-t5": Funnel_T5_VAE_Config}
+MODEL = {"t5": T5_VAE_Model, "funnel": Funnel_VAE_Model, "funnel-t5": Funnel_T5_VAE_Model}
 DEFAULTS = {
-    'transformer_name': {
-        't5': 't5-base',
-        'funnel': 'funnel-transformer/intermediate',
-        'funnel-t5': 't5-base'
+    "transformer_name": {
+        "t5": "t5-base",
+        "funnel": "funnel-transformer/intermediate",
+        "funnel-t5": "funnel-transformer/intermediate",
     }
 }
 
@@ -65,24 +57,26 @@ class ModelArguments:
     """
 
     transformer_type: Optional[str] = field(
-        default='t5',
-        metadata={
-            "help": f"The transfromer type to base the VAE on. Only {', '.join(CONFIG.keys())} supported."
-        }
+        default="t5",
+        metadata={"help": f"The transfromer type to base the VAE on. Only {', '.join(CONFIG.keys())} supported."},
     )
     model_path: Optional[str] = field(
         default=None,
         metadata={
             "help": "The model checkpoint for weights initialization. Leave None if you want to train a model from scratch."
-        }
+        },
     )
     transformer_name: Optional[str] = field(
         default=None,
-        metadata={"help": "Name of the transformer model being using for encoding & decoding (only `t5` & `funnel` transfromer type supported)."},
+        metadata={
+            "help": "Name of the transformer model being using for encoding & decoding (only `t5` & `funnel` transfromer type supported)."
+        },
     )
     transformer_decoder_name: Optional[str] = field(
         default="t5-base",
-        metadata={"help": "Name of the transformer model being using for decoding the funnel transformer (only `t5` type transformers supported)."},
+        metadata={
+            "help": "Name of the transformer model being using for decoding the funnel transformer (only `t5` type transformers supported)."
+        },
     )
     config_path: Optional[str] = field(
         default=None, metadata={"help": "Pretrained config path if not the same as model_name"}
@@ -99,7 +93,9 @@ class ModelArguments:
     )
     latent_size: int = field(default=1_000, metadata={"help": "The size of the VAE's latent space."})
     set_seq_size: int = field(default=60, metadata={"help": "Set sequence size."})
-    encoded_seq_size: int = field(default=math.ceil(60 / 4), metadata={"help": "Sequence size of encoded sequence, needed for Funnel-VAE."})
+    encoded_seq_size: int = field(
+        default=math.ceil(60 / 4), metadata={"help": "Sequence size of encoded sequence, needed for Funnel-VAE."}
+    )
     encoder_model: Optional[str] = field(
         default=None, metadata={"help": "Name of the model that converts hidden states into latent codes."}
     )
@@ -174,17 +170,17 @@ def check_seq_size(tokenizer, text_column_name, data_args, datasets, set_seq_siz
         load_from_cache_file=not data_args.overwrite_cache,
     )
 
-    max_seq_size = len(tokenized_datasets['train']['input_ids'][0])
+    max_seq_size = len(tokenized_datasets["train"]["input_ids"][0])
 
     if max_seq_size > set_seq_size:
         logger.warn(
-            'Model has too short a sequence size for dataset, run with truncating & joining examples.\n'
-            f'Dataset max text column size: {max_seq_size} Model max sequence size: {set_seq_size}'
+            "Model has too short a sequence size for dataset, run with truncating & joining examples.\n"
+            f"Dataset max text column size: {max_seq_size} Model max sequence size: {set_seq_size}"
         )
     elif set_seq_size > max_seq_size:
         logger.info(
-            'Model can handle larger sequence size than present in the dataset.\n'
-            f'Dataset max text column size: {max_seq_size} Model max sequence size: {set_seq_size}'
+            "Model can handle larger sequence size than present in the dataset.\n"
+            f"Dataset max text column size: {max_seq_size} Model max sequence size: {set_seq_size}"
         )
 
 
@@ -197,7 +193,7 @@ def main():
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
-    model_args.transformer_name = DEFAULTS['transformer_name'][model_args.transformer_type]
+    model_args.transformer_name = DEFAULTS["transformer_name"][model_args.transformer_type]
 
     if (
         os.path.exists(training_args.output_dir)
@@ -262,9 +258,13 @@ def main():
     # The `.from_pretrained` methods guarantee that only one local process can concurrently
     # download model & vocab.
     if model_args.config_path:
-        config = CONFIG[model_args.transformer_type].from_pretrained(model_args.config_path, cache_dir=model_args.cache_dir)
+        config = CONFIG[model_args.transformer_type].from_pretrained(
+            model_args.config_path, cache_dir=model_args.cache_dir
+        )
     elif model_args.model_path:
-        config = CONFIG[model_args.transformer_type].from_pretrained(model_args.model_path, cache_dir=model_args.cache_dir)
+        config = CONFIG[model_args.transformer_type].from_pretrained(
+            model_args.model_path, cache_dir=model_args.cache_dir
+        )
     else:
         config = CONFIG[model_args.transformer_type](
             latent_size=model_args.latent_size,

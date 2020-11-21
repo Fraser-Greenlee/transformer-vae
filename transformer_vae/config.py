@@ -1,9 +1,7 @@
 import copy
 import math
 from transformers.configuration_utils import PretrainedConfig
-from transformers import (
-    AutoConfig
-)
+from transformers import AutoConfig
 
 from transformer_vae.autoencoders import VAE_ENCODER_MODELS, VAE_DECODER_MODELS
 from transformer_vae.utils import assertEqual, assertIn
@@ -66,8 +64,8 @@ class Transformer_VAE_Config(PretrainedConfig):
         cache_dir=None,
         **kwargs,
     ):
-        assertIn(encoder_model, VAE_ENCODER_MODELS.keys(), 'Unexpected VAE encoder.')
-        assertIn(decoder_model, VAE_DECODER_MODELS.keys(), 'Unexpected VAE decoder.')
+        assertIn(encoder_model, VAE_ENCODER_MODELS.keys(), "Unexpected VAE encoder.")
+        assertIn(decoder_model, VAE_DECODER_MODELS.keys(), "Unexpected VAE decoder.")
         super().__init__(**kwargs)
         self.transformer = AutoConfig.from_pretrained(transformer_name, cache_dir=cache_dir)
         self.transformer.n_positions = set_seq_size
@@ -97,22 +95,15 @@ class Transformer_VAE_Config(PretrainedConfig):
 
 
 class T5_VAE_Config(Transformer_VAE_Config):
-    def __init__(
-        self,
-        transformer_name='t5-base',
-        **kwargs
-    ):
-        super().__init__(
-            transformer_name=transformer_name,
-            **kwargs
-        )
-        assertEqual(self.transformer.model_type, 't5', 'Need t5 model type.')
+    def __init__(self, transformer_name="t5-base", **kwargs):
+        super().__init__(transformer_name=transformer_name, **kwargs)
+        assertEqual(self.transformer.model_type, "t5", "Need t5 model type.")
 
 
 def _funnel_vae_checks(set_seq_size, encoded_seq_size, transformer_config):
-    assertEqual(transformer_config.model_type, 'funnel', 'Need funnel model type.')
+    assertEqual(transformer_config.model_type, "funnel", "Need funnel model type.")
     pooling_division = 2 ** (len(transformer_config.block_sizes) - 1)
-    assertEqual(encoded_seq_size, math.ceil(set_seq_size / pooling_division), 'Incorrect encoded sequence size.')
+    assertEqual(encoded_seq_size, math.ceil(set_seq_size / pooling_division), "Incorrect encoded sequence size.")
 
 
 class Funnel_VAE_Config(Transformer_VAE_Config):
@@ -122,17 +113,9 @@ class Funnel_VAE_Config(Transformer_VAE_Config):
             Size of the encoding sequence after all Funnel encoder blocks.
             Usually 1/4 of your input size.
     """
-    def __init__(
-        self,
-        transformer_name='funnel-transformer/large',
-        encoded_seq_size=math.ceil(60 / 4),
-        **kwargs
-    ):
-        super().__init__(
-            transformer_name=transformer_name,
-            encoded_seq_size=encoded_seq_size,
-            **kwargs
-        )
+
+    def __init__(self, transformer_name="funnel-transformer/large", encoded_seq_size=math.ceil(60 / 4), **kwargs):
+        super().__init__(transformer_name=transformer_name, encoded_seq_size=encoded_seq_size, **kwargs)
         _funnel_vae_checks(self.set_seq_size, encoded_seq_size, self.transformer)
 
 
@@ -145,14 +128,15 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
         transformer_decoder_name (:obj:`str`, `optional`, defaults to t5-base):
             Name of the Transformer model to use as encoder & decoder.
     """
+
     def __init__(
         self,
-        transformer_name='funnel-transformer/large',
+        transformer_name="funnel-transformer/large",
         encoded_seq_size=math.ceil(60 / 4),
-        transformer_decoder_name='t5-base',
+        transformer_decoder_name="t5-base",
         decoder_start_token_id=0,
         cache_dir=None,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(
             transformer_name=transformer_name,
@@ -160,14 +144,20 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
             transformer_decoder_name=transformer_decoder_name,
             decoder_start_token_id=decoder_start_token_id,
             cache_dir=cache_dir,
-            **kwargs
+            **kwargs,
         )
         _funnel_vae_checks(self.set_seq_size, encoded_seq_size, self.transformer)
         self.transformer_decoder = AutoConfig.from_pretrained(transformer_decoder_name, cache_dir=cache_dir)
         self.transformer_decoder.n_positions = self.set_seq_size
         self.transformer_decoder.decoder_start_token_id = decoder_start_token_id
-        assertEqual(self.transformer_decoder.model_type, 't5', 'Need t5 model type for transformer_decoder.')
-        assertEqual(self.transformer.d_model, self.transformer_decoder.d_model, 'Funnel & T5 transformers have different dimensions.', 'Funnel', 'T5')
+        assertEqual(self.transformer_decoder.model_type, "t5", "Need t5 model type for transformer_decoder.")
+        assertEqual(
+            self.transformer.d_model,
+            self.transformer_decoder.d_model,
+            "Funnel & T5 transformers have different dimensions.",
+            "Funnel",
+            "T5",
+        )
 
     def to_dict(self):
         """

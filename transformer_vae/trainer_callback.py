@@ -8,14 +8,7 @@ from transformers import (
 
 
 class TellModelGlobalStep(TrainerCallback):
-    def on_init_end(
-        self,
-        args: TrainingArguments,
-        state: TrainerState,
-        control: TrainerControl,
-        model=None,
-        **kwargs
-    ):
+    def on_init_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model=None, **kwargs):
         if not model:
             raise ValueError("Need to be sent `model` to update global step.")
         model.global_step = 0

@@ -24,6 +24,7 @@ class EncoderDecoderVAE(nn.Module):
     An MMD-VAE used with encoder-decoder models.
     Encodes all token encodings into a single latent & spits them back out.
     """
+
     batch_size = None
 
     def __init__(self, encoder, decoder, use_n_previous_latent_codes):
@@ -72,7 +73,9 @@ class EncoderDecoderVAE(nn.Module):
             # if no previous latents use this call to get the training batch size
             assert len(latent.size()) == 2
             self.batch_size = latent.size(0)
-            self.prev_latents = torch.zeros((self.batch_size * self.use_n_previous_latent_codes, latent.size(1)), device=latent.device)
+            self.prev_latents = torch.zeros(
+                (self.batch_size * self.use_n_previous_latent_codes, latent.size(1)), device=latent.device
+            )
             # start by setting all previous to the first latent
             for i in range(self.use_n_previous_latent_codes):
                 self.prev_latents[i * self.batch_size : (i + 1) * self.batch_size] = latent.detach()
@@ -145,9 +148,9 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
 
     def __init__(self, config: Transformer_VAE_Config):
         super().__init__(config=config)
-        if config.transformer.model_type == 't5':
+        if config.transformer.model_type == "t5":
             self.transformer = AutoModelForSeq2SeqLM.from_config(config.transformer)
-        elif config.transformer.model_type == 'funnel':
+        elif config.transformer.model_type == "funnel":
             self.transformer = AutoModelForMaskedLM.from_config(config.transformer)
         else:
             raise ValueError(f'Unrecognised model type: "{config.transformer.model_type }"')
@@ -156,7 +159,10 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
                 self.transformer.config.d_model, self.config.encoded_seq_size, self.config.latent_size
             ),
             VAE_DECODER_MODELS[config.decoder_model](
-                self.transformer.config.d_model, self.config.encoded_seq_size, self.config.latent_size, self.transformer.config
+                self.transformer.config.d_model,
+                self.config.encoded_seq_size,
+                self.config.latent_size,
+                self.transformer.config,
             ),
             self.config.n_previous_latent_codes,
         )
@@ -188,15 +194,15 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
 
     def get_latest_logs(self):
         """
-            Gets latest logs and refreshes the log values.
+        Gets latest logs and refreshes the log values.
 
-            Logs are normalised by the number of training inferences since the last log.
+        Logs are normalised by the number of training inferences since the last log.
         """
         assert self.config.use_extra_logs
 
         result = dict(self.latest_logs)
         for k, v in result.items():
-            value_increase = (v - self._last_logs.get(k, 0))
+            value_increase = v - self._last_logs.get(k, 0)
             result[k] = value_increase / self._calls_since_last_log
 
         self._last_logs = dict(self.latest_logs)
@@ -231,7 +237,7 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
         sequence_output = self.transformer.decoder(input_ids=decoder_input_ids, encoder_hidden_states=encoding)[0]
         # Rescale output before projecting on vocab
         # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
-        sequence_output = sequence_output * (self.transformer.model_dim ** -0.5)
+        sequence_output = sequence_output * (self.config.transformer.d_model ** -0.5)
         logits = self.transformer.lm_head(sequence_output)
         return logits
 
@@ -274,7 +280,7 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
         sequence_output = decoder_outputs[0]
         # Rescale output before projecting on vocab
         # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
-        sequence_output = sequence_output * (self.transformer.model_dim ** -0.5)
+        sequence_output = sequence_output * (self.config.transformer.d_model ** -0.5)
         lm_logits = self.transformer.lm_head(sequence_output)
 
         decoder_ce = torch.tensor(0.0, device=lm_logits.device)
@@ -298,18 +304,7 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
         )
 
 
-class Funnel_VAE_Model(Transformer_VAE_Base_Model):
-    r"""
-    The Funnel-VAE-T5 model was proposed in `Transformers as Variational Autoencoders
-    <https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html>`__ by Fraser Greenlee.
-    It is a modified Funnel-Transformer model that uses an MMD-VAE on its sequence encodings and a T5 decoder.
-
-    Funnel-VAE has its input sequence compressed & then upsampled by Funnel-Transformer.
-    This makes it better able to model long sequences.
-    Its decoder is autoregressive making it natually effective at generating sequences.
-    """
-    config_class = Funnel_VAE_Config
-
+class Funnel_VAE_Model_Base(Transformer_VAE_Base_Model):
     def _get_encoder_outputs(
         self,
         input_ids=None,
@@ -357,6 +352,19 @@ class Funnel_VAE_Model(Transformer_VAE_Base_Model):
             return_dict=return_dict,
         )
 
+
+class Funnel_VAE_Model(Funnel_VAE_Model_Base):
+    r"""
+    The Funnel-VAE-T5 model was proposed in `Transformers as Variational Autoencoders
+    <https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html>`__ by Fraser Greenlee.
+    It is a modified Funnel-Transformer model that uses an MMD-VAE on its sequence encodings and a T5 decoder.
+
+    Funnel-VAE has its input sequence compressed & then upsampled by Funnel-Transformer.
+    This makes it better able to model long sequences.
+    Its decoder is autoregressive making it natually effective at generating sequences.
+    """
+    config_class = Funnel_VAE_Config
+
     def forward(
         self,
         input_ids=None,
@@ -368,7 +376,9 @@ class Funnel_VAE_Model(Transformer_VAE_Base_Model):
     ):
         if input_ids is not None:
             if decoder_input_ids is not None and input_ids.equal(decoder_input_ids) is False:
-                raise ValueError('`input_ids` and `decoder_input_ids` do not match. Funnel-VAE can only reproduce its input sequence.')
+                raise ValueError(
+                    "`input_ids` and `decoder_input_ids` do not match. Funnel-VAE can only reproduce its input sequence."
+                )
             if attention_mask is None:
                 attention_mask = input_ids.ne(self.transformer.config.pad_token_id).long()
             if encoder_outputs is None:
@@ -385,8 +395,7 @@ class Funnel_VAE_Model(Transformer_VAE_Base_Model):
             )
 
         vae_outputs = self.vae(
-            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None,
-            latent_code=latent_code
+            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent_code=latent_code
         )
 
         initial_encoding_size = encoder_outputs.hidden_states[self.config.transformer.block_sizes[0]].size()
@@ -420,7 +429,7 @@ class Funnel_VAE_Model(Transformer_VAE_Base_Model):
         )
 
 
-class Funnel_T5_VAE_Model(Transformer_VAE_Base_Model):
+class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
     r"""
     The Funnel-VAE model was proposed in `Transformers as Variational Autoencoders
     <https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html>`__ by Fraser Greenlee.
@@ -436,6 +445,27 @@ class Funnel_T5_VAE_Model(Transformer_VAE_Base_Model):
         super().__init__(config=config)
         self.transformer.decoder = AutoModelForSeq2SeqLM.from_config(config.transformer_decoder).decoder
 
+    def _shift_right(self, input_ids):
+        decoder_start_token_id = self.config.transformer_decoder.decoder_start_token_id
+        pad_token_id = self.config.transformer_decoder.pad_token_id
+
+        assert (
+            decoder_start_token_id is not None
+        ), "self.model.config.decoder_start_token_id has to be defined. In T5 it is usually set to the pad_token_id. See T5 docs for more information"
+
+        # shift inputs to the right
+        shifted_input_ids = input_ids.new_zeros(input_ids.shape)
+        shifted_input_ids[..., 1:] = input_ids[..., :-1].clone()
+        shifted_input_ids[..., 0] = decoder_start_token_id
+
+        assert pad_token_id is not None, "self.model.config.pad_token_id has to be defined."
+        # replace possible -100 values in labels by `pad_token_id`
+        shifted_input_ids.masked_fill_(shifted_input_ids == -100, pad_token_id)
+
+        assert torch.all(shifted_input_ids >= 0).item(), "Verify that `shifted_input_ids` has only positive values"
+
+        return shifted_input_ids
+
     def forward(
         self,
         input_ids=None,
@@ -446,11 +476,17 @@ class Funnel_T5_VAE_Model(Transformer_VAE_Base_Model):
         latent_code=None,
     ):
         if input_ids is not None:
+            if decoder_input_ids is not None and input_ids.equal(decoder_input_ids) is False:
+                raise ValueError(
+                    "`input_ids` and `decoder_input_ids` do not match. Funnel-VAE can only reproduce its input sequence."
+                )
             if attention_mask is None:
                 attention_mask = input_ids.ne(self.transformer.config.pad_token_id).long()
             if encoder_outputs is None:
-                encoder_outputs = self.transformer.encoder(
-                    input_ids=input_ids, attention_mask=attention_mask, return_dict=True
+                encoder_outputs = self._get_encoder_outputs(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    return_dict=True,
                 )
         if encoder_outputs is not None and not isinstance(encoder_outputs, BaseModelOutput):
             encoder_outputs = BaseModelOutput(
@@ -463,17 +499,21 @@ class Funnel_T5_VAE_Model(Transformer_VAE_Base_Model):
             input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent_code=latent_code
         )
 
-        initial_encoding_size = encoder_outputs.hidden_states[self.config.block_sizes[0]].size()
+        initial_encoding_size = encoder_outputs.hidden_states[self.config.transformer.block_sizes[0]].size()
 
         upsampled_encoding = upsample(
             vae_outputs.reconstructed_encoding,
-            stride=2 ** (len(self.config.block_sizes) - 1),
+            stride=2 ** (len(self.config.transformer.block_sizes) - 1),
             target_len=initial_encoding_size[1],
-            separate_cls=self.config.separate_cls,
-            truncate_seq=self.config.truncate_seq,
+            separate_cls=self.config.transformer.separate_cls,
+            truncate_seq=self.config.transformer.truncate_seq,
         )
 
         # Now using T5 decoder
+
+        if labels is not None and decoder_input_ids is None:
+            # get decoder inputs from shifting lm labels to the right
+            decoder_input_ids = self._shift_right(labels) if labels is not None else None
 
         decoder_outputs = self.transformer.decoder(
             input_ids=decoder_input_ids,
@@ -483,7 +523,7 @@ class Funnel_T5_VAE_Model(Transformer_VAE_Base_Model):
         sequence_output = decoder_outputs[0]
         # Rescale output before projecting on vocab
         # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
-        sequence_output = sequence_output * (self.transformer.model_dim ** -0.5)
+        sequence_output = sequence_output * (self.config.transformer.d_model ** -0.5)
         lm_logits = self.transformer.lm_head(sequence_output)
 
         decoder_ce = torch.tensor(0.0, device=lm_logits.device)

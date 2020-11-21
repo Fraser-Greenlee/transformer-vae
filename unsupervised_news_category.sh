@@ -8,7 +8,7 @@ WANDB_PROJECT="T5-VAE tests" WANDB_WATCH=false python -c "from transformer_vae.t
     --per_device_train_batch_size 10 \
     --gradient_accumulation_steps 3 \
     --n_previous_latent_codes 0 \
-    --transformer_type funnel \
+    --transformer_type funnel-t5 \
     --set_seq_size 45 \
     --encoded_seq_size 12 \
     --logging_steps 100 \
