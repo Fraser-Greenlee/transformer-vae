@@ -1,9 +1,9 @@
 """
     Train Transformer-VAEs using the Huggingface Trainer.
 """
-
 import logging
 import os
+import math
 import sys
 from dataclasses import dataclass, field
 from typing import Optional
@@ -49,6 +49,13 @@ MODEL = {
     'funnel': Funnel_VAE_Model,
     'funnel-t5': Funnel_T5_VAE_Model
 }
+DEFAULTS = {
+    'transformer_name': {
+        't5': 't5-base',
+        'funnel': 'funnel-transformer/intermediate',
+        'funnel-t5': 't5-base'
+    }
+}
 
 
 @dataclass
@@ -61,17 +68,21 @@ class ModelArguments:
         default='t5',
         metadata={
             "help": f"The transfromer type to base the VAE on. Only {', '.join(CONFIG.keys())} supported."
-        },
+        }
     )
     model_path: Optional[str] = field(
         default=None,
         metadata={
             "help": "The model checkpoint for weights initialization. Leave None if you want to train a model from scratch."
-        },
+        }
     )
     transformer_name: Optional[str] = field(
+        default=None,
+        metadata={"help": "Name of the transformer model being using for encoding & decoding (only `t5` & `funnel` transfromer type supported)."},
+    )
+    transformer_decoder_name: Optional[str] = field(
         default="t5-base",
-        metadata={"help": "Name of the transformer model being using for encoding & decoding (only T5 & Funnel transfromers supported)."},
+        metadata={"help": "Name of the transformer model being using for decoding the funnel transformer (only `t5` type transformers supported)."},
     )
     config_path: Optional[str] = field(
         default=None, metadata={"help": "Pretrained config path if not the same as model_name"}
@@ -88,7 +99,7 @@ class ModelArguments:
     )
     latent_size: int = field(default=1_000, metadata={"help": "The size of the VAE's latent space."})
     set_seq_size: int = field(default=60, metadata={"help": "Set sequence size."})
-    encoded_seq_size: int = field(default=60 // 4, metadata={"help": "Sequence size of encoded sequence, needed for Funnel-VAE."})
+    encoded_seq_size: int = field(default=math.ceil(60 / 4), metadata={"help": "Sequence size of encoded sequence, needed for Funnel-VAE."})
     encoder_model: Optional[str] = field(
         default=None, metadata={"help": "Name of the model that converts hidden states into latent codes."}
     )
@@ -186,6 +197,8 @@ def main():
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
+    model_args.transformer_name = DEFAULTS['transformer_name'][model_args.transformer_type]
+
     if (
         os.path.exists(training_args.output_dir)
         and os.listdir(training_args.output_dir)
@@ -256,9 +269,11 @@ def main():
         config = CONFIG[model_args.transformer_type](
             latent_size=model_args.latent_size,
             transformer_name=model_args.transformer_name,
+            transformer_decoder_name=model_args.transformer_decoder_name,
             encoder_model=model_args.encoder_model,
             decoder_model=model_args.decoder_model,
             set_seq_size=model_args.set_seq_size,
+            encoded_seq_size=model_args.encoded_seq_size,
             n_previous_latent_codes=model_args.n_previous_latent_codes,
             reg_schedule_k=model_args.reg_schedule_k,
             reg_schedule_b=model_args.reg_schedule_b,
