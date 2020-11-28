@@ -75,7 +75,7 @@ class Transformer_VAE_Config(PretrainedConfig):
         self.encoder_model = encoder_model
         self.decoder_model = decoder_model
         self.padding_input = padding_input
-        self.prepend_cls_token = encoder_model == "1st-token"
+        self.prepend_eos_token = False  # TODO manually check if adding a set 1st token improves performance
         if padding_input:
             self.transformer.n_positions = set_seq_size
             self.set_seq_size = set_seq_size

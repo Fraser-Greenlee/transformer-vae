@@ -27,7 +27,7 @@ class LatentEncoder1stToken(nn.Module):
         self.tanh = nn.Tanh()
 
     def forward(self, encoding) -> torch.Tensor:
-        return self.tanh(self.token_to_latent(self.shrink_token(encoding)))
+        return self.tanh(self.token_to_latent(self.shrink_token(encoding[:, 0, :])))
 
 
 class LatentEncoderAttention(LatentEncoder):

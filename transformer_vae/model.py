@@ -248,9 +248,7 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
         assert (
             start_token_id is not None
         ), "self.model.config.decoder_start_token_id has to be defined. In T5 it is usually set to the pad_token_id. See T5 docs for more information"
-        assert (
-            start_token_id != pad_token_id
-        ), "Trying to prepend the padding token to the sequence."
+        assert start_token_id != pad_token_id, "Trying to prepend the padding token to the sequence."
 
         # shift inputs to the right
         shifted_input_ids = input_ids.new_zeros(input_ids.shape)
@@ -275,7 +273,7 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
         latent_code=None,
     ):
         if input_ids is not None:
-            if self.config.prepend_cls_token:
+            if self.config.prepend_eos_token:
                 input_ids = self._shift_input_right(input_ids)
             if attention_mask is None:
                 attention_mask = input_ids.ne(self.transformer.config.pad_token_id).long()
@@ -405,7 +403,7 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
                 raise ValueError(
                     "`input_ids` and `decoder_input_ids` do not match. Funnel-VAE can only reproduce its input sequence."
                 )
-            if self.config.prepend_cls_token:
+            if self.config.prepend_eos_token:
                 raise NotImplementedError()
             if attention_mask is None:
                 attention_mask = input_ids.ne(self.transformer.config.pad_token_id).long()
@@ -508,7 +506,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
                 raise ValueError(
                     "`input_ids` and `decoder_input_ids` do not match. Funnel-VAE can only reproduce its input sequence."
                 )
-            if self.config.prepend_cls_token:
+            if self.config.prepend_eos_token:
                 raise NotImplementedError()
             if attention_mask is None:
                 attention_mask = input_ids.ne(self.transformer.config.pad_token_id).long()
