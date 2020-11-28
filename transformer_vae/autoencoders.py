@@ -19,7 +19,7 @@ class LatentEncoder(nn.Module):
 
 
 class LatentEncoder1stToken(nn.Module):
-    def __init__(self, dim_m, latent_size):
+    def __init__(self, dim_m, _set_seq_size, latent_size):
         super().__init__()
         assert dim_m > 100
         self.shrink_token = nn.Linear(dim_m, 100)

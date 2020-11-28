@@ -302,7 +302,7 @@ def main():
         model = MODEL[model_args.transformer_type](config)
 
     model.resize_token_embeddings(len(tokenizer))
-    tokenizer.model_max_length = config.set_seq_size
+    tokenizer.model_max_length = config.transformer.n_positions
     tokenizer.mask_token = tokenizer.unk_token
 
     # Preprocessing the datasets.
@@ -320,7 +320,7 @@ def main():
         logger.info(f'Using column "{text_column_name}" as text column.')
 
     if config.padding_input:
-        check_seq_size(tokenizer, text_column_name, data_args, datasets, config.set_seq_size)
+        check_seq_size(tokenizer, text_column_name, data_args, datasets, self.transformer.n_positions)
 
         def tokenize_function(examples):
             return tokenizer(examples[text_column_name], padding="max_length", truncation=True)
