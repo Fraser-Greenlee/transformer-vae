@@ -4,6 +4,7 @@ WANDB_PROJECT="transformer-vae-tests" WANDB_WATCH=false python -c "from transfor
     --run_name="news-category-dataset test" \
     --do_train \
     --do_eval \
+    --evaluation_strategy steps \
     --dataset_name="Fraser/news-category-dataset" \
     --text_column=headline \
     --per_device_train_batch_size 10 \
