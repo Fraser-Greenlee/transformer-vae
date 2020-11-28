@@ -241,6 +241,30 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
         logits = self.transformer.lm_head(sequence_output)
         return logits
 
+    def _shift_input_right(self, input_ids):
+        start_token_id = self.transformer.config.eos_token_id
+        pad_token_id = self.config.transformer_decoder.pad_token_id
+
+        assert (
+            start_token_id is not None
+        ), "self.model.config.decoder_start_token_id has to be defined. In T5 it is usually set to the pad_token_id. See T5 docs for more information"
+        assert (
+            start_token_id != pad_token_id
+        ), "Trying to prepend the padding token to the sequence."
+
+        # shift inputs to the right
+        shifted_input_ids = input_ids.new_zeros(input_ids.shape)
+        shifted_input_ids[..., 1:] = input_ids[..., :-1].clone()
+        shifted_input_ids[..., 0] = start_token_id
+
+        assert pad_token_id is not None, "self.model.config.pad_token_id has to be defined."
+        # replace possible -100 values in labels by `pad_token_id`
+        shifted_input_ids.masked_fill_(shifted_input_ids == -100, pad_token_id)
+
+        assert torch.all(shifted_input_ids >= 0).item(), "Verify that `shifted_input_ids` has only positive values"
+
+        return shifted_input_ids
+
     def forward(
         self,
         input_ids=None,
@@ -251,6 +275,8 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
         latent_code=None,
     ):
         if input_ids is not None:
+            if self.config.prepend_cls_token:
+                input_ids = self._shift_input_right(input_ids)
             if attention_mask is None:
                 attention_mask = input_ids.ne(self.transformer.config.pad_token_id).long()
             if encoder_outputs is None:
@@ -379,6 +405,8 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
                 raise ValueError(
                     "`input_ids` and `decoder_input_ids` do not match. Funnel-VAE can only reproduce its input sequence."
                 )
+            if self.config.prepend_cls_token:
+                raise NotImplementedError()
             if attention_mask is None:
                 attention_mask = input_ids.ne(self.transformer.config.pad_token_id).long()
             if encoder_outputs is None:
@@ -480,6 +508,8 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
                 raise ValueError(
                     "`input_ids` and `decoder_input_ids` do not match. Funnel-VAE can only reproduce its input sequence."
                 )
+            if self.config.prepend_cls_token:
+                raise NotImplementedError()
             if attention_mask is None:
                 attention_mask = input_ids.ne(self.transformer.config.pad_token_id).long()
             if encoder_outputs is None:

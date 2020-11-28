@@ -66,15 +66,20 @@ class Transformer_VAE_Config(PretrainedConfig):
     ):
         assertIn(encoder_model, VAE_ENCODER_MODELS.keys(), "Unexpected VAE encoder.")
         assertIn(decoder_model, VAE_DECODER_MODELS.keys(), "Unexpected VAE decoder.")
+        padding_input = encoder_model != "1st-token"
+
         super().__init__(**kwargs)
         self.transformer = AutoConfig.from_pretrained(transformer_name, cache_dir=cache_dir)
-        self.transformer.n_positions = set_seq_size
         self.transformer.decoder_start_token_id = decoder_start_token_id
         self.latent_size = latent_size
         self.encoder_model = encoder_model
         self.decoder_model = decoder_model
-        self.set_seq_size = set_seq_size
-        self.encoded_seq_size = set_seq_size if encoded_seq_size is None else encoded_seq_size
+        self.padding_input = padding_input
+        self.prepend_cls_token = encoder_model == "1st-token"
+        if padding_input:
+            self.transformer.n_positions = set_seq_size
+            self.set_seq_size = set_seq_size
+            self.encoded_seq_size = set_seq_size if encoded_seq_size is None else encoded_seq_size
         self.additional_latent_models = additional_latent_models
         self.n_previous_latent_codes = n_previous_latent_codes
         self.reg_schedule_k = reg_schedule_k

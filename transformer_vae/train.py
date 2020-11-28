@@ -1,5 +1,5 @@
 """
-    Train Transformer-VAEs using the Huggingface Trainer.
+    Train Transformer-VAEs using the Huggingface Trainer with Weights and Biasis.
 """
 import logging
 import os
@@ -11,7 +11,6 @@ from typing import Optional
 from datasets import load_dataset
 
 import transformers
-from transformers.integrations import WandbCallback
 from transformers import (
     AutoTokenizer,
     HfArgumentParser,
@@ -19,24 +18,16 @@ from transformers import (
     DataCollatorForLanguageModeling,
     set_seed,
 )
-from transformers import trainer as trainer_script
+from transformers.integrations import is_wandb_available
 from transformers.trainer_utils import is_main_process
-from transformer_vae.trainer_callback import TellModelGlobalStep, WandbCallbackUseModelLogs
+
+from transformer_vae.trainer import VAE_Trainer
+from transformer_vae.trainer_callback import TellModelGlobalStep
 from transformer_vae.model import T5_VAE_Model, Funnel_VAE_Model, Funnel_T5_VAE_Model
 from transformer_vae.config import T5_VAE_Config, Funnel_VAE_Config, Funnel_T5_VAE_Config
 
 
 logger = logging.getLogger(__name__)
-
-
-if WandbCallback in trainer_script.DEFAULT_CALLBACKS:
-    # Allow tracking extra training losses via the model's `get_latest_logs` method
-    trainer_script.DEFAULT_CALLBACKS.remove(WandbCallback)
-    trainer_script.DEFAULT_CALLBACKS.append(WandbCallbackUseModelLogs)
-    using_wandb = True
-else:
-    using_wandb = False
-    logger.warn("Not using Wandb this will give you incomplete logs.")
 
 
 CONFIG = {"t5": T5_VAE_Config, "funnel": Funnel_VAE_Config, "funnel-t5": Funnel_T5_VAE_Config}
@@ -277,7 +268,7 @@ def main():
             n_previous_latent_codes=model_args.n_previous_latent_codes,
             reg_schedule_k=model_args.reg_schedule_k,
             reg_schedule_b=model_args.reg_schedule_b,
-            use_extra_logs=using_wandb,
+            use_extra_logs=is_wandb_available(),
         )
         logger.warning("You are instantiating a new config instance from scratch (still using T5 checkpoint).")
 
@@ -328,10 +319,17 @@ def main():
     if text_column_name != "text":
         logger.info(f'Using column "{text_column_name}" as text column.')
 
-    check_seq_size(tokenizer, text_column_name, data_args, datasets, config.set_seq_size)
+    if config.padding_input:
+        check_seq_size(tokenizer, text_column_name, data_args, datasets, config.set_seq_size)
 
-    def tokenize_function(examples):
-        return tokenizer(examples[text_column_name], padding="max_length", truncation=True)
+        def tokenize_function(examples):
+            return tokenizer(examples[text_column_name], padding="max_length", truncation=True)
+
+    else:
+        logger.info("Not padding the input as just looking at the 1st token encoding.")
+
+        def tokenize_function(examples):
+            return tokenizer(examples[text_column_name], padding="longest", truncation=True)
 
     tokenized_datasets = datasets.map(
         tokenize_function,
@@ -345,7 +343,7 @@ def main():
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
 
     # Initialize our Trainer
-    trainer = trainer_script.Trainer(
+    trainer = VAE_Trainer(
         model=model,
         args=training_args,
         train_dataset=tokenized_datasets["train"] if training_args.do_train else None,

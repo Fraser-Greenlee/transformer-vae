@@ -18,6 +18,18 @@ class LatentEncoder(nn.Module):
         return self.tanh(encoding)
 
 
+class LatentEncoder1stToken(nn.Module):
+    def __init__(self, dim_m, latent_size):
+        super().__init__()
+        assert dim_m > 100
+        self.shrink_token = nn.Linear(dim_m, 100)
+        self.token_to_latent = nn.Linear(100, latent_size)
+        self.tanh = nn.Tanh()
+
+    def forward(self, encoding) -> torch.Tensor:
+        return self.tanh(self.token_to_latent(self.shrink_token(encoding)))
+
+
 class LatentEncoderAttention(LatentEncoder):
     """
     Uses attention on token-encodings before compressing them.
@@ -61,6 +73,27 @@ class LatentDecoder(nn.Module):
         return self.norm(self.grow_tokens(latent.view(batch_size, -1, 100)))
 
 
+class LatentDecoderSingleToken(nn.Module):
+    def __init__(self, dim_m, set_seq_size, latent_size, config):
+        super().__init__()
+        self.decode_latent = nn.Linear(latent_size, 100)
+        self.grow_token = nn.Linear(100, dim_m)
+        self.dim_m = dim_m
+
+        if config.model_type == "t5":
+            config.dropout_rate = 0
+            self.norm = T5LayerFF(config)
+        elif config.model_type == "funnel":
+            self.norm = nn.LayerNorm(config.d_model, config.layer_norm_eps)
+        else:
+            raise ValueError(f'Unknown config.model_type "{config.model_type}"')
+
+    def forward(self, latent) -> torch.Tensor:
+        batch_size = latent.size(0)
+        latent = self.decode_latent(latent)
+        return self.norm(self.grow_token(latent).view(batch_size, -1, self.dim_m))
+
+
 class LatentDecoderMatchEncoder(LatentDecoder):
     """
     Just do one jump from latent -> 100x sequence.
@@ -98,10 +131,12 @@ class LatentDecoderSelfAttnGrow(LatentDecoder):
 
 VAE_ENCODER_MODELS = {
     None: LatentEncoder,
+    "1st-token": LatentEncoder1stToken,
     "basic-attention": LatentEncoderAttention,
 }
 VAE_DECODER_MODELS = {
     None: LatentDecoder,
+    "single-token": LatentDecoderSingleToken,
     "match-encoder": LatentDecoderMatchEncoder,
     "attention": LatentDecoderSelfAttnGrow,
 }
