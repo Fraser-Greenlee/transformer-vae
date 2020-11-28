@@ -3,7 +3,7 @@ WANDB_PROJECT="transformer-vae-tests" WANDB_WATCH=false python -c "from transfor
     --output_dir=output \
     --run_name="news t5 1st token" \
     --do_train \
-    --do_eval \
+    --evaluation_strategy steps \
     --dataset_name="Fraser/news-category-dataset" \
     --text_column=headline \
     --per_device_train_batch_size 10 \
