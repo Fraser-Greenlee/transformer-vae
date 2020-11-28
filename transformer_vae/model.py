@@ -199,6 +199,8 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
         Logs are normalised by the number of training inferences since the last log.
         """
         assert self.config.use_extra_logs
+        if self._calls_since_last_log < 1:
+            return {}
 
         result = dict(self.latest_logs)
         for k, v in result.items():
