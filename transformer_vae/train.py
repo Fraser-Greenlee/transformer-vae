@@ -15,13 +15,13 @@ from transformers import (
     AutoTokenizer,
     HfArgumentParser,
     TrainingArguments,
-    DataCollatorForLanguageModeling,
     set_seed,
 )
 from transformers.integrations import is_wandb_available
 from transformers.trainer_utils import is_main_process
 
 from transformer_vae.trainer import VAE_Trainer
+from transformer_vae.data_collator import DataCollatorForLanguageAutoencoding
 from transformer_vae.trainer_callback import TellModelGlobalStep
 from transformer_vae.model import T5_VAE_Model, Funnel_VAE_Model, Funnel_T5_VAE_Model
 from transformer_vae.config import T5_VAE_Config, Funnel_VAE_Config, Funnel_T5_VAE_Config
@@ -134,7 +134,7 @@ class DataTrainingArguments:
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
     mlm_probability: float = field(
-        default=0.05, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
+        default=0.15, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
     )
 
     def __post_init__(self):
@@ -156,6 +156,7 @@ def check_seq_size(tokenizer, text_column_name, data_args, datasets, set_seq_siz
     tokenized_datasets = datasets.map(
         tokenize_function,
         batched=True,
+        batch_size=None,  # apply tokenize_function to whole dataset at once (ensures longest length is global)
         num_proc=data_args.preprocessing_num_workers,
         remove_columns=[text_column_name],
         load_from_cache_file=not data_args.overwrite_cache,
@@ -302,7 +303,7 @@ def main():
         model = MODEL[model_args.transformer_type](config)
 
     model.resize_token_embeddings(len(tokenizer))
-    tokenizer.model_max_length = config.transformer.n_positions
+    tokenizer.model_max_length = model_args.set_seq_size
     tokenizer.mask_token = tokenizer.unk_token
 
     # Preprocessing the datasets.
@@ -319,28 +320,22 @@ def main():
     if text_column_name != "text":
         logger.info(f'Using column "{text_column_name}" as text column.')
 
-    if config.padding_input:
-        check_seq_size(tokenizer, text_column_name, data_args, datasets, self.transformer.n_positions)
+    check_seq_size(tokenizer, text_column_name, data_args, datasets, model_args.set_seq_size)
 
-        def tokenize_function(examples):
-            return tokenizer(examples[text_column_name], padding="max_length", truncation=True)
-
-    else:
-        logger.info("Not padding the input as just looking at the 1st token encoding.")
-
-        def tokenize_function(examples):
-            return tokenizer(examples[text_column_name], padding="longest", truncation=True)
+    def tokenize_function(examples):
+        return tokenizer(examples[text_column_name], padding="max_length", truncation=True)
 
     tokenized_datasets = datasets.map(
         tokenize_function,
         batched=True,
+        batch_size=None,  # apply tokenize_function to whole dataset at once (ensures longest length is global)
         num_proc=data_args.preprocessing_num_workers,
         remove_columns=[text_column_name],
         load_from_cache_file=not data_args.overwrite_cache,
     )
 
     # Data collator
-    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
+    data_collator = DataCollatorForLanguageAutoencoding(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
 
     # Initialize our Trainer
     trainer = VAE_Trainer(

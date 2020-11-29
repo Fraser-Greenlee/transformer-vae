@@ -4,7 +4,11 @@ import logging
 from random import randint
 from typing import Optional, Dict
 from torch.utils.data.dataset import Dataset
+from torch.utils.data import DataLoader
 
+from transformers import (
+    DataCollatorForLanguageModeling,
+)
 from datasets.features import ClassLabel
 from transformers import trainer as trainer_script
 from transformers.integrations import WandbCallback, is_wandb_available
@@ -27,8 +31,6 @@ class VAE_Trainer(trainer_script.Trainer):
     def _interpolate_samples(self, eval_dataset):
         table = wandb.Table(columns=["Interpolation Ratio", "Text"])
 
-        pdb.set_trace()
-
         start_i = end_i = randint(0, len(eval_dataset))
         while end_i == start_i:
             end_i = randint(0, len(eval_dataset))
@@ -40,14 +42,12 @@ class VAE_Trainer(trainer_script.Trainer):
             self.model(**start_sample).latent_code,
             self.model(**end_sample).latent_code,
         )
-        pdb.set_trace()
         latent_diff = end_latent - start_latent
 
         for i in range(11):
             ratio = i / 10
             latent_point = start_latent + ratio * latent_diff
             table.add_data(ratio, self.model.generate(latent_code=latent_point))
-        pdb.set_trace()
         wandb.log({"interpolate points": table})
 
     def _random_samples(self):
@@ -78,6 +78,13 @@ class VAE_Trainer(trainer_script.Trainer):
             eval_dataset = self.eval_dataset
         if eval_dataset is None:
             raise ValueError('No eval dataset available.')
+
+        eval_dataloader = self.get_eval_dataloader(eval_dataset)
+        for sample in eval_dataloader:
+            break
+
+        pdb.set_trace()
+
         if eval_dataset and is_wandb_available():
             with torch.no_grad():
                 self._interpolate_samples(eval_dataset)
