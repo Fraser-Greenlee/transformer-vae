@@ -6,7 +6,6 @@ from transformers.modeling_t5 import T5LayerFF, T5LayerSelfAttention
 class LatentEncoder(nn.Module):
     def __init__(self, dim_m, set_seq_size, latent_size):
         super().__init__()
-        assert dim_m > 100
         self.shrink_tokens = nn.Linear(dim_m, 100)
         self.shrink_sequence = nn.Linear(100 * set_seq_size, latent_size)
         self.tanh = nn.Tanh()
@@ -21,13 +20,11 @@ class LatentEncoder(nn.Module):
 class LatentEncoder1stToken(nn.Module):
     def __init__(self, dim_m, _set_seq_size, latent_size):
         super().__init__()
-        assert dim_m > 100
-        self.shrink_token = nn.Linear(dim_m, 100)
-        self.token_to_latent = nn.Linear(100, latent_size)
+        self.token_to_latent = nn.Linear(dim_m, latent_size)
         self.tanh = nn.Tanh()
 
     def forward(self, encoding) -> torch.Tensor:
-        return self.tanh(self.token_to_latent(self.shrink_token(encoding[:, 0, :])))
+        return self.tanh(self.token_to_latent(encoding[:, 0, :]))
 
 
 class LatentEncoderAttention(LatentEncoder):

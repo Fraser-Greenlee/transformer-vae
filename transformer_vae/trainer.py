@@ -1,10 +1,11 @@
 import pdb
 import torch
 import logging
+from random import randint
 from typing import Optional, Dict
 from torch.utils.data.dataset import Dataset
 
-from dataset.features import ClassLabel
+from datasets.features import ClassLabel
 from transformers import trainer as trainer_script
 from transformers.integrations import WandbCallback, is_wandb_available
 from transformer_vae.trainer_callback import WandbCallbackUseModelLogs
@@ -24,24 +25,32 @@ else:
 
 class VAE_Trainer(trainer_script.Trainer):
     def _interpolate_samples(self, eval_dataset):
-        pdb.set_trace()
         table = wandb.Table(columns=["Interpolation Ratio", "Text"])
 
-        start_sample_text, end_sample_text = [eval_dataset.sample()["text"] for _ in range(2)]
+        pdb.set_trace()
+
+        start_i = end_i = randint(0, len(eval_dataset))
+        while end_i == start_i:
+            end_i = randint(0, len(eval_dataset))
+
+        pdb.set_trace()
+
+        start_sample, end_sample = eval_dataset[start_i], eval_dataset[end_i]
         start_latent, end_latent = (
-            self.model(input_ids=start_sample_text).latent_code,
-            self.model(input_ids=end_sample_text).latent_code,
+            self.model(**start_sample).latent_code,
+            self.model(**end_sample).latent_code,
         )
+        pdb.set_trace()
         latent_diff = end_latent - start_latent
 
         for i in range(11):
             ratio = i / 10
             latent_point = start_latent + ratio * latent_diff
             table.add_data(ratio, self.model.generate(latent_code=latent_point))
+        pdb.set_trace()
         wandb.log({"interpolate points": table})
 
     def _random_samples(self):
-        pdb.set_trace()
         table = wandb.Table(columns=["Text"])
         latent_points = torch.randn(10, self.model.config.latent_size)
         for i in range(latent_points.size(0)):
@@ -65,13 +74,17 @@ class VAE_Trainer(trainer_script.Trainer):
         if class column provided?
         - tSNE plots with class-label colouring.
         """
-        output_metrics = super().evaluate(eval_dataset=eval_dataset)
         if eval_dataset is None:
             eval_dataset = self.eval_dataset
         if eval_dataset is None:
             raise ValueError('No eval dataset available.')
         if eval_dataset and is_wandb_available():
-            self._interpolate_samples(eval_dataset)
-            self._random_samples()
-            # TODO add unsupervised classification
+            with torch.no_grad():
+                self._interpolate_samples(eval_dataset)
+                pdb.set_trace()
+                self._random_samples()
+                pdb.set_trace()
+            # TODO add t-SNE clustering with class labels
+
+        output_metrics = super().evaluate(eval_dataset=eval_dataset)
         return output_metrics

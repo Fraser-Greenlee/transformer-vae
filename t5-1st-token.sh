@@ -11,6 +11,7 @@ WANDB_PROJECT="transformer-vae-tests" WANDB_WATCH=false python -c "from transfor
     --n_previous_latent_codes 0 \
     --transformer_type t5 \
     --encoder_model 1st-token \
+    --latent_size 100 \
     --set_seq_size 40 \
     --logging_steps 10 \
     --overwrite_output_dir \
