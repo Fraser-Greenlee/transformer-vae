@@ -1,14 +1,9 @@
-import pdb
 import torch
 import logging
 from random import randint
 from typing import Optional, Dict
 from torch.utils.data.dataset import Dataset
-from torch.utils.data import DataLoader
 
-from transformers import (
-    DataCollatorForLanguageModeling,
-)
 from datasets.features import ClassLabel
 from transformers import trainer as trainer_script
 from transformers.integrations import WandbCallback, is_wandb_available
@@ -34,8 +29,6 @@ class VAE_Trainer(trainer_script.Trainer):
         start_i = end_i = randint(0, len(eval_dataset))
         while end_i == start_i:
             end_i = randint(0, len(eval_dataset))
-
-        pdb.set_trace()
 
         start_sample, end_sample = eval_dataset[start_i], eval_dataset[end_i]
         start_latent, end_latent = (
@@ -79,19 +72,11 @@ class VAE_Trainer(trainer_script.Trainer):
         if eval_dataset is None:
             raise ValueError('No eval dataset available.')
 
-        eval_dataloader = self.get_eval_dataloader(eval_dataset)
-        for sample in eval_dataloader:
-            break
-
-        pdb.set_trace()
-
-        if eval_dataset and is_wandb_available():
+        if is_wandb_available():
             with torch.no_grad():
                 self._interpolate_samples(eval_dataset)
-                pdb.set_trace()
                 self._random_samples()
-                pdb.set_trace()
-            # TODO add t-SNE clustering with class labels
+                # TODO add t-SNE clustering with class labels
 
         output_metrics = super().evaluate(eval_dataset=eval_dataset)
         return output_metrics
