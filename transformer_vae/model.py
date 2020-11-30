@@ -220,6 +220,7 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
         encoder_outputs=None,
         decoder_input_ids=None,
         latent_code=None,
+        return_dict=True,
     ):
         raise NotImplementedError()
 
@@ -273,6 +274,7 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
         encoder_outputs=None,
         decoder_input_ids=None,
         latent_code=None,
+        return_dict=True,
     ):
         if input_ids is not None:
             if self.config.prepend_eos_token:
@@ -327,6 +329,7 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
             reconstructed_encoding=vae_outputs.reconstructed_encoding,
             loss=loss,
             latnet=vae_outputs.latent_code,
+            logits=lm_logits,
         )
 
 
@@ -339,7 +342,7 @@ class Funnel_VAE_Model_Base(Transformer_VAE_Base_Model):
         inputs_embeds=None,
         output_attentions=None,
         output_hidden_states=None,
-        return_dict=None,
+        return_dict=True,
     ):
         funnel = self.transformer.funnel
 
@@ -399,6 +402,7 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
         encoder_outputs=None,
         decoder_input_ids=None,
         latent_code=None,
+        return_dict=True,
     ):
         if input_ids is not None:
             if decoder_input_ids is not None and input_ids.equal(decoder_input_ids) is False:
@@ -454,6 +458,7 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
             reconstructed_encoding=vae_outputs.reconstructed_encoding,
             loss=loss,
             latnet=vae_outputs.latent_code,
+            logits=lm_logits,
         )
 
 
@@ -502,6 +507,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         encoder_outputs=None,
         decoder_input_ids=None,
         latent_code=None,
+        return_dict=True,
     ):
         if input_ids is not None:
             if decoder_input_ids is not None and input_ids.equal(decoder_input_ids) is False:
@@ -574,4 +580,5 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             reconstructed_encoding=vae_outputs.reconstructed_encoding,
             loss=loss,
             latnet=vae_outputs.latent_code,
+            logits=lm_logits,
         )

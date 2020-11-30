@@ -1,8 +1,9 @@
 import torch
 import logging
-from random import randint
 from typing import Optional, Dict
 from torch.utils.data.dataset import Dataset
+from torch.utils.data.sampler import RandomSampler
+from torch.utils.data.dataloader import DataLoader
 
 from datasets.features import ClassLabel
 from transformers import trainer as trainer_script
@@ -24,30 +25,40 @@ else:
 
 class VAE_Trainer(trainer_script.Trainer):
     def _interpolate_samples(self, eval_dataset):
-        table = wandb.Table(columns=["Interpolation Ratio", "Text"])
-
-        start_i = end_i = randint(0, len(eval_dataset))
-        while end_i == start_i:
-            end_i = randint(0, len(eval_dataset))
-
-        start_sample, end_sample = eval_dataset[start_i], eval_dataset[end_i]
-        start_latent, end_latent = (
-            self.model(**start_sample).latent_code,
-            self.model(**end_sample).latent_code,
+        eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
+        mini_eval_dataloader_iter = iter(
+            DataLoader(
+                eval_dataset,
+                sampler=RandomSampler(eval_dataset),
+                batch_size=2,
+                collate_fn=self.data_collator,
+            )
         )
+
+        samples = self._prepare_inputs(next(mini_eval_dataloader_iter))
+        latents = self.model(**samples).latnet
+        start_latent, end_latent = latents[0].view(1, -1), latents[1].view(1, -1)
         latent_diff = end_latent - start_latent
 
+        table = wandb.Table(columns=["Interpolation Ratio", "Text"])
         for i in range(11):
             ratio = i / 10
             latent_point = start_latent + ratio * latent_diff
-            table.add_data(ratio, self.model.generate(latent_code=latent_point))
+            # need to give bos_token_id even for encoder_decoder models like T5
+            # TODO this may not work for Funnel-VAE
+            generation = self.model.generate(latent_code=latent_point, bos_token_id=0)
+            import pdb; pdb.set_trace()
+            table.add_data(ratio, generation)
         wandb.log({"interpolate points": table})
 
     def _random_samples(self):
         table = wandb.Table(columns=["Text"])
         latent_points = torch.randn(10, self.model.config.latent_size)
         for i in range(latent_points.size(0)):
-            table.add_data(self.model.generate(latent_code=latent_points[i]))
+            import pdb; pdb.set_trace()
+            table.add_data(
+                self.model.generate(latent_code=latent_points[i], bos_token_id=0)
+            )
         wandb.log({"random points": table})
 
     def _clustering(self, eval_dataset, class_column_name):
@@ -67,11 +78,6 @@ class VAE_Trainer(trainer_script.Trainer):
         if class column provided?
         - tSNE plots with class-label colouring.
         """
-        if eval_dataset is None:
-            eval_dataset = self.eval_dataset
-        if eval_dataset is None:
-            raise ValueError('No eval dataset available.')
-
         if is_wandb_available():
             with torch.no_grad():
                 self._interpolate_samples(eval_dataset)

@@ -24,7 +24,7 @@ class BaseVAE_Output(ModelOutput):
 
 
 @dataclass
-class BaseTransformerVAE_Output(Seq2SeqLMOutput):
+class BaseTransformerVAE_Output(ModelOutput):
     """
     Base class for a Transformer-VAE's outputs.
 
@@ -41,8 +41,14 @@ class BaseTransformerVAE_Output(Seq2SeqLMOutput):
             MMD-VAE regularisation loss for this step.
     """
 
-    loss: torch.FloatTensor = None
+    loss: Optional[torch.FloatTensor] = None
+    logits: torch.FloatTensor = None
+    past_key_values: Optional[List[torch.FloatTensor]] = None
+    decoder_hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    decoder_attentions: Optional[Tuple[torch.FloatTensor]] = None
+    cross_attentions: Optional[Tuple[torch.FloatTensor]] = None
+    encoder_last_hidden_state: Optional[torch.FloatTensor] = None
+    encoder_hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    encoder_attentions: Optional[Tuple[torch.FloatTensor]] = None
     latnet: torch.FloatTensor = None
-    reconstructed_encoding: torch.FloatTensor = None
     reg_loss: torch.FloatTensor = None
-    decoder_ce: torch.FloatTensor = None
