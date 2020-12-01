@@ -84,6 +84,7 @@ class Transformer_VAE_Config(PretrainedConfig):
         self.reg_schedule_k = reg_schedule_k
         self.reg_schedule_b = reg_schedule_b
         self.use_extra_logs = use_extra_logs
+        # self.is_encoder_decoder = True
 
     def to_dict(self):
         """

@@ -4,6 +4,7 @@
 import logging
 import torch
 from torch import nn
+from typing import Dict, Any
 from transformers.modeling_utils import PreTrainedModel
 from transformers import AutoModelForSeq2SeqLM, AutoModelForMaskedLM
 from transformers.modeling_outputs import BaseModelOutput
@@ -43,13 +44,13 @@ class EncoderDecoderVAE(nn.Module):
     def forward(
         self,
         input_encoding=None,
-        latent_code=None,
+        latent=None,
     ):
-        if input_encoding is None and latent_code is None:
-            raise ValueError("Both `input_encoding` and `latent_code` sent to VAE are Null.")
-        recon_encoding, latent = self._model_forward(input_encoding, latent=latent_code)
+        if input_encoding is None and latent is None:
+            raise ValueError("Both `input_encoding` and `latent` sent to VAE are Null.")
+        recon_encoding, latent = self._model_forward(input_encoding, latent=latent)
         reg_loss = self._regularliser_loss(latent)
-        return BaseVAE_Output(latent_code=latent, reconstructed_encoding=recon_encoding, reg_loss=reg_loss)
+        return BaseVAE_Output(latent=latent, reconstructed_encoding=recon_encoding, reg_loss=reg_loss)
 
     @staticmethod
     def _compute_kernel(x, y):
@@ -120,6 +121,9 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
     - Must be trained with the `transformer_vae.TellModelGlobalStep` for MMD regularising loss scheduling & log normalizing.
     - Must use `transformer_vae.WandbCallbackUseModelLogs` for logging as it stores some of its own logs internally, using
       `get_latest_logs` to get the normalised logs and refresh the internal logs.
+
+    NOTE: Its generation works differently. Instead of taking input_ids and sampling form the decoder it takes a `latent`
+    and uses `input_ids` as `decoder_input_ids`.
 
     This model inherits from :class:`~transformers.PreTrainedModel`. Check the superclass documentation for the generic
     methods the library implements for all its model (such as downloading or saving, resizing the input embeddings,
@@ -212,6 +216,15 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
 
         return result
 
+    def prepare_inputs_for_generation(self, input_ids: torch.LongTensor, latent=None, **kwargs) -> Dict[str, Any]:
+        """
+            Should only be generating text from latent codes.
+        """
+        import pdb; pdb.set_trace()
+        assert(latent is not None), "Generation with Transformer-VAE's expects to be given a latent code to generate from."
+        assert(len(kwargs) == 0), "Only allowing generation from a single latent point"
+        return {"decoder_input_ids": input_ids, "latent": latent}
+
     def forward(
         self,
         input_ids=None,
@@ -219,7 +232,7 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
         attention_mask=None,
         encoder_outputs=None,
         decoder_input_ids=None,
-        latent_code=None,
+        latent=None,
         return_dict=True,
     ):
         raise NotImplementedError()
@@ -235,14 +248,6 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
     Its decoder is autoregressive making it natually effective at generating sequences.
     """
     config_class = T5_VAE_Config
-
-    def decoder_logits(self, decoder_input_ids, encoding):
-        sequence_output = self.transformer.decoder(input_ids=decoder_input_ids, encoder_hidden_states=encoding)[0]
-        # Rescale output before projecting on vocab
-        # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
-        sequence_output = sequence_output * (self.config.transformer.d_model ** -0.5)
-        logits = self.transformer.lm_head(sequence_output)
-        return logits
 
     def _shift_input_right(self, input_ids):
         start_token_id = self.transformer.config.eos_token_id
@@ -273,9 +278,11 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
         attention_mask=None,
         encoder_outputs=None,
         decoder_input_ids=None,
-        latent_code=None,
+        latent=None,
         return_dict=True,
     ):
+        assert(return_dict), "Need return_dict=True, using tuple's is not implimented"
+
         if input_ids is not None:
             if self.config.prepend_eos_token:
                 input_ids = self._shift_input_right(input_ids)
@@ -293,7 +300,7 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
             )
 
         vae_outputs = self.vae(
-            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent_code=latent_code
+            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent=latent
         )
 
         if labels is not None and decoder_input_ids is None:
@@ -303,9 +310,10 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
         decoder_outputs = self.transformer.decoder(
             input_ids=decoder_input_ids,
             encoder_hidden_states=vae_outputs.reconstructed_encoding,
+            return_dict=True
         )
 
-        sequence_output = decoder_outputs[0]
+        sequence_output = decoder_outputs.last_hidden_state
         # Rescale output before projecting on vocab
         # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
         sequence_output = sequence_output * (self.config.transformer.d_model ** -0.5)
@@ -324,12 +332,19 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
             self._update_logs(decoder_ce=decoder_ce.item(), reg_loss=vae_outputs.reg_loss.item(), reg_loss_w=reg_loss_w)
 
         return BaseTransformerVAE_Output(
+            loss=loss,
+            logits=lm_logits,
+            past_key_values=decoder_outputs.past_key_values,
+            decoder_hidden_states=decoder_outputs.hidden_states,
+            decoder_attentions=decoder_outputs.attentions,
+            cross_attentions=decoder_outputs.cross_attentions,
+            encoder_last_hidden_state=encoder_outputs.last_hidden_state,
+            encoder_hidden_states=encoder_outputs.hidden_states,
+            encoder_attentions=encoder_outputs.attentions,
+
+            latnet=vae_outputs.latent,
             reg_loss=vae_outputs.reg_loss,
             decoder_ce=decoder_ce,
-            reconstructed_encoding=vae_outputs.reconstructed_encoding,
-            loss=loss,
-            latnet=vae_outputs.latent_code,
-            logits=lm_logits,
         )
 
 
@@ -401,9 +416,11 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
         attention_mask=None,
         encoder_outputs=None,
         decoder_input_ids=None,
-        latent_code=None,
+        latent=None,
         return_dict=True,
     ):
+        assert(return_dict), "Need return_dict=True, using tuple's is not implimented"
+
         if input_ids is not None:
             if decoder_input_ids is not None and input_ids.equal(decoder_input_ids) is False:
                 raise ValueError(
@@ -427,7 +444,7 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
             )
 
         vae_outputs = self.vae(
-            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent_code=latent_code
+            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent=latent
         )
 
         initial_encoding_size = encoder_outputs.hidden_states[self.config.transformer.block_sizes[0]].size()
@@ -436,9 +453,10 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
             final_hidden=vae_outputs.reconstructed_encoding,
             # Don't allow for residual connections, instead just send an empty tensor.
             first_block_hidden=torch.zeros(initial_encoding_size, device=vae_outputs.reconstructed_encoding.device),
+            return_dict=True
         )
 
-        last_hidden_state = decoder_outputs[0]
+        last_hidden_state = decoder_outputs.last_hidden_state
         prediction_logits = self.transformer.lm_head(last_hidden_state)
 
         decoder_ce = torch.tensor(0.0, device=prediction_logits.device)
@@ -453,12 +471,19 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
             self._update_logs(decoder_ce=decoder_ce.item(), reg_loss=vae_outputs.reg_loss.item(), reg_loss_w=reg_loss_w)
 
         return BaseTransformerVAE_Output(
+            loss=loss,
+            logits=prediction_logits,
+            past_key_values=None,
+            decoder_hidden_states=decoder_outputs.hidden_states,
+            decoder_attentions=decoder_outputs.attentions,
+            cross_attentions=None,
+            encoder_last_hidden_state=encoder_outputs.last_hidden_state,
+            encoder_hidden_states=encoder_outputs.hidden_states,
+            encoder_attentions=encoder_outputs.attentions,
+
+            latnet=vae_outputs.latent,
             reg_loss=vae_outputs.reg_loss,
             decoder_ce=decoder_ce,
-            reconstructed_encoding=vae_outputs.reconstructed_encoding,
-            loss=loss,
-            latnet=vae_outputs.latent_code,
-            logits=lm_logits,
         )
 
 
@@ -506,9 +531,11 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         attention_mask=None,
         encoder_outputs=None,
         decoder_input_ids=None,
-        latent_code=None,
+        latent=None,
         return_dict=True,
     ):
+        assert(return_dict), "Need return_dict=True, using tuple's is not implimented"
+
         if input_ids is not None:
             if decoder_input_ids is not None and input_ids.equal(decoder_input_ids) is False:
                 raise ValueError(
@@ -532,7 +559,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             )
 
         vae_outputs = self.vae(
-            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent_code=latent_code
+            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent=latent
         )
 
         initial_encoding_size = encoder_outputs.hidden_states[self.config.transformer.block_sizes[0]].size()
@@ -554,9 +581,10 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         decoder_outputs = self.transformer.decoder(
             input_ids=decoder_input_ids,
             encoder_hidden_states=upsampled_encoding,
+            return_dict=True
         )
 
-        sequence_output = decoder_outputs[0]
+        sequence_output = decoder_outputs.last_hidden_state
         # Rescale output before projecting on vocab
         # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
         sequence_output = sequence_output * (self.config.transformer.d_model ** -0.5)
@@ -575,10 +603,17 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             self._update_logs(decoder_ce=decoder_ce.item(), reg_loss=vae_outputs.reg_loss.item(), reg_loss_w=reg_loss_w)
 
         return BaseTransformerVAE_Output(
+            loss=loss,
+            logits=lm_logits,
+            past_key_values=decoder_outputs.past_key_values,
+            decoder_hidden_states=decoder_outputs.hidden_states,
+            decoder_attentions=decoder_outputs.attentions,
+            cross_attentions=decoder_outputs.cross_attentions,
+            encoder_last_hidden_state=encoder_outputs.last_hidden_state,
+            encoder_hidden_states=encoder_outputs.hidden_states,
+            encoder_attentions=encoder_outputs.attentions,
+
+            latnet=vae_outputs.latent,
             reg_loss=vae_outputs.reg_loss,
             decoder_ce=decoder_ce,
-            reconstructed_encoding=vae_outputs.reconstructed_encoding,
-            loss=loss,
-            latnet=vae_outputs.latent_code,
-            logits=lm_logits,
         )

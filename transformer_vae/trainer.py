@@ -46,7 +46,7 @@ class VAE_Trainer(trainer_script.Trainer):
             latent_point = start_latent + ratio * latent_diff
             # need to give bos_token_id even for encoder_decoder models like T5
             # TODO this may not work for Funnel-VAE
-            generation = self.model.generate(latent_code=latent_point, bos_token_id=0)
+            generation = self.model.generate(latent=latent_point, bos_token_id=0)
             import pdb; pdb.set_trace()
             table.add_data(ratio, generation)
         wandb.log({"interpolate points": table})
@@ -57,7 +57,7 @@ class VAE_Trainer(trainer_script.Trainer):
         for i in range(latent_points.size(0)):
             import pdb; pdb.set_trace()
             table.add_data(
-                self.model.generate(latent_code=latent_points[i], bos_token_id=0)
+                self.model.generate(latent=latent_points[i], bos_token_id=0)
             )
         wandb.log({"random points": table})
 
@@ -80,6 +80,7 @@ class VAE_Trainer(trainer_script.Trainer):
         """
         if is_wandb_available():
             with torch.no_grad():
+                self.model.eval()
                 self._interpolate_samples(eval_dataset)
                 self._random_samples()
                 # TODO add t-SNE clustering with class labels
