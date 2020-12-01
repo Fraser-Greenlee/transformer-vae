@@ -47,7 +47,6 @@ class VAE_Trainer(trainer_script.Trainer):
             # need to give bos_token_id even for encoder_decoder models like T5
             # TODO this may not work for Funnel-VAE
             generation = self.model.generate(latent=latent_point, bos_token_id=0)
-            import pdb; pdb.set_trace()
             table.add_data(ratio, generation)
         wandb.log({"interpolate points": table})
 
@@ -55,7 +54,6 @@ class VAE_Trainer(trainer_script.Trainer):
         table = wandb.Table(columns=["Text"])
         latent_points = torch.randn(10, self.model.config.latent_size)
         for i in range(latent_points.size(0)):
-            import pdb; pdb.set_trace()
             table.add_data(
                 self.model.generate(latent=latent_points[i], bos_token_id=0)
             )

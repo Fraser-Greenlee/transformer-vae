@@ -220,10 +220,10 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
         """
             Should only be generating text from latent codes.
         """
-        import pdb; pdb.set_trace()
         assert(latent is not None), "Generation with Transformer-VAE's expects to be given a latent code to generate from."
-        assert(len(kwargs) == 0), "Only allowing generation from a single latent point"
-        return {"decoder_input_ids": input_ids, "latent": latent}
+        if 'past' in kwargs:
+            del kwargs['past']
+        return {"decoder_input_ids": input_ids, "latent": latent, **kwargs}
 
     def forward(
         self,
@@ -279,9 +279,11 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
         encoder_outputs=None,
         decoder_input_ids=None,
         latent=None,
+        use_cache=None,
         return_dict=True,
     ):
         assert(return_dict), "Need return_dict=True, using tuple's is not implimented"
+        use_cache = use_cache if use_cache is not None else self.config.use_cache
 
         if input_ids is not None:
             if self.config.prepend_eos_token:
@@ -310,7 +312,8 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
         decoder_outputs = self.transformer.decoder(
             input_ids=decoder_input_ids,
             encoder_hidden_states=vae_outputs.reconstructed_encoding,
-            return_dict=True
+            use_cache=use_cache,
+            return_dict=True,
         )
 
         sequence_output = decoder_outputs.last_hidden_state
@@ -338,9 +341,9 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
             decoder_hidden_states=decoder_outputs.hidden_states,
             decoder_attentions=decoder_outputs.attentions,
             cross_attentions=decoder_outputs.cross_attentions,
-            encoder_last_hidden_state=encoder_outputs.last_hidden_state,
-            encoder_hidden_states=encoder_outputs.hidden_states,
-            encoder_attentions=encoder_outputs.attentions,
+            encoder_last_hidden_state=encoder_outputs.last_hidden_state if encoder_outputs else None,
+            encoder_hidden_states=encoder_outputs.hidden_states if encoder_outputs else None,
+            encoder_attentions=encoder_outputs.attentions if encoder_outputs else None,
 
             latnet=vae_outputs.latent,
             reg_loss=vae_outputs.reg_loss,
