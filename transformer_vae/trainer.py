@@ -8,7 +8,7 @@ import time
 
 from datasets.features import ClassLabel
 from transformers import trainer as trainer_script
-from transformers.integrations import WandbCallback, is_wandb_available
+from transformers.integrations import WandbCallback, is_wandb_available, TensorBoardCallback, CometCallback, AzureMLCallback, MLflowCallback
 from transformer_vae.trainer_callback import WandbCallbackUseModelLogs
 
 
@@ -22,6 +22,16 @@ if WandbCallback in trainer_script.DEFAULT_CALLBACKS:
     import wandb
 else:
     logger.warn("Not using Weights and Biasis, this will give you incomplete logs.")
+
+
+NOT_ALLOWED_LOGGERS = [TensorBoardCallback, CometCallback, AzureMLCallback, MLflowCallback]
+
+for logger_integration in NOT_ALLOWED_LOGGERS:
+    removed = []
+    if logger_integration in trainer_script.DEFAULT_CALLBACKS:
+        trainer_script.DEFAULT_CALLBACKS.remove(logger_integration)
+        removed.append(logger_integration)
+    logger.info(f"Only supports W&B logging, removed loggers: {removed}")
 
 
 class VAE_Trainer(trainer_script.Trainer):
