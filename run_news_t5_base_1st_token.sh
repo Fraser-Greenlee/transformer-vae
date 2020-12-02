@@ -1,7 +1,7 @@
 # Originally ran on 16GiB GPU
 WANDB_PROJECT="transformer-vae-tests" WANDB_WATCH=false TOKENIZERS_PARALLELISM=false python -c "from transformer_vae.train import main; main()" \
     --output_dir=output \
-    --run_name="news t5 1st token" \
+    --run_name="debug news t5 1st token" \
     --do_train \
     --evaluation_strategy steps \
     --dataset_name="Fraser/news-category-dataset" \
