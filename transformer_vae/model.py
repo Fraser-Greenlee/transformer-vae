@@ -221,8 +221,9 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
             Should only be generating text from latent codes.
         """
         assert(latent is not None), "Generation with Transformer-VAE's expects to be given a latent code to generate from."
-        if 'past' in kwargs:
-            del kwargs['past']
+        for rm_key in ['past', 'attention_mask']:
+            if rm_key in kwargs:
+                del kwargs[rm_key]
         return {"decoder_input_ids": input_ids, "latent": latent, **kwargs}
 
     def forward(

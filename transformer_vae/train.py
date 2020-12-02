@@ -42,6 +42,25 @@ DEFAULTS = {
 
 
 @dataclass
+class VAE_TrainingArguments(TrainingArguments):
+    """
+        Extra arguments to specify generation during evaluation.
+    """
+    generate_min_len: int = field(
+        default=1,
+        metadata={
+            "help": "The minimum length of sequences to be generated from latent points during evaluation."
+        },
+    )
+    generate_max_len: int = field(
+        default=20,
+        metadata={
+            "help": "The maximum length of sequences to be generated from latent points during evaluation."
+        },
+    )
+
+
+@dataclass
 class ModelArguments:
     """
     Arguments pertaining to which model/config/tokenizer we are going to fine-tune, or train from scratch.
@@ -177,7 +196,7 @@ def check_seq_size(tokenizer, text_column_name, data_args, datasets, set_seq_siz
 
 
 def main():
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
+    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, VAE_TrainingArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
         # let's parse it to get our arguments.

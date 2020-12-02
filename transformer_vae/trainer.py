@@ -4,6 +4,7 @@ from typing import Optional, Dict
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.sampler import RandomSampler
 from torch.utils.data.dataloader import DataLoader
+import time
 
 from datasets.features import ClassLabel
 from transformers import trainer as trainer_script
@@ -24,6 +25,14 @@ else:
 
 
 class VAE_Trainer(trainer_script.Trainer):
+    def _text_from_latent(self, latent):
+        # TODO can I do many latents in parallel?
+        # TODO this may not work for Funnel-VAE
+        generation = self.model.generate(latent=latent, bos_token_id=0, min_length=self.args.generate_max_len, max_length=self.args.generate_max_len)
+        return self.tokenizer.decode(
+            generation[0].tolist()
+        )
+
     def _interpolate_samples(self, eval_dataset):
         eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
         mini_eval_dataloader_iter = iter(
@@ -43,20 +52,16 @@ class VAE_Trainer(trainer_script.Trainer):
         table = wandb.Table(columns=["Interpolation Ratio", "Text"])
         for i in range(11):
             ratio = i / 10
-            latent_point = start_latent + ratio * latent_diff
-            # need to give bos_token_id even for encoder_decoder models like T5
-            # TODO this may not work for Funnel-VAE
-            generation = self.model.generate(latent=latent_point, bos_token_id=0)
-            table.add_data(ratio, generation)
+            latent = start_latent + ratio * latent_diff
+            table.add_data(ratio, self._text_from_latent(latent))
         wandb.log({"interpolate points": table})
 
     def _random_samples(self):
         table = wandb.Table(columns=["Text"])
-        latent_points = torch.randn(10, self.model.config.latent_size)
+        latent_points = torch.randn(10, self.model.config.latent_size, device=self.model.device)
+        # TODO can I greedy decode these in parallel?
         for i in range(latent_points.size(0)):
-            table.add_data(
-                self.model.generate(latent=latent_points[i], bos_token_id=0)
-            )
+            table.add_data(self._text_from_latent(latent_points[i].view(1, -1)))
         wandb.log({"random points": table})
 
     def _clustering(self, eval_dataset, class_column_name):
@@ -77,11 +82,15 @@ class VAE_Trainer(trainer_script.Trainer):
         - tSNE plots with class-label colouring.
         """
         if is_wandb_available():
+            start_eval = time.time()
             with torch.no_grad():
                 self.model.eval()
                 self._interpolate_samples(eval_dataset)
                 self._random_samples()
                 # TODO add t-SNE clustering with class labels
-
+            generate_time = time.time() - start_eval
         output_metrics = super().evaluate(eval_dataset=eval_dataset)
+        if is_wandb_available():
+            wandb.log({'eval_get_test_loss_time': time.time() - start_eval + generate_time})
+            wandb.log({'eval_generate_time': generate_time})
         return output_metrics

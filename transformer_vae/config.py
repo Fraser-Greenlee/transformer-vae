@@ -78,7 +78,9 @@ class Transformer_VAE_Config(PretrainedConfig):
         self.prepend_eos_token = False  # TODO manually check if adding a set 1st token improves performance
         if padding_input:
             self.transformer.n_positions = set_seq_size
-        self.encoded_seq_size = set_seq_size if encoded_seq_size is None else encoded_seq_size
+            self.encoded_seq_size = 1
+        else:
+            self.encoded_seq_size = set_seq_size if encoded_seq_size is None else encoded_seq_size
         self.additional_latent_models = additional_latent_models
         self.n_previous_latent_codes = n_previous_latent_codes
         self.reg_schedule_k = reg_schedule_k
