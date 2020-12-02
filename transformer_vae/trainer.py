@@ -54,7 +54,7 @@ class VAE_Trainer(trainer_script.Trainer):
             ratio = i / 10
             latent = start_latent + ratio * latent_diff
             table.add_data(ratio, self._text_from_latent(latent))
-        wandb.log({"interpolate points": table})
+        self.log({"interpolate points": table})
 
     def _random_samples(self):
         table = wandb.Table(columns=["Text"])
@@ -62,7 +62,7 @@ class VAE_Trainer(trainer_script.Trainer):
         # TODO can I greedy decode these in parallel?
         for i in range(latent_points.size(0)):
             table.add_data(self._text_from_latent(latent_points[i].view(1, -1)))
-        wandb.log({"random points": table})
+        self.log({"random points": table})
 
     def _clustering(self, eval_dataset, class_column_name):
         if class_column_name is None:
@@ -91,6 +91,6 @@ class VAE_Trainer(trainer_script.Trainer):
             generate_time = time.time() - start_eval
         output_metrics = super().evaluate(eval_dataset=eval_dataset)
         if is_wandb_available():
-            wandb.log({'eval_get_test_loss_time': time.time() - start_eval + generate_time})
-            wandb.log({'eval_generate_time': generate_time})
+            self.log({'eval_get_test_loss_time': time.time() - start_eval + generate_time})
+            self.log({'eval_generate_time': generate_time})
         return output_metrics
