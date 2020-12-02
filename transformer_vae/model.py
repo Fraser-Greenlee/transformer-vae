@@ -152,12 +152,14 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
 
     def __init__(self, config: Transformer_VAE_Config):
         super().__init__(config=config)
+
         if config.transformer.model_type == "t5":
             self.transformer = AutoModelForSeq2SeqLM.from_config(config.transformer)
         elif config.transformer.model_type == "funnel":
             self.transformer = AutoModelForMaskedLM.from_config(config.transformer)
         else:
             raise ValueError(f'Unrecognised model type: "{config.transformer.model_type }"')
+
         self.vae = EncoderDecoderVAE(
             VAE_ENCODER_MODELS[config.encoder_model](
                 self.transformer.config.d_model, self.config.encoded_seq_size, self.config.latent_size
@@ -198,9 +200,9 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
 
     def get_latest_logs(self):
         """
-        Gets latest logs and refreshes the log values.
+            Gets latest logs and refreshes the log values.
 
-        Logs are normalised by the number of training inferences since the last log.
+            Logs are normalised by the number of training inferences since the last log.
         """
         assert self.config.use_extra_logs
         if self._calls_since_last_log < 1:

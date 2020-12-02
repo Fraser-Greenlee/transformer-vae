@@ -32,12 +32,10 @@ logger = logging.getLogger(__name__)
 
 CONFIG = {"t5": T5_VAE_Config, "funnel": Funnel_VAE_Config, "funnel-t5": Funnel_T5_VAE_Config}
 MODEL = {"t5": T5_VAE_Model, "funnel": Funnel_VAE_Model, "funnel-t5": Funnel_T5_VAE_Model}
-DEFAULTS = {
-    "transformer_name": {
-        "t5": "t5-base",
-        "funnel": "funnel-transformer/intermediate",
-        "funnel-t5": "funnel-transformer/intermediate",
-    }
+DEFAULT_TRANSFORMER_MODEL = {
+    "t5": "t5-base",
+    "funnel": "funnel-transformer/intermediate",
+    "funnel-t5": "funnel-transformer/intermediate",
 }
 
 
@@ -104,7 +102,7 @@ class ModelArguments:
     latent_size: int = field(default=1_000, metadata={"help": "The size of the VAE's latent space."})
     set_seq_size: int = field(default=60, metadata={"help": "Set sequence size."})
     encoded_seq_size: int = field(
-        default=math.ceil(60 / 4), metadata={"help": "Sequence size of encoded sequence, needed for Funnel-VAE."}
+        default=None, metadata={"help": "Sequence size of encoded sequence, needed for Funnel-VAE."}
     )
     encoder_model: Optional[str] = field(
         default=None, metadata={"help": "Name of the model that converts hidden states into latent codes."}
@@ -204,7 +202,11 @@ def main():
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
-    model_args.transformer_name = DEFAULTS["transformer_name"][model_args.transformer_type]
+    if model_args.transformer_name is None:
+        model_args.transformer_name = DEFAULT_TRANSFORMER_MODEL[model_args.transformer_type]
+
+    if model_args.encoded_seq_size is None:
+        model_args.encoded_seq_size = model_args.set_seq_size
 
     if (
         os.path.exists(training_args.output_dir)
