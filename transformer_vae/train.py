@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 CONFIG = {"t5": T5_VAE_Config, "funnel": Funnel_VAE_Config, "funnel-t5": Funnel_T5_VAE_Config}
 MODEL = {"t5": T5_VAE_Model, "funnel": Funnel_VAE_Model, "funnel-t5": Funnel_T5_VAE_Model}
-DEFAULT_TRANSFORMER_MODEL = {
+DEFAULT_TRANSFORMER_NAME = {
     "t5": "t5-base",
     "funnel": "funnel-transformer/intermediate",
     "funnel-t5": "funnel-transformer/intermediate",
@@ -203,9 +203,9 @@ def main():
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
     if model_args.transformer_name is None:
-        model_args.transformer_name = DEFAULT_TRANSFORMER_MODEL[model_args.transformer_type]
+        model_args.transformer_name = DEFAULT_TRANSFORMER_NAME[model_args.transformer_type]
 
-    if model_args.encoded_seq_size is None:
+    if model_args.encoded_seq_size is None and 'funnel' not in model_args.transformer_type:
         model_args.encoded_seq_size = model_args.set_seq_size
 
     if (
