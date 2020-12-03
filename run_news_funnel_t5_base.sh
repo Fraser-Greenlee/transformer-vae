@@ -13,7 +13,7 @@ WANDB_PROJECT="transformer-vae-tests" WANDB_WATCH=false TOKENIZERS_PARALLELISM=f
     --latent_size 100 \
     --set_seq_size 45 \
     --logging_steps 100 \
-    --eval_steps 500 \
+    --eval_steps 1 \
     --overwrite_output_dir \
     --save_total_limit 3 \
     --save_steps 1000 \

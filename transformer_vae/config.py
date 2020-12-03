@@ -161,6 +161,8 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
                 assert(self.encoded_seq_size == calc_encoded_seq_size)
         self.transformer_decoder = AutoConfig.from_pretrained(transformer_decoder_name, cache_dir=cache_dir)
         self.transformer_decoder.decoder_start_token_id = decoder_start_token_id
+        if self.padding_input:
+            self.transformer_decoder.n_positions = self.transformer.n_positions
         assertEqual(self.transformer_decoder.model_type, "t5", "Need t5 model type for transformer_decoder.")
         assertEqual(
             self.transformer.d_model,

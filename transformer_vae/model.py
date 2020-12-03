@@ -423,6 +423,7 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
         encoder_outputs=None,
         decoder_input_ids=None,
         latent=None,
+        use_cache=None,
         return_dict=True,
     ):
         assert(return_dict), "Need return_dict=True, using tuple's is not implimented"
@@ -483,9 +484,9 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
             decoder_hidden_states=decoder_outputs.hidden_states,
             decoder_attentions=decoder_outputs.attentions,
             cross_attentions=None,
-            encoder_last_hidden_state=encoder_outputs.last_hidden_state,
-            encoder_hidden_states=encoder_outputs.hidden_states,
-            encoder_attentions=encoder_outputs.attentions,
+            encoder_last_hidden_state=encoder_outputs.last_hidden_state if encoder_outputs else None,
+            encoder_hidden_states=encoder_outputs.hidden_states if encoder_outputs else None,
+            encoder_attentions=encoder_outputs.attentions if encoder_outputs else None,
 
             latnet=vae_outputs.latent,
             reg_loss=vae_outputs.reg_loss,
@@ -507,7 +508,9 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
 
     def __init__(self, config: Funnel_T5_VAE_Config):
         super().__init__(config=config)
-        self.transformer.decoder = AutoModelForSeq2SeqLM.from_config(config.transformer_decoder).decoder
+        t5_model = AutoModelForSeq2SeqLM.from_config(config.transformer_decoder)
+        self.transformer.decoder = t5_model.decoder
+        self.transformer.lm_head = t5_model.lm_head
 
     def _shift_right(self, input_ids):
         decoder_start_token_id = self.config.transformer_decoder.decoder_start_token_id
@@ -538,9 +541,11 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         encoder_outputs=None,
         decoder_input_ids=None,
         latent=None,
+        use_cache=None,
         return_dict=True,
     ):
         assert(return_dict), "Need return_dict=True, using tuple's is not implimented"
+        use_cache = use_cache if use_cache is not None else self.config.use_cache
 
         if input_ids is not None:
             if decoder_input_ids is not None and input_ids.equal(decoder_input_ids) is False:
@@ -568,15 +573,17 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent=latent
         )
 
-        initial_encoding_size = encoder_outputs.hidden_states[self.config.transformer.block_sizes[0]].size()
-
-        upsampled_encoding = upsample(
-            vae_outputs.reconstructed_encoding,
-            stride=2 ** (len(self.config.transformer.block_sizes) - 1),
-            target_len=initial_encoding_size[1],
-            separate_cls=self.config.transformer.separate_cls,
-            truncate_seq=self.config.transformer.truncate_seq,
-        )
+        # TODO allow more options here
+        if self.config.padding_input:
+            upsampled_encoding = upsample(
+                vae_outputs.reconstructed_encoding,
+                stride=2 ** (len(self.config.transformer.block_sizes) - 1),
+                target_len=self.config.transformer_decoder.n_positions,
+                separate_cls=self.config.transformer.separate_cls,
+                truncate_seq=self.config.transformer.truncate_seq,
+            )
+        else:
+            upsampled_encoding = vae_outputs.reconstructed_encoding
 
         # Now using T5 decoder
 
@@ -587,6 +594,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         decoder_outputs = self.transformer.decoder(
             input_ids=decoder_input_ids,
             encoder_hidden_states=upsampled_encoding,
+            use_cache=use_cache,
             return_dict=True
         )
 
@@ -615,9 +623,9 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             decoder_hidden_states=decoder_outputs.hidden_states,
             decoder_attentions=decoder_outputs.attentions,
             cross_attentions=decoder_outputs.cross_attentions,
-            encoder_last_hidden_state=encoder_outputs.last_hidden_state,
-            encoder_hidden_states=encoder_outputs.hidden_states,
-            encoder_attentions=encoder_outputs.attentions,
+            encoder_last_hidden_state=encoder_outputs.last_hidden_state if encoder_outputs else None,
+            encoder_hidden_states=encoder_outputs.hidden_states if encoder_outputs else None,
+            encoder_attentions=encoder_outputs.attentions if encoder_outputs else None,
 
             latnet=vae_outputs.latent,
             reg_loss=vae_outputs.reg_loss,
