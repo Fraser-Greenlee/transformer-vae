@@ -6,14 +6,13 @@ WANDB_PROJECT="transformer-vae-tests" WANDB_WATCH=false TOKENIZERS_PARALLELISM=f
     --evaluation_strategy steps \
     --dataset_name="Fraser/news-category-dataset" \
     --text_column=headline \
-    --per_device_train_batch_size 10 \
-    --gradient_accumulation_steps 3 \
+    --per_device_train_batch_size 75 \
     --n_previous_latent_codes 0 \
     --transformer_type funnel-t5 \
     --latent_size 100 \
     --set_seq_size 45 \
     --logging_steps 100 \
-    --eval_steps 1 \
+    --eval_steps 500 \
     --overwrite_output_dir \
     --save_total_limit 3 \
     --save_steps 1000 \

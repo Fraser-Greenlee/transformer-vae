@@ -64,7 +64,7 @@ class VAE_Trainer(trainer_script.Trainer):
             ratio = i / 10
             latent = start_latent + ratio * latent_diff
             table.add_data(ratio, self._text_from_latent(latent))
-        self.log({"interpolate points": table})
+        wandb.log({"interpolate points": table}, step=self.state.global_step)
 
     def _random_samples(self):
         table = wandb.Table(columns=["Text"])
@@ -72,7 +72,7 @@ class VAE_Trainer(trainer_script.Trainer):
         # TODO can I greedy decode these in parallel?
         for i in range(latent_points.size(0)):
             table.add_data(self._text_from_latent(latent_points[i].view(1, -1)))
-        self.log({"random points": table})
+        wandb.log({"random points": table}, step=self.state.global_step)
 
     def _clustering(self, eval_dataset, class_column_name):
         if class_column_name is None:

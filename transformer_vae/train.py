@@ -112,7 +112,7 @@ class ModelArguments:
     )
     # Arguments used during training
     n_previous_latent_codes: int = field(
-        default=3,
+        default=0,
         metadata={
             "help": "Use N previous batches of latent codes when calculating MMD loss, required when using small batches."
         },
