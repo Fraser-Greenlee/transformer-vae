@@ -57,7 +57,8 @@ class Transformer_VAE_Config(PretrainedConfig):
         encoded_seq_size=None,
         decoder_start_token_id=0,
         additional_latent_models=[],
-        n_previous_latent_codes=3,
+        n_previous_latent_codes=0,
+        mmd_batch_size=None,
         reg_schedule_k=0.0025,
         reg_schedule_b=6.25,
         use_extra_logs=False,
@@ -82,6 +83,7 @@ class Transformer_VAE_Config(PretrainedConfig):
             self.encoded_seq_size = 1
         self.additional_latent_models = additional_latent_models
         self.n_previous_latent_codes = n_previous_latent_codes
+        self.mmd_batch_size = mmd_batch_size
         self.reg_schedule_k = reg_schedule_k
         self.reg_schedule_b = reg_schedule_b
         self.use_extra_logs = use_extra_logs

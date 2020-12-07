@@ -117,6 +117,12 @@ class ModelArguments:
             "help": "Use N previous batches of latent codes when calculating MMD loss, required when using small batches."
         },
     )
+    mmd_batch_size: int = field(
+        default=None,
+        metadata={
+            "help": "Run multuple, smaller batches for MMD-VAE regularisation loss (training batch size must be divisible by the MMD batch size)."
+        },
+    )
     reg_schedule_k: float = field(
         default=0.0025,
         metadata={"help": "Multiplied by global_step in a sigmoid, more gradually increase regulariser loss weight."},
@@ -288,6 +294,7 @@ def main():
             set_seq_size=model_args.set_seq_size,
             encoded_seq_size=model_args.encoded_seq_size,
             n_previous_latent_codes=model_args.n_previous_latent_codes,
+            mmd_batch_size=model_args.mmd_batch_size,
             reg_schedule_k=model_args.reg_schedule_k,
             reg_schedule_b=model_args.reg_schedule_b,
             use_extra_logs=is_wandb_available(),

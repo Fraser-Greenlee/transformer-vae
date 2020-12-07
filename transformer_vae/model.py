@@ -29,11 +29,14 @@ class EncoderDecoderVAE(nn.Module):
 
     batch_size = None
 
-    def __init__(self, encoder, decoder, use_n_previous_latent_codes):
+    def __init__(self, encoder, decoder, use_n_previous_latent_codes=0, smaller_mmd_batch_size=None):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
         self.use_n_previous_latent_codes = use_n_previous_latent_codes
+        self.smaller_mmd_batch_size = smaller_mmd_batch_size
+        if smaller_mmd_batch_size:
+            assert(use_n_previous_latent_codes == 0), "Can't use smaller mmd batch size AND use previous latent codes."
         self.prev_latents = None
         self.prev_latents_index = 0
 
@@ -101,6 +104,18 @@ class EncoderDecoderVAE(nn.Module):
         return self.training and self.use_n_previous_latent_codes > 0
 
     def _regularliser_loss(self, latent):
+        if self.training and self.smaller_mmd_batch_size:
+            batch_size = latent.size(0)
+            if batch_size // self.smaller_mmd_batch_size != batch_size / self.smaller_mmd_batch_size:
+                return self._batch_of_regularliser_loss(latent)
+            all_latents = latent.view(latent.size(0) // self.smaller_mmd_batch_size, self.smaller_mmd_batch_size, latent.size(1))
+            total = torch.tensor(0.0, device=latent.device)
+            for latent_batch in all_latents:
+                total += self._batch_of_regularliser_loss(latent_batch)
+            return total
+        return self._batch_of_regularliser_loss(latent)
+
+    def _batch_of_regularliser_loss(self, latent):
         if self._using_prev_latents():
             combined_latent = self._get_combined_latents(latent)
         else:
@@ -172,6 +187,7 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
                 self.transformer.config,
             ),
             self.config.n_previous_latent_codes,
+            self.config.mmd_batch_size
         )
 
     def resize_token_embeddings(self, *args, **kwargs):
