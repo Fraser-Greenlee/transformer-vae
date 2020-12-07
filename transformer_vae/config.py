@@ -85,6 +85,7 @@ class Transformer_VAE_Config(PretrainedConfig):
         self.reg_schedule_k = reg_schedule_k
         self.reg_schedule_b = reg_schedule_b
         self.use_extra_logs = use_extra_logs
+        self.use_cache = getattr(self.transformer, 'use_cache', False)
 
     def to_dict(self):
         """

@@ -6,8 +6,7 @@ WANDB_PROJECT="transformer-vae-tests" WANDB_WATCH=false TOKENIZERS_PARALLELISM=f
     --evaluation_strategy steps \
     --dataset_name="Fraser/news-category-dataset" \
     --text_column=headline \
-    --per_device_train_batch_size 15 \
-    --gradient_accumulation_steps 2 \
+    --per_device_train_batch_size 1 \
     --n_previous_latent_codes 0 \
     --transformer_type t5 \
     --transformer_name t5-large \

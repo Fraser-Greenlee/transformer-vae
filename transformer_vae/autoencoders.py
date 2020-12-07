@@ -1,7 +1,6 @@
-import pdb
 import torch
 from torch import nn
-from transformers.modeling_t5 import T5LayerFF, T5LayerSelfAttention
+from transformers.models.t5.modeling_t5 import T5LayerFF, T5LayerSelfAttention
 
 
 class LatentEncoder(nn.Module):

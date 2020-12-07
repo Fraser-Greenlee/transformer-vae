@@ -16,9 +16,9 @@ contents = file_to_string(package, "__init__.py")
 __version__ = re.search(r'__version__ = "([.\d]+)"', contents).group(1)
 
 install_requires = [
-    "datasets==1.1.2",
-    "transformers==3.5.1",
-    "wandb>=0.10.0",
+    "datasets==1.1.3",
+    "transformers==4.0.0",
+    "wandb>=0.10.12",
     "torch==1.7.0",
 ]
 

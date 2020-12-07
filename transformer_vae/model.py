@@ -8,7 +8,7 @@ from typing import Dict, Any
 from transformers.modeling_utils import PreTrainedModel
 from transformers import AutoModelForSeq2SeqLM, AutoModelForMaskedLM
 from transformers.modeling_outputs import BaseModelOutput
-from transformers.modeling_funnel import upsample
+from transformers.models.funnel.modeling_funnel import upsample
 
 from transformer_vae.autoencoders import VAE_ENCODER_MODELS, VAE_DECODER_MODELS
 from transformer_vae.model_outputs import BaseVAE_Output, BaseTransformerVAE_Output
