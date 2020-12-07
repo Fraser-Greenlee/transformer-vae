@@ -2,6 +2,7 @@
     Base transformer-VAE model.
 """
 import logging
+import pdb
 import torch
 from torch import nn
 from typing import Dict, Any
@@ -454,7 +455,7 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
             input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent=latent
         )
 
-        initial_encoding_size = encoder_outputs.hidden_states[self.config.transformer.block_sizes[0]].size()
+        initial_encoding_size = (vae_outputs.reconstructed_encoding.size(0), self.config.transformer.n_positions, self.config.transformer.d_model)
 
         decoder_outputs = self.transformer.funnel.decoder(
             final_hidden=vae_outputs.reconstructed_encoding,
