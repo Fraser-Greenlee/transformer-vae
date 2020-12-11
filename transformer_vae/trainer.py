@@ -60,10 +60,12 @@ class VAE_Trainer(trainer_script.Trainer):
         latent_diff = end_latent - start_latent
 
         table = wandb.Table(columns=["Interpolation Ratio", "Text"])
+        table.add_data(-10, self.tokenizer.decode(samples['input_ids'][0]))
         for i in range(11):
             ratio = i / 10
             latent = start_latent + ratio * latent_diff
             table.add_data(ratio, self._text_from_latent(latent))
+        table.add_data(10, self.tokenizer.decode(samples['input_ids'][1]))
         wandb.log({"interpolate points": table}, step=self.state.global_step)
 
     def _random_samples(self):
