@@ -8,10 +8,10 @@ activate:
 	# source t5_vae_env/bin/activate
 
 test:
-	WANDB_DISABLED=true python -m pytest -s -v ./tests/
+	python -m pytest -s -v ./tests/
 
 test-one-case:
-	# WANDB_DISABLED=true python -m pytest -s -v ./tests/test_train.py::TrainTests::test_train_txt
+	# python -m pytest -s -v ./tests/test_train.py::TrainTests::test_train_txt
 
 install-dev:
 	pip uninstall -y transformer_vae
