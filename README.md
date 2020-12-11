@@ -1,12 +1,14 @@
-# T5-VAE
+# Transformer-VAE (WIP)
 
 ![Diagram of the a State Autoencoder](t5-vae.png)
 
-T5-VAE learns smooth latent spaces of any set of discrete sequence without hard-coding rules in the decoder.
+Transformer-VAE's learn smooth latent spaces of discretes sequence without hard-coding rules in their decoders.
 
 This can be used for program synthesis, drug discovery, music generation and much more!
 
 To see how it works checkout [this blog post](https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html).
+
+This repo is in active development but I should be coming out with a release soon.
 
 ## Install
 
@@ -25,7 +27,7 @@ python -m transformer_vae \
     --do_train \
     --huggingface_dataset=poems \
 ```
-Or you can import T5-VAE to use as a package much like a Huggingface model.
+Or you can import Transformer-VAE to use as a package much like a Huggingface model.
 ```python
 from transformer_vae import T5_VAE_Model
 
