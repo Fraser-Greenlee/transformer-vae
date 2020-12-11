@@ -380,7 +380,7 @@ def main():
             result = dict()
             for metric in all_metrics:
                 result = {**result, **metric.compute(predictions=p.predictions, references=p.label_ids)}
-            assert(len(result) >= len(all_metrics)), "Not all metrics are returning results."
+            assert(len(result) >= len(all_metrics)), f"Not all metrics are returning results. result: {result}; all_metrics: {all_metrics} "
             return result
 
     # Initialize our Trainer
