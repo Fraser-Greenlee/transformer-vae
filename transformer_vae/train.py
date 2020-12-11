@@ -3,13 +3,11 @@
 """
 import logging
 import os
-import math
 import sys
 from dataclasses import dataclass, field
 from typing import Optional
 
 from datasets import load_dataset
-
 import transformers
 from transformers import (
     AutoTokenizer,
@@ -18,12 +16,13 @@ from transformers import (
     set_seed,
 )
 from transformers.integrations import is_wandb_available
-from transformers.trainer_utils import is_main_process
+from transformers.trainer_utils import is_main_process, EvalPrediction
 
 from transformer_vae.trainer import VAE_Trainer
 from transformer_vae.data_collator import DataCollatorForLanguageAutoencoding
 from transformer_vae.trainer_callback import TellModelGlobalStep
 from transformer_vae.model import T5_VAE_Model, Funnel_VAE_Model, Funnel_T5_VAE_Model
+from transformer_vae.metrics import METRICS_MAP
 from transformer_vae.config import T5_VAE_Config, Funnel_VAE_Config, Funnel_T5_VAE_Config
 
 
@@ -54,6 +53,12 @@ class VAE_TrainingArguments(TrainingArguments):
         default=20,
         metadata={
             "help": "The maximum length of sequences to be generated from latent points during evaluation."
+        },
+    )
+    metrics: str = field(
+        default=None,
+        metadata={
+            "help": f"Use extra metrics during evaluation, use multiple by seperating them with commas. Options: {','.join(METRICS_MAP.keys())}"
         },
     )
 
@@ -365,6 +370,19 @@ def main():
     # Data collator
     data_collator = DataCollatorForLanguageAutoencoding(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
 
+    compute_metrics = None
+    if training_args.metrics:
+        all_metrics = []
+        for metric in training_args.metrics.strip().split(','):
+            all_metrics.append(METRICS_MAP[metric]())
+
+        def compute_metrics(p: EvalPrediction):
+            result = dict()
+            for metric in all_metrics:
+                result = {**result, **metric.compute(predictions=p.predictions, references=p.label_ids)}
+            assert(len(result) >= len(all_metrics)), "Not all metrics are returning results."
+            return result
+
     # Initialize our Trainer
     trainer = VAE_Trainer(
         model=model,
@@ -373,6 +391,7 @@ def main():
         eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
+        compute_metrics=compute_metrics,
         callbacks=[TellModelGlobalStep],
     )
 

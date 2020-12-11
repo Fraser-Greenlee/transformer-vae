@@ -1,6 +1,7 @@
 import torch
+from torch import nn
 import logging
-from typing import Optional, Dict
+from typing import Optional, Dict, List, Tuple, Union, Any
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.sampler import RandomSampler
 from torch.utils.data.dataloader import DataLoader
@@ -106,3 +107,81 @@ class VAE_Trainer(trainer_script.Trainer):
             self.log({'eval_get_test_loss_time': time.time() - start_eval + generate_time})
             self.log({'eval_generate_time': generate_time})
         return output_metrics
+
+    def prediction_step(
+        self,
+        model: nn.Module,
+        inputs: Dict[str, Union[torch.Tensor, Any]],
+        prediction_loss_only: bool,
+        ignore_keys: Optional[List[str]] = None,
+    ) -> Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]:
+        # FIX ISSUE https://github.com/huggingface/transformers/issues/9057
+        """
+        Perform an evaluation step on :obj:`model` using obj:`inputs`.
+
+        Subclass and override to inject custom behavior.
+
+        Args:
+            model (:obj:`nn.Module`):
+                The model to evaluate.
+            inputs (:obj:`Dict[str, Union[torch.Tensor, Any]]`):
+                The inputs and targets of the model.
+
+                The dictionary will be unpacked before being fed to the model. Most models expect the targets under the
+                argument :obj:`labels`. Check your model's documentation for all accepted arguments.
+            prediction_loss_only (:obj:`bool`):
+                Whether or not to return the loss only.
+            ignore_keys (:obj:`Lst[str]`, `optional`):
+                A list of keys in the output of your model (if it is a dictionary) that should be ignored when
+                gathering predictions.
+
+        Return:
+            Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]: A tuple with the loss, logits and
+            labels (each being optional).
+        """
+        has_labels = all(inputs.get(k) is not None for k in self.label_names)
+        inputs = self._prepare_inputs(inputs)
+        if ignore_keys is None:
+            if hasattr(self.model, "config"):
+                ignore_keys = getattr(self.model.config, "keys_to_ignore_at_inference", [])
+            else:
+                ignore_keys = []
+
+        with torch.no_grad():
+            if self.args.fp16 and trainer_script._use_native_amp:
+                with trainer_script.autocast():
+                    outputs = model(**inputs)
+            else:
+                outputs = model(**inputs)
+            if has_labels:
+                if isinstance(outputs, dict):
+                    loss = outputs["loss"].mean().detach()
+                    logits = (outputs.get('logits', None),)
+                else:
+                    loss = outputs[0].mean().detach()
+                    logits = outputs[1:]
+            else:
+                loss = None
+                if isinstance(outputs, dict):
+                    logits = (outputs.get('logits', None),)
+                else:
+                    logits = outputs
+            # TODO: this needs to be fixed and made cleaner later.
+            if self.args.past_index >= 0:
+                self._past = outputs[self.args.past_index if has_labels else self.args.past_index - 1]
+
+        if prediction_loss_only:
+            return (loss, None, None)
+
+        logits = trainer_script.nested_detach(logits)
+        if len(logits) == 1:
+            logits = logits[0]
+
+        if has_labels:
+            labels = trainer_script.nested_detach(tuple(inputs.get(name) for name in self.label_names))
+            if len(labels) == 1:
+                labels = labels[0]
+        else:
+            labels = None
+
+        return (loss, logits, labels)
