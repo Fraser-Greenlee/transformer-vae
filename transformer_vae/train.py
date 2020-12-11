@@ -23,6 +23,7 @@ from transformer_vae.data_collator import DataCollatorForLanguageAutoencoding
 from transformer_vae.trainer_callback import TellModelGlobalStep
 from transformer_vae.model import T5_VAE_Model, Funnel_VAE_Model, Funnel_T5_VAE_Model
 from transformer_vae.metrics import METRICS_MAP
+from transformer_vae.sequence_checks import SEQ_CHECKS
 from transformer_vae.config import T5_VAE_Config, Funnel_VAE_Config, Funnel_T5_VAE_Config
 
 
@@ -59,6 +60,18 @@ class VAE_TrainingArguments(TrainingArguments):
         default=None,
         metadata={
             "help": f"Use extra metrics during evaluation, use multiple by seperating them with commas. Options: {','.join(METRICS_MAP.keys())}"
+        },
+    )
+    n_random_samples: int = field(
+        default=10,
+        metadata={
+            "help": "Number of random latent codes to sample from during evaluation."
+        },
+    )
+    seq_check: str = field(
+        default=None,
+        metadata={
+            "help": f"Run check on sequences from random latent codes. Options: {', '.join(SEQ_CHECKS.keys())}"
         },
     )
 
@@ -380,7 +393,7 @@ def main():
             result = dict()
             for metric in all_metrics:
                 result = {**result, **metric.compute(predictions=p.predictions, references=p.label_ids)}
-            assert(len(result) >= len(all_metrics)), f"Not all metrics are returning results. result: {result}; all_metrics: {all_metrics} "
+            assert(len(result) >= len(all_metrics)), f"Not all metrics are returning results. result: {result}; all_metrics: {all_metrics}"
             return result
 
     # Initialize our Trainer

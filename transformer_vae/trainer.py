@@ -10,6 +10,7 @@ import time
 from datasets.features import ClassLabel
 from transformers import trainer as trainer_script
 from transformers.integrations import WandbCallback, is_wandb_available, TensorBoardCallback, CometCallback, AzureMLCallback, MLflowCallback
+from transformer_vae.sequence_checks import SEQ_CHECKS
 from transformer_vae.trainer_callback import WandbCallbackUseModelLogs
 
 
@@ -39,7 +40,7 @@ class VAE_Trainer(trainer_script.Trainer):
     def _text_from_latent(self, latent):
         # TODO can I do many latents in parallel?
         # TODO this may not work for Funnel-VAE
-        generation = self.model.generate(latent=latent, bos_token_id=0, min_length=self.args.generate_max_len, max_length=self.args.generate_max_len)
+        generation = self.model.generate(latent=latent, bos_token_id=0, min_length=self.args.generate_min_len, max_length=self.args.generate_max_len)
         return self.tokenizer.decode(
             generation[0].tolist()
         )
@@ -70,11 +71,13 @@ class VAE_Trainer(trainer_script.Trainer):
         wandb.log({"interpolate points": table}, step=self.state.global_step)
 
     def _random_samples(self):
-        table = wandb.Table(columns=["Text"])
-        latent_points = torch.randn(10, self.model.config.latent_size, device=self.model.device)
+        table = wandb.Table(columns=["Text", "Valid", "IsMaxLen"])
+        latent_points = torch.randn(self.args.n_random_samples, self.model.config.latent_size, device=self.model.device)
         # TODO can I greedy decode these in parallel?
         for i in range(latent_points.size(0)):
-            table.add_data(self._text_from_latent(latent_points[i].view(1, -1)))
+            text = self._text_from_latent(latent_points[i].view(1, -1))
+            valid = None if not self.args.seq_check else SEQ_CHECKS[self.args.seq_check](text)
+            table.add_data(text, valid, len(text) == self.args.generate_max_len)
         wandb.log({"random points": table}, step=self.state.global_step)
 
     def _clustering(self, eval_dataset, class_column_name):
