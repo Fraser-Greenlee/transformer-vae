@@ -1,5 +1,5 @@
 # Originally ran on 16GiB GPU
-WANDB_PROJECT="transformer-vae-tests" WANDB_WATCH=false python -c "from transformer_vae.train import main; main()" \
+WANDB_PROJECT="transformer-vae-tests" python -c "from transformer_vae.train import main; main()" \
     --output_dir=output \
     --run_name="news funnel-t5" \
     --do_train \
