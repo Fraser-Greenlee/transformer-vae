@@ -2,7 +2,6 @@
     Base transformer-VAE model.
 """
 import logging
-import pdb
 import torch
 from torch import nn
 from typing import Dict, Any
@@ -29,7 +28,7 @@ class EncoderDecoderVAE(nn.Module):
 
     batch_size = None
 
-    def __init__(self, encoder, decoder, use_n_previous_latent_codes=0, smaller_mmd_batch_size=None):
+    def __init__(self, encoder, decoder, use_n_previous_latent_codes=0, smaller_mmd_batch_size=None, use_reg_loss=True):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
@@ -39,6 +38,7 @@ class EncoderDecoderVAE(nn.Module):
             assert(use_n_previous_latent_codes == 0), "Can't use smaller mmd batch size AND use previous latent codes."
         self.prev_latents = None
         self.prev_latents_index = 0
+        self.use_reg_loss = use_reg_loss
 
     def _model_forward(self, encoding, latent=None):
         if latent is None:
@@ -53,7 +53,9 @@ class EncoderDecoderVAE(nn.Module):
         if input_encoding is None and latent is None:
             raise ValueError("Both `input_encoding` and `latent` sent to VAE are Null.")
         recon_encoding, latent = self._model_forward(input_encoding, latent=latent)
-        reg_loss = self._regularliser_loss(latent)
+        reg_loss = torch.tensor(0, device=latent.device)
+        if self.use_reg_loss:
+            reg_loss = self._regularliser_loss(latent)
         return BaseVAE_Output(latent=latent, reconstructed_encoding=recon_encoding, reg_loss=reg_loss)
 
     @staticmethod
@@ -187,7 +189,8 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
                 self.transformer.config,
             ),
             self.config.n_previous_latent_codes,
-            self.config.mmd_batch_size
+            self.config.mmd_batch_size,
+            self.config.use_reg_loss
         )
 
     def resize_token_embeddings(self, *args, **kwargs):
@@ -204,8 +207,8 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
         return self.transformer._init_weights(module)
 
     def _regulariser_loss_weight_schedule(self):
-        if self.global_step is None:
-            return 1
+        if self.global_step is None or not self.config.use_reg_loss:
+            return 0
         return torch.sigmoid(
             torch.tensor(self.global_step * self.config.reg_schedule_k - self.config.reg_schedule_b)
         ).item()
@@ -364,7 +367,6 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
             encoder_last_hidden_state=encoder_outputs.last_hidden_state if encoder_outputs else None,
             encoder_hidden_states=encoder_outputs.hidden_states if encoder_outputs else None,
             encoder_attentions=encoder_outputs.attentions if encoder_outputs else None,
-
             latnet=vae_outputs.latent,
             reg_loss=vae_outputs.reg_loss,
             decoder_ce=decoder_ce,

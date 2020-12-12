@@ -80,12 +80,16 @@ class VAE_Trainer(trainer_script.Trainer):
             table.add_data(text, valid, len(text) == self.args.generate_max_len)
         wandb.log({"random points": table}, step=self.state.global_step)
 
-    def _clustering(self, eval_dataset, class_column_name):
+    def _t_sne(self, eval_dataset, class_column_name):
+        # TODO plot t-SNE with points coloured for each category
         if class_column_name is None:
             for key, val in eval_dataset.features['category_num'].items():
                 if type(val) is ClassLabel:
                     class_column_name = key
-        # TODO plot t-SNE with points coloured for each category
+
+    def _svm_classification(self, eval_dataset, class_column_name):
+        # TODO train an SVM model on latent codes and try classify the eval_dataset using it
+        pass
 
     def evaluate(self, eval_dataset: Optional[Dataset] = None, class_column_name=None) -> Dict[str, float]:
         """

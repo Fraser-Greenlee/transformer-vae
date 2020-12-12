@@ -27,6 +27,15 @@ class LatentEncoder1stToken(nn.Module):
         return self.tanh(self.token_to_latent(encoding[:, 0, :]))
 
 
+class LatentEncoderFull1stToken(nn.Module):
+    def __init__(self, dim_m, _set_seq_size, latent_size):
+        super().__init__()
+        assert(dim_m == latent_size)
+
+    def forward(self, encoding) -> torch.Tensor:
+        return encoding[:, 0, :]
+
+
 class LatentEncoderAttention(LatentEncoder):
     """
     Uses attention on token-encodings before compressing them.
@@ -91,6 +100,17 @@ class LatentDecoderSingleToken(nn.Module):
         return self.norm(self.grow_token(latent).view(batch_size, -1, self.dim_m))
 
 
+class LatentDecoderFullSingleToken(nn.Module):
+    def __init__(self, dim_m, set_seq_size, latent_size, config):
+        assert(dim_m == latent_size)
+        self.dim_m = dim_m
+        super().__init__()
+
+    def forward(self, latent) -> torch.Tensor:
+        batch_size = latent.size(0)
+        return latent.view(batch_size, -1, self.dim_m)
+
+
 class LatentDecoderMatchEncoder(LatentDecoder):
     """
     Just do one jump from latent -> 100x sequence.
@@ -129,11 +149,13 @@ class LatentDecoderSelfAttnGrow(LatentDecoder):
 VAE_ENCODER_MODELS = {
     None: LatentEncoder,
     "1st-token": LatentEncoder1stToken,
+    "full-1st-token": LatentEncoderFull1stToken,
     "basic-attention": LatentEncoderAttention,
 }
 VAE_DECODER_MODELS = {
     None: LatentDecoder,
     "single-token": LatentDecoderSingleToken,
+    "full-single-token": LatentDecoderFullSingleToken,
     "match-encoder": LatentDecoderMatchEncoder,
     "attention": LatentDecoderSelfAttnGrow,
 }

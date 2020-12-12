@@ -74,6 +74,12 @@ class VAE_TrainingArguments(TrainingArguments):
             "help": f"Run check on sequences from random latent codes. Options: {', '.join(SEQ_CHECKS.keys())}"
         },
     )
+    classification_column: str = field(
+        default=None,
+        metadata={
+            "help": "Test SVM classification using latent codes."
+        },
+    )
 
 
 @dataclass
@@ -139,6 +145,12 @@ class ModelArguments:
         default=None,
         metadata={
             "help": "Run multuple, smaller batches for MMD-VAE regularisation loss (training batch size must be divisible by the MMD batch size)."
+        },
+    )
+    dont_use_reg_loss: bool = field(
+        default=False,
+        metadata={
+            "help": "Toggle regularisation loss, without regularisation your training an autoencoder rather than a VAE."
         },
     )
     reg_schedule_k: float = field(
@@ -313,6 +325,7 @@ def main():
             encoded_seq_size=model_args.encoded_seq_size,
             n_previous_latent_codes=model_args.n_previous_latent_codes,
             mmd_batch_size=model_args.mmd_batch_size,
+            use_reg_loss=(not model_args.dont_use_reg_loss),
             reg_schedule_k=model_args.reg_schedule_k,
             reg_schedule_b=model_args.reg_schedule_b,
             use_extra_logs=is_wandb_available(),

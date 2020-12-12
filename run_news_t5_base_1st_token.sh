@@ -10,6 +10,7 @@ WANDB_PROJECT="transformer-vae-tests" TOKENIZERS_PARALLELISM=false python -c "fr
     --n_previous_latent_codes 0 \
     --transformer_type t5 \
     --encoder_model 1st-token \
+    --decoder_model single-token \
     --latent_size 100 \
     --set_seq_size 45 \
     --logging_steps 100 \
