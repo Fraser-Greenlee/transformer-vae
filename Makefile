@@ -8,6 +8,7 @@ activate:
 	# source t5_vae_env/bin/activate
 
 test:
+	black --check -l 120 -t py37 .
 	python -m pytest -s -v ./tests/
 
 test-one-case:
