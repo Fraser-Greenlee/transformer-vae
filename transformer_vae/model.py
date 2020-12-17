@@ -380,6 +380,9 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
 
 
 class Funnel_VAE_Model_Base(Transformer_VAE_Base_Model):
+    def get_input_embeddings(self):
+        return self.transformer.funnel.embeddings.word_embeddings
+
     def _get_encoder_outputs(
         self,
         input_ids=None,
@@ -440,9 +443,6 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
     Its decoder is autoregressive making it natually effective at generating sequences.
     """
     config_class = Funnel_VAE_Config
-
-    def get_input_embeddings(self):
-        return self.transformer.embeddings.word_embeddings
 
     def forward(
         self,
