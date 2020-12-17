@@ -15,9 +15,6 @@ logger = logging.getLogger()
 class TrainTests(TestCasePlus):
 
     def test_train_txt(self):
-        """
-        Does a test training run and checks it works.
-        """
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
 
@@ -50,9 +47,6 @@ class TrainTests(TestCasePlus):
             self.assertAlmostEqual(result["epoch"], 2.0)
 
     def test_train_csv(self):
-        """
-        Does a test training run and checks it works.
-        """
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
 
@@ -85,9 +79,6 @@ class TrainTests(TestCasePlus):
             self.assertAlmostEqual(result["epoch"], 2.0)
 
     def test_train_json(self):
-        """
-        Does a test training run and checks it works.
-        """
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
 
@@ -120,9 +111,6 @@ class TrainTests(TestCasePlus):
             self.assertAlmostEqual(result["epoch"], 2.0)
 
     def test_train_funnel(self):
-        """
-        Does a test training run and checks it works.
-        """
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
 
@@ -157,9 +145,6 @@ class TrainTests(TestCasePlus):
             self.assertAlmostEqual(result["epoch"], 2.0)
 
     def test_train_funnel_t5(self):
-        """
-        Does a test training run and checks it works.
-        """
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
 
@@ -195,9 +180,6 @@ class TrainTests(TestCasePlus):
             self.assertAlmostEqual(result["epoch"], 2.0)
 
     def test_train_1st_token(self):
-        """
-        Does a test training run and checks it works.
-        """
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
 
@@ -233,9 +215,6 @@ class TrainTests(TestCasePlus):
             self.assertAlmostEqual(result["epoch"], 2.0)
 
     def test_train_mini_mmd_batch_size(self):
-        """
-        Does a test training run and checks it works.
-        """
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
 
@@ -270,9 +249,6 @@ class TrainTests(TestCasePlus):
             self.assertAlmostEqual(result["epoch"], 2.0)
 
     def test_train_metrics(self):
-        """
-        Does a test training run and checks it works.
-        """
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
 
@@ -306,9 +282,6 @@ class TrainTests(TestCasePlus):
             self.assertAlmostEqual(result["epoch"], 2.0)
 
     def test_train_seq_check(self):
-        """
-        Does a test training run and checks it works.
-        """
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
 
@@ -342,9 +315,6 @@ class TrainTests(TestCasePlus):
             self.assertAlmostEqual(result["epoch"], 2.0)
 
     def test_train_non_vae(self):
-        """
-        Does a test training run and checks it works.
-        """
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
 
@@ -379,3 +349,37 @@ class TrainTests(TestCasePlus):
         with patch.object(sys, "argv", testargs):
             result = main()
             self.assertAlmostEqual(result["epoch"], 2.0)
+
+    def test_train_unsupervised_classification(self):
+        stream_handler = logging.StreamHandler(sys.stdout)
+        logger.addHandler(stream_handler)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        testargs = f"""
+            train.py
+            --dataset_name=Fraser/news-category-dataset
+            --text_column=headline
+            --classification_column=category_num
+            --do_eval
+            --per_device_train_batch_size 2
+            --per_device_eval_batch_size 2
+            --max_validation_size 100
+            --eval_steps 4
+            --set_seq_size 4
+            --latent_size 2
+            --transformer_name t5-small
+            --output_dir {tmp_dir}
+            --overwrite_output_dir
+            """.split()
+
+        if torch.cuda.device_count() > 1:
+            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
+            return
+
+        if torch_device != "cuda":
+            testargs.append("--no_cuda")
+
+        with patch.object(sys, "argv", testargs):
+            result = main()
+            self.assertGreater(result["eval_loss"], 0.0)
+            self.assertNotIn("epoch", result)

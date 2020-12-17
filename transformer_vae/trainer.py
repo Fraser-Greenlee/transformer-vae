@@ -5,13 +5,16 @@ from typing import Optional, Dict, List, Tuple, Union, Any
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.sampler import RandomSampler
 from torch.utils.data.dataloader import DataLoader
+import inspect
 import time
 
-from datasets.features import ClassLabel
+import datasets
 from transformers import trainer as trainer_script
 from transformers.integrations import WandbCallback, is_wandb_available, TensorBoardCallback, CometCallback, AzureMLCallback, MLflowCallback
+
 from transformer_vae.sequence_checks import SEQ_CHECKS
 from transformer_vae.trainer_callback import WandbCallbackUseModelLogs
+from transformer_vae.sklearn import train_svm
 
 
 logger = logging.getLogger(__name__)
@@ -19,8 +22,8 @@ logger = logging.getLogger(__name__)
 
 if WandbCallback in trainer_script.DEFAULT_CALLBACKS:
     # Allow tracking extra training losses via the model's `get_latest_logs` method
-    trainer_script.DEFAULT_CALLBACKS.remove(WandbCallback)
-    trainer_script.DEFAULT_CALLBACKS.append(WandbCallbackUseModelLogs)
+    trainer_script.DEFAULT_CALLBACKS.remove(WandbCallback)  # type: ignore
+    trainer_script.DEFAULT_CALLBACKS.append(WandbCallbackUseModelLogs)  # type: ignore
     import wandb
 else:
     logger.warn("Not using Weights and Biasis, this will give you incomplete logs.")
@@ -37,6 +40,12 @@ for logger_integration in NOT_ALLOWED_LOGGERS:
 
 
 class VAE_Trainer(trainer_script.Trainer):
+    def __init__(self, args = None, **kwargs):
+        if args:
+            self.num_classes = args.num_classes
+            self.has_class_label = self.num_classes is not None
+        super().__init__(args=args, **kwargs)
+
     def _text_from_latent(self, latent):
         # TODO can I do many latents in parallel?
         # TODO this may not work for Funnel-VAE
@@ -46,7 +55,6 @@ class VAE_Trainer(trainer_script.Trainer):
         )
 
     def _interpolate_samples(self, eval_dataset):
-        eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
         mini_eval_dataloader_iter = iter(
             DataLoader(
                 eval_dataset,
@@ -57,7 +65,7 @@ class VAE_Trainer(trainer_script.Trainer):
         )
 
         samples = self._prepare_inputs(next(mini_eval_dataloader_iter))
-        latents = self.model(**samples).latnet
+        latents = self.model(**samples).latent
         start_latent, end_latent = latents[0].view(1, -1), latents[1].view(1, -1)
         latent_diff = end_latent - start_latent
 
@@ -80,18 +88,48 @@ class VAE_Trainer(trainer_script.Trainer):
             table.add_data(text, valid, len(text) == self.args.generate_max_len)
         wandb.log({"random points": table}, step=self.state.global_step)
 
-    def _t_sne(self, eval_dataset, class_column_name):
-        # TODO plot t-SNE with points coloured for each category
-        if class_column_name is None:
-            for key, val in eval_dataset.features['category_num'].items():
-                if type(val) is ClassLabel:
-                    class_column_name = key
+    def _latent_with_class(self, eval_dataset):
+        dataloader = self.get_eval_dataloader(eval_dataset)
+        latents_with_class = []
+        for inputs in dataloader:
+            if self.has_class_label:
+                class_label = inputs.pop('class_label')
 
-    def _svm_classification(self, eval_dataset, class_column_name):
+            outputs = self.model(**inputs)
+
+            row = [outputs.get('latent').tolist()]
+            if self.has_class_label:
+                row.append(class_label.tolist())  # type: ignore
+
+            latents_with_class.append(row)
+        return latents_with_class
+
+    def _svm_classification(self, latents_with_class):
         # TODO train an SVM model on latent codes and try classify the eval_dataset using it
+        accuracy_log = train_svm(latents_with_class)
+        wandb.log(accuracy_log, step=self.state.global_step)
+
+    def _t_sne(self, latents_with_class):
+        # TODO use wandb.plot
+        ''' sample code
+        table = wandb.Table(columns=["x", "y", "class"])
+        points = t_sne(latents_with_class)
+        for point in points:
+            table.add_data(point.x, point.y, point.class)
+        wandb.log({"my_custom_id" : wandb.plot.scatter(table, "x", "y", "class")})
+        '''
         pass
 
-    def evaluate(self, eval_dataset: Optional[Dataset] = None, class_column_name=None) -> Dict[str, float]:
+    def _evaluate_latent_samples(self, eval_dataset=None):
+        eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
+        self._interpolate_samples(eval_dataset)
+        self._random_samples()
+        latents_with_class = self._latent_with_class(eval_dataset)
+        if self.has_class_label:
+            self._svm_classification(latents_with_class)
+        self._t_sne(latents_with_class)
+
+    def evaluate(self, eval_dataset: Optional[Dataset] = None) -> Dict[str, float]:
         """
         Run evaluation and returns metrics.
 
@@ -105,14 +143,12 @@ class VAE_Trainer(trainer_script.Trainer):
             start_eval = time.time()
             with torch.no_grad():
                 self.model.eval()
-                self._interpolate_samples(eval_dataset)
-                self._random_samples()
-                # TODO add t-SNE clustering with class labels
+                self._evaluate_latent_samples(eval_dataset=eval_dataset)
             generate_time = time.time() - start_eval
         output_metrics = super().evaluate(eval_dataset=eval_dataset)
         if is_wandb_available():
-            self.log({'eval_get_test_loss_time': time.time() - start_eval + generate_time})
-            self.log({'eval_generate_time': generate_time})
+            self.log({'eval_get_test_loss_time': time.time() - start_eval + generate_time})  # type: ignore
+            self.log({'eval_generate_time': generate_time})  # type: ignore
         return output_metrics
 
     def prediction_step(
@@ -160,6 +196,7 @@ class VAE_Trainer(trainer_script.Trainer):
                     outputs = model(**inputs)
             else:
                 outputs = model(**inputs)
+
             if has_labels:
                 if isinstance(outputs, dict):
                     loss = outputs["loss"].mean().detach()
@@ -173,9 +210,6 @@ class VAE_Trainer(trainer_script.Trainer):
                     logits = (outputs.get('logits', None),)
                 else:
                     logits = outputs
-            # TODO: this needs to be fixed and made cleaner later.
-            if self.args.past_index >= 0:
-                self._past = outputs[self.args.past_index if has_labels else self.args.past_index - 1]
 
         if prediction_loss_only:
             return (loss, None, None)

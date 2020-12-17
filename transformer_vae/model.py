@@ -166,7 +166,7 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
         "reg_loss_w": 0,
         "reg_loss": 0,
     }
-    _last_logs = {}
+    _last_logs: Dict[str, float] = {}
 
     def __init__(self, config: Transformer_VAE_Config):
         super().__init__(config=config)
@@ -257,6 +257,7 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
         decoder_input_ids=None,
         latent=None,
         return_dict=True,
+        class_label=None,
     ):
         raise NotImplementedError()
 
@@ -304,6 +305,7 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
         latent=None,
         use_cache=None,
         return_dict=True,
+        class_label=None,
     ):
         assert(return_dict), "Need return_dict=True, using tuple's is not implimented"
         use_cache = use_cache if use_cache is not None else self.config.use_cache
@@ -367,7 +369,7 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
             encoder_last_hidden_state=encoder_outputs.last_hidden_state if encoder_outputs else None,
             encoder_hidden_states=encoder_outputs.hidden_states if encoder_outputs else None,
             encoder_attentions=encoder_outputs.attentions if encoder_outputs else None,
-            latnet=vae_outputs.latent,
+            latent=vae_outputs.latent,
             reg_loss=vae_outputs.reg_loss,
             decoder_ce=decoder_ce,
         )
@@ -383,6 +385,7 @@ class Funnel_VAE_Model_Base(Transformer_VAE_Base_Model):
         output_attentions=None,
         output_hidden_states=None,
         return_dict=True,
+        class_label=None,
     ):
         funnel = self.transformer.funnel
 
@@ -444,6 +447,7 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
         latent=None,
         use_cache=None,
         return_dict=True,
+        class_label=None,
     ):
         assert(return_dict), "Need return_dict=True, using tuple's is not implimented"
 
@@ -507,7 +511,7 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
             encoder_hidden_states=encoder_outputs.hidden_states if encoder_outputs else None,
             encoder_attentions=encoder_outputs.attentions if encoder_outputs else None,
 
-            latnet=vae_outputs.latent,
+            latent=vae_outputs.latent,
             reg_loss=vae_outputs.reg_loss,
             decoder_ce=decoder_ce,
         )
@@ -562,6 +566,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         latent=None,
         use_cache=None,
         return_dict=True,
+        class_label=None,
     ):
         assert(return_dict), "Need return_dict=True, using tuple's is not implimented"
         use_cache = use_cache if use_cache is not None else self.config.use_cache
@@ -646,7 +651,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             encoder_hidden_states=encoder_outputs.hidden_states if encoder_outputs else None,
             encoder_attentions=encoder_outputs.attentions if encoder_outputs else None,
 
-            latnet=vae_outputs.latent,
+            latent=vae_outputs.latent,
             reg_loss=vae_outputs.reg_loss,
             decoder_ce=decoder_ce,
         )

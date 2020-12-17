@@ -21,7 +21,7 @@ class BaseVAE_Output(ModelOutput):
 
     latent: torch.FloatTensor = None
     reconstructed_encoding: torch.FloatTensor = None
-    reg_loss: torch.FloatTensor = None
+    reg_loss: Optional[torch.FloatTensor] = None
 
 
 @dataclass
@@ -34,7 +34,7 @@ class BaseTransformerVAE_Output(ModelOutput):
             Language modeling loss.
         reconstructed_encoding (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, hidden_size)`):
             Reconstructed hidden states originally from the last layer of the encoder.
-        latnet (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, latent_size)`):
+        latent (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, latent_size)`):
             Latent codes representing encoded sequences.
         reg_loss (:obj:`torch.FloatTensor` of shape :obj:`(batch_size)`):
             MMD-VAE regularisation loss for this step.
@@ -43,7 +43,7 @@ class BaseTransformerVAE_Output(ModelOutput):
     """
 
     loss: Optional[torch.FloatTensor] = None
-    logits: torch.FloatTensor = None
+    logits: Optional[torch.FloatTensor] = None
     past_key_values: Optional[List[torch.FloatTensor]] = None
     decoder_hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     decoder_attentions: Optional[Tuple[torch.FloatTensor]] = None
@@ -52,7 +52,7 @@ class BaseTransformerVAE_Output(ModelOutput):
     encoder_hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     encoder_attentions: Optional[Tuple[torch.FloatTensor]] = None
 
-    latnet: torch.FloatTensor = None
-    reconstructed_encoding: torch.FloatTensor = None
-    reg_loss: torch.FloatTensor = None
-    decoder_ce: torch.FloatTensor = None
+    latent: torch.FloatTensor = None
+    reconstructed_encoding: Optional[torch.FloatTensor] = None
+    reg_loss: Optional[torch.FloatTensor] = None
+    decoder_ce: Optional[torch.FloatTensor] = None

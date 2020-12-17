@@ -80,6 +80,18 @@ class VAE_TrainingArguments(TrainingArguments):
             "help": "Test SVM classification using latent codes."
         },
     )
+    num_classes: int = field(
+        default=None,
+        metadata={
+            "help": "How many classes in the data, found using a ClassLabel column if none given."
+        },
+    )
+    max_validation_size: int = field(
+        default=None,
+        metadata={
+            "help": "Limit the eval dataset size, defaults to not limiting it, must be < validation size."
+        },
+    )
 
 
 @dataclass
@@ -366,6 +378,15 @@ def main():
     tokenizer.mask_token = tokenizer.unk_token
 
     # Preprocessing the datasets.
+
+    # Add class_label if needed
+    if training_args.classification_column:
+        def add_class_column(examples):
+            return {'class_label': examples[training_args.classification_column]}
+        datasets = datasets.map(add_class_column)
+        if not training_args.num_classes:
+            training_args.num_classes = datasets['validation'].features[training_args.classification_column].num_classes
+
     # First we tokenize all the texts.
     if training_args.do_train:
         column_names = datasets["train"].column_names
@@ -393,7 +414,6 @@ def main():
         load_from_cache_file=not data_args.overwrite_cache,
     )
 
-    # Data collator
     data_collator = DataCollatorForLanguageAutoencoding(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
 
     compute_metrics = None
@@ -409,6 +429,9 @@ def main():
             assert(len(result) >= len(all_metrics)), f"Not all metrics are returning results. result: {result}; all_metrics: {all_metrics}"
             return result
 
+    if training_args.max_validation_size:
+        tokenized_datasets["validation"] = tokenized_datasets["validation"].train_test_split(training_args.max_validation_size)['test']
+
     # Initialize our Trainer
     trainer = VAE_Trainer(
         model=model,
@@ -420,6 +443,7 @@ def main():
         compute_metrics=compute_metrics,
         callbacks=[TellModelGlobalStep],
     )
+    trainer.log({})
 
     # Training
     if training_args.do_train:

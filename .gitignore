@@ -27,3 +27,8 @@ __pycache__/
 t5_vae_env/
 runs/
 experiments/*/wandb/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
