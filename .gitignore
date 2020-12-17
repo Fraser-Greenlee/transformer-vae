@@ -36,3 +36,4 @@ dmypy.json
 .vscode
 .pytest_cache
 wandb
+.pypirc

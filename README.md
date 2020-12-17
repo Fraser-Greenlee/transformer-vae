@@ -1,14 +1,14 @@
 # Transformer-VAE (WIP)
 
-![Diagram of the a State Autoencoder](t5-vae.png)
+![Diagram of the a State Autoencoder](https://github.com/Fraser-Greenlee/transformer-vae/blob/v1/t5-vae.png)
 
-Transformer-VAE's learn smooth latent spaces of discretes sequence without hard-coding rules in their decoders.
+Transformer-VAE's learn smooth latent spaces of discrete sequences without any explicit rules in their decoders.
 
 This can be used for program synthesis, drug discovery, music generation and much more!
 
 To see how it works checkout [this blog post](https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html).
 
-This repo is in active development but I should be coming out with a release soon.
+This repo is in active development but I should be coming out with full a release soon.
 
 ## Install
 

@@ -16,3 +16,7 @@ test-one-case:
 install-dev:
 	pip uninstall -y transformer_vae
 	pip install -e .[test]
+
+publish:
+	python setup.py sdist bdist_wheel
+	twine upload --repository pypi dist/*

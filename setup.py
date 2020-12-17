@@ -17,14 +17,14 @@ __version__ = re.search(r'__version__ = "([.\d]+)"', contents).group(1)
 
 install_requires = [
     "datasets==1.1.3",
-    "transformers==4.0.1",
+    "transformers==4.1.1",
     "wandb>=0.10.12",
     "torch==1.7.0",
     "sklearn",  # for accuracy metric
     "bert_score",  # for bertscore metric
 ]
 
-tests_require = ["pytest", "flake8", "flake8-mypy", "black"]
+tests_require = ["pytest", "flake8", "flake8-mypy", "black", "twine"]
 
 # TODO allow executing training directly
 
@@ -34,7 +34,7 @@ setup(
     description="Interpolate between discrete sequences.",
     long_description=file_to_string("README.md"),
     long_description_content_type="text/markdown",
-    url="https://github.com/Fraser-Greenlee/T5-VAE",
+    url="https://github.com/Fraser-Greenlee/transformer-vae",
     author="Fraser Greenlee",
     author_email="fraser.greenlee@mac.com",
     license="MIT",
