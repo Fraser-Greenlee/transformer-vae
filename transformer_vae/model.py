@@ -35,7 +35,7 @@ class EncoderDecoderVAE(nn.Module):
         self.use_n_previous_latent_codes = use_n_previous_latent_codes
         self.smaller_mmd_batch_size = smaller_mmd_batch_size
         if smaller_mmd_batch_size:
-            assert(use_n_previous_latent_codes == 0), "Can't use smaller mmd batch size AND use previous latent codes."
+            assert use_n_previous_latent_codes == 0, "Can't use smaller mmd batch size AND use previous latent codes."
         self.prev_latents = None
         self.prev_latents_index = 0
         self.use_reg_loss = use_reg_loss
@@ -110,7 +110,9 @@ class EncoderDecoderVAE(nn.Module):
             batch_size = latent.size(0)
             if batch_size // self.smaller_mmd_batch_size != batch_size / self.smaller_mmd_batch_size:
                 return self._batch_of_regularliser_loss(latent)
-            all_latents = latent.view(latent.size(0) // self.smaller_mmd_batch_size, self.smaller_mmd_batch_size, latent.size(1))
+            all_latents = latent.view(
+                latent.size(0) // self.smaller_mmd_batch_size, self.smaller_mmd_batch_size, latent.size(1)
+            )
             total = torch.tensor(0.0, device=latent.device)
             for latent_batch in all_latents:
                 total += self._batch_of_regularliser_loss(latent_batch)
@@ -190,7 +192,7 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
             ),
             self.config.n_previous_latent_codes,
             self.config.mmd_batch_size,
-            self.config.use_reg_loss
+            self.config.use_reg_loss,
         )
 
     def resize_token_embeddings(self, *args, **kwargs):
@@ -220,9 +222,9 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
 
     def get_latest_logs(self):
         """
-            Gets latest logs and refreshes the log values.
+        Gets latest logs and refreshes the log values.
 
-            Logs are normalised by the number of training inferences since the last log.
+        Logs are normalised by the number of training inferences since the last log.
         """
         assert self.config.use_extra_logs
         if self._calls_since_last_log < 1:
@@ -240,10 +242,12 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
 
     def prepare_inputs_for_generation(self, input_ids: torch.LongTensor, latent=None, **kwargs) -> Dict[str, Any]:
         """
-            Should only be generating text from latent codes.
+        Should only be generating text from latent codes.
         """
-        assert(latent is not None), "Generation with Transformer-VAE's expects to be given a latent code to generate from."
-        for rm_key in ['past', 'attention_mask']:
+        assert (
+            latent is not None
+        ), "Generation with Transformer-VAE's expects to be given a latent code to generate from."
+        for rm_key in ["past", "attention_mask"]:
             if rm_key in kwargs:
                 del kwargs[rm_key]
         return {"decoder_input_ids": input_ids, "latent": latent, **kwargs}
@@ -307,7 +311,7 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
         return_dict=True,
         class_label=None,
     ):
-        assert(return_dict), "Need return_dict=True, using tuple's is not implimented"
+        assert return_dict, "Need return_dict=True, using tuple's is not implimented"
         use_cache = use_cache if use_cache is not None else self.config.use_cache
 
         if input_ids is not None:
@@ -449,7 +453,7 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
         return_dict=True,
         class_label=None,
     ):
-        assert(return_dict), "Need return_dict=True, using tuple's is not implimented"
+        assert return_dict, "Need return_dict=True, using tuple's is not implimented"
 
         if input_ids is not None:
             if decoder_input_ids is not None and input_ids.equal(decoder_input_ids) is False:
@@ -477,13 +481,17 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
             input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent=latent
         )
 
-        initial_encoding_size = (vae_outputs.reconstructed_encoding.size(0), self.config.transformer.n_positions, self.config.transformer.d_model)
+        initial_encoding_size = (
+            vae_outputs.reconstructed_encoding.size(0),
+            self.config.transformer.n_positions,
+            self.config.transformer.d_model,
+        )
 
         decoder_outputs = self.transformer.funnel.decoder(
             final_hidden=vae_outputs.reconstructed_encoding,
             # Don't allow for residual connections, instead just send an empty tensor.
             first_block_hidden=torch.zeros(initial_encoding_size, device=vae_outputs.reconstructed_encoding.device),
-            return_dict=True
+            return_dict=True,
         )
 
         last_hidden_state = decoder_outputs.last_hidden_state
@@ -510,7 +518,6 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
             encoder_last_hidden_state=encoder_outputs.last_hidden_state if encoder_outputs else None,
             encoder_hidden_states=encoder_outputs.hidden_states if encoder_outputs else None,
             encoder_attentions=encoder_outputs.attentions if encoder_outputs else None,
-
             latent=vae_outputs.latent,
             reg_loss=vae_outputs.reg_loss,
             decoder_ce=decoder_ce,
@@ -568,7 +575,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         return_dict=True,
         class_label=None,
     ):
-        assert(return_dict), "Need return_dict=True, using tuple's is not implimented"
+        assert return_dict, "Need return_dict=True, using tuple's is not implimented"
         use_cache = use_cache if use_cache is not None else self.config.use_cache
 
         if input_ids is not None:
@@ -616,10 +623,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             decoder_input_ids = self._shift_right(labels) if labels is not None else None
 
         decoder_outputs = self.transformer.decoder(
-            input_ids=decoder_input_ids,
-            encoder_hidden_states=upsampled_encoding,
-            use_cache=use_cache,
-            return_dict=True
+            input_ids=decoder_input_ids, encoder_hidden_states=upsampled_encoding, use_cache=use_cache, return_dict=True
         )
 
         sequence_output = decoder_outputs.last_hidden_state
@@ -650,7 +654,6 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             encoder_last_hidden_state=encoder_outputs.last_hidden_state if encoder_outputs else None,
             encoder_hidden_states=encoder_outputs.hidden_states if encoder_outputs else None,
             encoder_attentions=encoder_outputs.attentions if encoder_outputs else None,
-
             latent=vae_outputs.latent,
             reg_loss=vae_outputs.reg_loss,
             decoder_ce=decoder_ce,

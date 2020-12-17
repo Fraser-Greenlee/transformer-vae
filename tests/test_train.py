@@ -13,7 +13,6 @@ logger = logging.getLogger()
 
 
 class TrainTests(TestCasePlus):
-
     def test_train_txt(self):
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)

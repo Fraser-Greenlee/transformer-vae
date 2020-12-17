@@ -42,19 +42,16 @@ DEFAULT_TRANSFORMER_NAME = {
 @dataclass
 class VAE_TrainingArguments(TrainingArguments):
     """
-        Extra arguments to specify generation during evaluation.
+    Extra arguments to specify generation during evaluation.
     """
+
     generate_min_len: int = field(
         default=1,
-        metadata={
-            "help": "The minimum length of sequences to be generated from latent points during evaluation."
-        },
+        metadata={"help": "The minimum length of sequences to be generated from latent points during evaluation."},
     )
     generate_max_len: int = field(
         default=20,
-        metadata={
-            "help": "The maximum length of sequences to be generated from latent points during evaluation."
-        },
+        metadata={"help": "The maximum length of sequences to be generated from latent points during evaluation."},
     )
     metrics: str = field(
         default=None,
@@ -64,33 +61,23 @@ class VAE_TrainingArguments(TrainingArguments):
     )
     n_random_samples: int = field(
         default=10,
-        metadata={
-            "help": "Number of random latent codes to sample from during evaluation."
-        },
+        metadata={"help": "Number of random latent codes to sample from during evaluation."},
     )
     seq_check: str = field(
         default=None,
-        metadata={
-            "help": f"Run check on sequences from random latent codes. Options: {', '.join(SEQ_CHECKS.keys())}"
-        },
+        metadata={"help": f"Run check on sequences from random latent codes. Options: {', '.join(SEQ_CHECKS.keys())}"},
     )
     classification_column: str = field(
         default=None,
-        metadata={
-            "help": "Test SVM classification using latent codes."
-        },
+        metadata={"help": "Test SVM classification using latent codes."},
     )
     num_classes: int = field(
         default=None,
-        metadata={
-            "help": "How many classes in the data, found using a ClassLabel column if none given."
-        },
+        metadata={"help": "How many classes in the data, found using a ClassLabel column if none given."},
     )
     max_validation_size: int = field(
         default=None,
-        metadata={
-            "help": "Limit the eval dataset size, defaults to not limiting it, must be < validation size."
-        },
+        metadata={"help": "Limit the eval dataset size, defaults to not limiting it, must be < validation size."},
     )
 
 
@@ -253,7 +240,7 @@ def main():
     if model_args.transformer_name is None:
         model_args.transformer_name = DEFAULT_TRANSFORMER_NAME[model_args.transformer_type]
 
-    if model_args.encoded_seq_size is None and 'funnel' not in model_args.transformer_type:
+    if model_args.encoded_seq_size is None and "funnel" not in model_args.transformer_type:
         model_args.encoded_seq_size = model_args.set_seq_size
 
     if (
@@ -381,11 +368,13 @@ def main():
 
     # Add class_label if needed
     if training_args.classification_column:
+
         def add_class_column(examples):
-            return {'class_label': examples[training_args.classification_column]}
+            return {"class_label": examples[training_args.classification_column]}
+
         datasets = datasets.map(add_class_column)
         if not training_args.num_classes:
-            training_args.num_classes = datasets['validation'].features[training_args.classification_column].num_classes
+            training_args.num_classes = datasets["validation"].features[training_args.classification_column].num_classes
 
     # First we tokenize all the texts.
     if training_args.do_train:
@@ -419,18 +408,22 @@ def main():
     compute_metrics = None
     if training_args.metrics:
         all_metrics = []
-        for metric in training_args.metrics.strip().split(','):
+        for metric in training_args.metrics.strip().split(","):
             all_metrics.append(METRICS_MAP[metric]())
 
         def compute_metrics(p: EvalPrediction):
             result = dict()
             for metric in all_metrics:
                 result = {**result, **metric.compute(predictions=p.predictions, references=p.label_ids)}
-            assert(len(result) >= len(all_metrics)), f"Not all metrics are returning results. result: {result}; all_metrics: {all_metrics}"
+            assert len(result) >= len(
+                all_metrics
+            ), f"Not all metrics are returning results. result: {result}; all_metrics: {all_metrics}"
             return result
 
     if training_args.max_validation_size:
-        tokenized_datasets["validation"] = tokenized_datasets["validation"].train_test_split(training_args.max_validation_size)['test']
+        tokenized_datasets["validation"] = tokenized_datasets["validation"].train_test_split(
+            training_args.max_validation_size
+        )["test"]
 
     # Initialize our Trainer
     trainer = VAE_Trainer(

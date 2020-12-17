@@ -4,9 +4,10 @@ import datasets
 
 
 class SimpleMetrics(datasets.Metric):
-    '''
-        Metrics that don't use the writer.
-    '''
+    """
+    Metrics that don't use the writer.
+    """
+
     def compute(self, *args, **kwargs) -> Optional[dict]:
         """Compute the metrics.
 
@@ -26,7 +27,7 @@ class SimpleMetrics(datasets.Metric):
         predictions = kwargs.pop("predictions", None)
         references = kwargs.pop("references", None)
 
-        assert(self.process_id == 0), "Not implimented distributed metrics yet."
+        assert self.process_id == 0, "Not implimented distributed metrics yet."
 
         with datasets.utils.temp_seed(self.seed):
             output = self._compute(predictions=predictions, references=references, **kwargs)
@@ -60,12 +61,12 @@ class SequenceAccuracy(SimpleMetrics):
                     "references": datasets.Value("int32"),
                 }
             ),
-            citation=None
+            citation=None,
         )
 
     def _compute(self, predictions, references):
         predicted_tokens = np.argmax(predictions, axis=2)
-        correct_sequences = ((predicted_tokens != references).sum(axis=1) == 0)
+        correct_sequences = (predicted_tokens != references).sum(axis=1) == 0
         return {
             self.name: correct_sequences.sum() / references.shape[0],
         }
@@ -97,7 +98,7 @@ class TokenAccuracy(SimpleMetrics):
                     "references": datasets.Value("int32"),
                 }
             ),
-            citation=None
+            citation=None,
         )
 
     def _compute(self, predictions, references):

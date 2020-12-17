@@ -90,11 +90,11 @@ class Transformer_VAE_Config(PretrainedConfig):
         self.mmd_batch_size = mmd_batch_size
         self.use_reg_loss = use_reg_loss
         if not use_reg_loss:
-            logger.warn('Regularisation loss is turned off, you are training an Autoencoder (not a VAE).')
+            logger.warn("Regularisation loss is turned off, you are training an Autoencoder (not a VAE).")
         self.reg_schedule_k = reg_schedule_k
         self.reg_schedule_b = reg_schedule_b
         self.use_extra_logs = use_extra_logs
-        self.use_cache = getattr(self.transformer, 'use_cache', False)
+        self.use_cache = getattr(self.transformer, "use_cache", False)
 
     def to_dict(self):
         """
@@ -131,7 +131,7 @@ class Funnel_VAE_Config(Transformer_VAE_Config):
             if encoded_seq_size is None:
                 encoded_seq_size = calc_encoded_seq_size
             else:
-                assert(encoded_seq_size == calc_encoded_seq_size)
+                assert encoded_seq_size == calc_encoded_seq_size
 
 
 class Funnel_T5_VAE_Config(Transformer_VAE_Config):
@@ -168,7 +168,7 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
                 self.encoded_seq_size = calc_encoded_seq_size
             else:
                 self.encoded_seq_size = encoded_seq_size
-                assert(self.encoded_seq_size == calc_encoded_seq_size)
+                assert self.encoded_seq_size == calc_encoded_seq_size
         self.transformer_decoder = AutoConfig.from_pretrained(transformer_decoder_name, cache_dir=cache_dir)
         self.transformer_decoder.decoder_start_token_id = decoder_start_token_id
         if self.padding_input:

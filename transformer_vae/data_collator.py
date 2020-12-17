@@ -9,18 +9,19 @@ from transformers.data.data_collator import (
     Tuple,
     BatchEncoding,
     _collate_batch,
-    dataclass
+    dataclass,
 )
 
 
 @dataclass
 class NonPaddingDataCollatorForLanguageModeling(DataCollatorForLanguageModeling):
-    '''
-        Prevents collator from padding the dataset, needed when using an already tokenized & padded dataset.
+    """
+    Prevents collator from padding the dataset, needed when using an already tokenized & padded dataset.
 
-        Fix for incorrect default value in `PreTrainedTokenizerBase.pad` arg
-        https://github.com/huggingface/transformers/issues/8837
-    '''
+    Fix for incorrect default value in `PreTrainedTokenizerBase.pad` arg
+    https://github.com/huggingface/transformers/issues/8837
+    """
+
     padding: Union[bool, str, PaddingStrategy] = False
 
     def __call__(
@@ -50,9 +51,10 @@ class NonPaddingDataCollatorForLanguageModeling(DataCollatorForLanguageModeling)
 
 @dataclass
 class DataCollatorForLanguageAutoencoding(NonPaddingDataCollatorForLanguageModeling):
-    '''
-        Same as MLM except we calculate a loss on non-masked tokens.
-    '''
+    """
+    Same as MLM except we calculate a loss on non-masked tokens.
+    """
+
     def mask_tokens(
         self, inputs: torch.Tensor, special_tokens_mask: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:

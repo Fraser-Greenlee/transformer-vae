@@ -10,7 +10,14 @@ import time
 
 import datasets
 from transformers import trainer as trainer_script
-from transformers.integrations import WandbCallback, is_wandb_available, TensorBoardCallback, CometCallback, AzureMLCallback, MLflowCallback
+from transformers.integrations import (
+    WandbCallback,
+    is_wandb_available,
+    TensorBoardCallback,
+    CometCallback,
+    AzureMLCallback,
+    MLflowCallback,
+)
 
 from transformer_vae.sequence_checks import SEQ_CHECKS
 from transformer_vae.trainer_callback import WandbCallbackUseModelLogs
@@ -40,7 +47,7 @@ for logger_integration in NOT_ALLOWED_LOGGERS:
 
 
 class VAE_Trainer(trainer_script.Trainer):
-    def __init__(self, args = None, **kwargs):
+    def __init__(self, args=None, **kwargs):
         if args:
             self.num_classes = args.num_classes
             self.has_class_label = self.num_classes is not None
@@ -49,10 +56,10 @@ class VAE_Trainer(trainer_script.Trainer):
     def _text_from_latent(self, latent):
         # TODO can I do many latents in parallel?
         # TODO this may not work for Funnel-VAE
-        generation = self.model.generate(latent=latent, bos_token_id=0, min_length=self.args.generate_min_len, max_length=self.args.generate_max_len)
-        return self.tokenizer.decode(
-            generation[0].tolist()
+        generation = self.model.generate(
+            latent=latent, bos_token_id=0, min_length=self.args.generate_min_len, max_length=self.args.generate_max_len
         )
+        return self.tokenizer.decode(generation[0].tolist())
 
     def _interpolate_samples(self, eval_dataset):
         mini_eval_dataloader_iter = iter(
@@ -70,12 +77,12 @@ class VAE_Trainer(trainer_script.Trainer):
         latent_diff = end_latent - start_latent
 
         table = wandb.Table(columns=["Interpolation Ratio", "Text"])
-        table.add_data(-10, self.tokenizer.decode(samples['input_ids'][0]))
+        table.add_data(-10, self.tokenizer.decode(samples["input_ids"][0]))
         for i in range(11):
             ratio = i / 10
             latent = start_latent + ratio * latent_diff
             table.add_data(ratio, self._text_from_latent(latent))
-        table.add_data(10, self.tokenizer.decode(samples['input_ids'][1]))
+        table.add_data(10, self.tokenizer.decode(samples["input_ids"][1]))
         wandb.log({"interpolate points": table}, step=self.state.global_step)
 
     def _random_samples(self):
@@ -93,11 +100,11 @@ class VAE_Trainer(trainer_script.Trainer):
         latents_with_class = []
         for inputs in dataloader:
             if self.has_class_label:
-                class_label = inputs.pop('class_label')
+                class_label = inputs.pop("class_label")
 
             outputs = self.model(**inputs)
 
-            row = [outputs.get('latent').tolist()]
+            row = [outputs.get("latent").tolist()]
             if self.has_class_label:
                 row.append(class_label.tolist())  # type: ignore
 
@@ -111,13 +118,13 @@ class VAE_Trainer(trainer_script.Trainer):
 
     def _t_sne(self, latents_with_class):
         # TODO use wandb.plot
-        ''' sample code
+        """sample code
         table = wandb.Table(columns=["x", "y", "class"])
         points = t_sne(latents_with_class)
         for point in points:
             table.add_data(point.x, point.y, point.class)
         wandb.log({"my_custom_id" : wandb.plot.scatter(table, "x", "y", "class")})
-        '''
+        """
         pass
 
     def _evaluate_latent_samples(self, eval_dataset=None):
@@ -147,8 +154,8 @@ class VAE_Trainer(trainer_script.Trainer):
             generate_time = time.time() - start_eval
         output_metrics = super().evaluate(eval_dataset=eval_dataset)
         if is_wandb_available():
-            self.log({'eval_get_test_loss_time': time.time() - start_eval + generate_time})  # type: ignore
-            self.log({'eval_generate_time': generate_time})  # type: ignore
+            self.log({"eval_get_test_loss_time": time.time() - start_eval + generate_time})  # type: ignore
+            self.log({"eval_generate_time": generate_time})  # type: ignore
         return output_metrics
 
     def prediction_step(
@@ -200,14 +207,14 @@ class VAE_Trainer(trainer_script.Trainer):
             if has_labels:
                 if isinstance(outputs, dict):
                     loss = outputs["loss"].mean().detach()
-                    logits = (outputs.get('logits', None),)
+                    logits = (outputs.get("logits", None),)
                 else:
                     loss = outputs[0].mean().detach()
                     logits = outputs[1:]
             else:
                 loss = None
                 if isinstance(outputs, dict):
-                    logits = (outputs.get('logits', None),)
+                    logits = (outputs.get("logits", None),)
                 else:
                     logits = outputs
 

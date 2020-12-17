@@ -30,7 +30,7 @@ class LatentEncoder1stToken(nn.Module):
 class LatentEncoderFull1stToken(nn.Module):
     def __init__(self, dim_m, _set_seq_size, latent_size):
         super().__init__()
-        assert(dim_m == latent_size)
+        assert dim_m == latent_size
 
     def forward(self, encoding) -> torch.Tensor:
         return encoding[:, 0, :]
@@ -102,7 +102,7 @@ class LatentDecoderSingleToken(nn.Module):
 
 class LatentDecoderFullSingleToken(nn.Module):
     def __init__(self, dim_m, set_seq_size, latent_size, config):
-        assert(dim_m == latent_size)
+        assert dim_m == latent_size
         self.dim_m = dim_m
         super().__init__()
 

@@ -9,6 +9,4 @@ def check_python(s):
         return False
 
 
-SEQ_CHECKS = {
-    'python': check_python
-}
+SEQ_CHECKS = {"python": check_python}
