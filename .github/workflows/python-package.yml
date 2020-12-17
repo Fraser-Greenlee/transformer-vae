@@ -33,7 +33,7 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=120 --statistics
     - name: Check format
       run: |
-          black --check -l 120 -t .
+          black --check -l 120 -t py37 .
     - name: Test with pytest
       run: |
         pytest
