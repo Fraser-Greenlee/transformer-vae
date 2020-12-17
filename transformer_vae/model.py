@@ -199,9 +199,6 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
         super().resize_token_embeddings(*args, **kwargs)
         self.transformer.resize_token_embeddings(*args, **kwargs)
 
-    def get_input_embeddings(self):
-        return self.transformer.shared
-
     def set_input_embeddings(self, new_embeddings):
         return self.transformer.set_input_embeddings(new_embeddings)
 
@@ -276,6 +273,9 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
     Its decoder is autoregressive making it natually effective at generating sequences.
     """
     config_class = T5_VAE_Config
+
+    def get_input_embeddings(self):
+        return self.transformer.shared
 
     def _shift_input_right(self, input_ids):
         start_token_id = self.transformer.config.eos_token_id
@@ -440,6 +440,9 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
     Its decoder is autoregressive making it natually effective at generating sequences.
     """
     config_class = Funnel_VAE_Config
+
+    def get_input_embeddings(self):
+        return self.transformer.embeddings.word_embeddings
 
     def forward(
         self,
