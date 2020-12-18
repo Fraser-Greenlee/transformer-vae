@@ -1,2 +1,2 @@
 encoder_model full-1st-token
-full-single-token single-token
+decoder_model full-single-token
