@@ -186,7 +186,7 @@ class DataTrainingArguments:
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
     mlm_probability: float = field(
-        default=0.15, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
+        default=0.0, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
     )
 
     def __post_init__(self):

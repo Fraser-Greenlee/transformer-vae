@@ -18,4 +18,3 @@ WANDB_PROJECT="transformer-vae-tests" TOKENIZERS_PARALLELISM=false python -c "fr
     --overwrite_output_dir \
     --save_total_limit 3 \
     --save_steps 1000 \
-    --mlm_probability 0 \

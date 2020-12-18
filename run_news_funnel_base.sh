@@ -17,4 +17,3 @@ WANDB_PROJECT="transformer-vae-tests" python -c "from transformer_vae.train impo
     --overwrite_output_dir \
     --save_total_limit 3 \
     --save_steps 1000 \
-    --mlm_probability 0 \
