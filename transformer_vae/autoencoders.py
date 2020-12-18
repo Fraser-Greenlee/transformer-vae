@@ -6,6 +6,8 @@ from transformers.models.t5.modeling_t5 import T5LayerFF, T5LayerSelfAttention
 class LatentEncoder(nn.Module):
     def __init__(self, dim_m, set_seq_size, latent_size):
         super().__init__()
+        assert(dim_m > 100)
+        assert(100 * set_seq_size > latent_size)
         self.shrink_tokens = nn.Linear(dim_m, 100)
         self.shrink_sequence = nn.Linear(100 * set_seq_size, latent_size)
         self.tanh = nn.Tanh()
@@ -65,8 +67,11 @@ class LatentDecoder(nn.Module):
         self.grow_tokens = nn.Linear(100, dim_m)
 
         if config.model_type == "t5":
+            # TODO would this actually effect `dropout_rate`?
+            dropout_rate = config.dropout_rate
             config.dropout_rate = 0
             self.norm = T5LayerFF(config)
+            config.dropout_rate = dropout_rate
         elif config.model_type == "funnel":
             self.norm = nn.LayerNorm(config.d_model, config.layer_norm_eps)
         else:
@@ -76,7 +81,11 @@ class LatentDecoder(nn.Module):
         batch_size = latent.size(0)
         latent = self.decode_latent(latent)
         latent = self.grow_sequence(latent)
-        return self.norm(self.grow_tokens(latent.view(batch_size, -1, 100)))
+        return self.norm(
+            self.grow_tokens(
+                latent.view(batch_size, -1, 100)
+            )
+        )
 
 
 class LatentDecoderSingleToken(nn.Module):
