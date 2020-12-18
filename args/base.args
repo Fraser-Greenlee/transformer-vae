@@ -2,7 +2,6 @@ output_dir=output
 do_train
 do_eval
 eval_accumulation_steps 1
-metrics sequence-accuracy,token-accuracy
 evaluation_strategy steps
 eval_steps 1
 n_previous_latent_codes 0
