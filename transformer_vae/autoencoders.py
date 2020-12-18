@@ -38,6 +38,18 @@ class LatentEncoderFull1stToken(nn.Module):
         return encoding[:, 0, :]
 
 
+class LatentEncoderFullNTokens(nn.Module):
+    def __init__(self, dim_m, _set_seq_size, latent_size):
+        super().__init__()
+        n_tokens = 4  # just going to hard-code for now
+        assert dim_m * n_tokens == latent_size
+        self.n_tokens = n_tokens
+
+    def forward(self, encoding) -> torch.Tensor:
+        batch_size = encoding.size(0)
+        return encoding[:, :self.n_tokens, :].view(batch_size, -1)
+
+
 class LatentEncoderAttention(LatentEncoder):
     """
     Uses attention on token-encodings before compressing them.
@@ -159,6 +171,7 @@ VAE_ENCODER_MODELS = {
     None: LatentEncoder,
     "1st-token": LatentEncoder1stToken,
     "full-1st-token": LatentEncoderFull1stToken,
+    "full-n-tokens": LatentEncoderFullNTokens,
     "basic-attention": LatentEncoderAttention,
 }
 VAE_DECODER_MODELS = {

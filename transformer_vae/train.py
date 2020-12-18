@@ -77,6 +77,10 @@ class VAE_TrainingArguments(TrainingArguments):
         default=False,
         metadata={"help": "Whether to use one the Adafactor optimizer."},
     )
+    sample_from_latent: bool = field(
+        default=False,
+        metadata={"help": "Whether to sample from the latent space during evaluation."},
+    )
 
 
 @dataclass
