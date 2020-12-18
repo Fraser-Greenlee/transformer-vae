@@ -195,6 +195,9 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
             self.config.use_reg_loss,
         )
 
+    def get_input_embeddings(self):
+        raise NotImplementedError()
+
     def resize_token_embeddings(self, *args, **kwargs):
         super().resize_token_embeddings(*args, **kwargs)
         self.transformer.resize_token_embeddings(*args, **kwargs)
