@@ -123,7 +123,7 @@ class ModelArguments:
         metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
     )
     latent_size: int = field(default=1_000, metadata={"help": "The size of the VAE's latent space."})
-    set_seq_size: int = field(default=60, metadata={"help": "Set sequence size."})
+    set_seq_size: int = field(default=None, metadata={"help": "Set sequence size, must be set for some autoencoders."})
     encoded_seq_size: int = field(
         default=None, metadata={"help": "Sequence size of encoded sequence, needed for Funnel-VAE."}
     )
@@ -364,7 +364,8 @@ def main():
         model = MODEL[model_args.transformer_type](config)
 
     model.resize_token_embeddings(len(tokenizer))
-    tokenizer.model_max_length = model_args.set_seq_size
+    if model_args.set_seq_size:
+        tokenizer.model_max_length = model_args.set_seq_size
     tokenizer.mask_token = tokenizer.unk_token
 
     # Preprocessing the datasets.
@@ -392,7 +393,8 @@ def main():
     if text_column_name != "text":
         logger.info(f'Using column "{text_column_name}" as text column.')
 
-    check_seq_size(tokenizer, text_column_name, data_args, datasets, model_args.set_seq_size)
+    if model_args.set_seq_size:
+        check_seq_size(tokenizer, text_column_name, data_args, datasets, model_args.set_seq_size)
 
     def tokenize_function(examples):
         return tokenizer(examples[text_column_name], padding="max_length", truncation=True)

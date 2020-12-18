@@ -77,7 +77,7 @@ class Transformer_VAE_Config(PretrainedConfig):
         self.transformer.decoder_start_token_id = decoder_start_token_id
         self.encoder_model = encoder_model
         self.decoder_model = decoder_model
-        self.latent_size = self.transformer.d_model if self.encoder_model.startswith('full-') else latent_size
+        self.latent_size = self.transformer.d_model if str(self.encoder_model).startswith('full-') else latent_size
 
         self.padding_input = encoder_model != "1st-token"
         self.prepend_eos_token = False  # TODO manually check if adding a set 1st token improves performance

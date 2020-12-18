@@ -363,7 +363,8 @@ class TrainTests(TestCasePlus):
             --per_device_eval_batch_size 2
             --max_validation_size 100
             --eval_steps 4
-            --set_seq_size 4
+            --encoder_model full-1st-token
+            --decoder_model full-single-token
             --latent_size 2
             --transformer_name t5-small
             --output_dir {tmp_dir}

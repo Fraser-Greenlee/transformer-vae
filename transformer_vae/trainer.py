@@ -196,7 +196,7 @@ class VAE_Trainer(trainer_script.Trainer):
                 ignore_keys = []
 
         with torch.no_grad():
-            if self.args.fp16 and trainer_script._use_native_amp:
+            if self.use_amp:
                 with trainer_script.autocast():
                     outputs = model(**inputs)
             else:
