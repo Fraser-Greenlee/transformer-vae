@@ -61,7 +61,5 @@ Running With Arguments:
 {args_str}
 ''')
 
-import pdb; pdb.set_trace()
-
 with patch.object(sys, "argv", args_str.split()):
     main()
