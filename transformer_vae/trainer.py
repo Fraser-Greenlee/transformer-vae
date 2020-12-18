@@ -206,10 +206,10 @@ class VAE_Trainer(trainer_script.Trainer):
 
             if has_labels:
                 if isinstance(outputs, dict):
-                    loss = outputs["loss"].mean().detach().cpu()
+                    loss = outputs["loss"].mean().detach()
                     logits = (outputs.get("logits", None),)
                 else:
-                    loss = outputs[0].mean().detach().cpu()
+                    loss = outputs[0].mean().detach()
                     logits = outputs[1:]
             else:
                 loss = None
@@ -233,8 +233,8 @@ class VAE_Trainer(trainer_script.Trainer):
             labels = None
 
         if logits is not None:
-            logits = logits.cpu()
+            logits = logits
         if labels is not None:
-            labels = labels.cpu()
+            labels = labels
 
         return (loss, logits, labels)
