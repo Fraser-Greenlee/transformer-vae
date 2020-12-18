@@ -1,0 +1,2 @@
+encoder_model 1st-token
+decoder_model single-token

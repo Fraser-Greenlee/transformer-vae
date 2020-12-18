@@ -1,0 +1,3 @@
+dataset_name=Fraser/news-category-dataset
+text_column=headline
+classification_column=category_num

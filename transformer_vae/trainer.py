@@ -111,7 +111,6 @@ class VAE_Trainer(trainer_script.Trainer):
         return latents_with_class
 
     def _svm_classification(self, latents_with_class):
-        # TODO train an SVM model on latent codes and try classify the eval_dataset using it
         accuracy_log = train_svm(latents_with_class)
         wandb.log(accuracy_log, step=self.state.global_step)
 
