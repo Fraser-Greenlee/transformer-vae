@@ -61,7 +61,6 @@ class VAE_Trainer(trainer_script.Trainer):
         return self.tokenizer.decode(generation[0].tolist())
 
     def _interpolate_samples(self, eval_dataset):
-        import pdb; pdb.set_trace()
         mini_eval_dataloader_iter = iter(
             DataLoader(
                 eval_dataset,
@@ -70,22 +69,21 @@ class VAE_Trainer(trainer_script.Trainer):
                 collate_fn=self.data_collator,
             )
         )
-        import pdb; pdb.set_trace()
         samples = self._prepare_inputs(next(mini_eval_dataloader_iter))
-        import pdb; pdb.set_trace()
         latents = self.model(**samples).latent
         start_latent, end_latent = latents[0].view(1, -1), latents[1].view(1, -1)
         latent_diff = end_latent - start_latent
 
         table = wandb.Table(columns=["Interpolation Ratio", "Text"])
         table.add_data(-10, self.tokenizer.decode(samples["input_ids"][0]))
+
         for i in tqdm(range(11), desc='Sampling from interpolated latent points.'):
             ratio = i / 10
             latent = start_latent + ratio * latent_diff
             table.add_data(ratio, self._text_from_latent(latent))
+
         table.add_data(10, self.tokenizer.decode(samples["input_ids"][1]))
         wandb.log({"interpolate points": table}, step=self.state.global_step)
-        logger.log('Ran interpolate points.')
 
     def _random_samples(self):
         table = wandb.Table(columns=["Text", "Valid", "IsMaxLen"])
@@ -96,7 +94,6 @@ class VAE_Trainer(trainer_script.Trainer):
             valid = None if not self.args.seq_check else SEQ_CHECKS[self.args.seq_check](text)
             table.add_data(text, valid, len(text) == self.args.generate_max_len)
         wandb.log({"random points": table}, step=self.state.global_step)
-        logger.log('Sampled random points.')
 
     def _latent_with_class(self, eval_dataset):
         dataloader = self.get_eval_dataloader(eval_dataset)
@@ -118,7 +115,6 @@ class VAE_Trainer(trainer_script.Trainer):
     def _svm_classification(self, latents_with_class):
         accuracy_log = train_svm(latents_with_class)
         wandb.log(accuracy_log, step=self.state.global_step)
-        logger.log('Ran SVM classification.')
 
     def _t_sne(self, latents_with_class):
         # TODO use wandb.plot
