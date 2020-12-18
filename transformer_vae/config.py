@@ -75,9 +75,10 @@ class Transformer_VAE_Config(PretrainedConfig):
         super().__init__(**kwargs)
         self.transformer = AutoConfig.from_pretrained(transformer_name, cache_dir=cache_dir)
         self.transformer.decoder_start_token_id = decoder_start_token_id
-        self.latent_size = latent_size
         self.encoder_model = encoder_model
         self.decoder_model = decoder_model
+        self.latent_size = self.transformer.d_model if self.encoder_model.startswith('full-') else latent_size
+
         self.padding_input = encoder_model != "1st-token"
         self.prepend_eos_token = False  # TODO manually check if adding a set 1st token improves performance
         if self.padding_input:
@@ -85,6 +86,7 @@ class Transformer_VAE_Config(PretrainedConfig):
             self.encoded_seq_size = set_seq_size if encoded_seq_size is None else encoded_seq_size
         else:
             self.encoded_seq_size = 1
+
         self.additional_latent_models = additional_latent_models
         self.n_previous_latent_codes = n_previous_latent_codes
         self.mmd_batch_size = mmd_batch_size

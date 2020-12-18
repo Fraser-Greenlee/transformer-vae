@@ -328,7 +328,6 @@ class TrainTests(TestCasePlus):
             --per_device_eval_batch_size 4
             --num_train_epochs 2
             --set_seq_size 4
-            --latent_size 512
             --dont_use_reg_loss
             --encoder_model full-1st-token
             --decoder_model full-single-token
