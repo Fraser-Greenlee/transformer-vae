@@ -357,15 +357,11 @@ class TrainTests(TestCasePlus):
         tmp_dir = self.get_auto_remove_tmp_dir()
         testargs = f"""
             train.py
-            --dataset_name=Fraser/news-category-dataset
-            --text_column=headline
-            --classification_column=category_num
-            --do_eval
-            --use_adafactor
+            --train_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --do_train
             --per_device_train_batch_size 2
-            --per_device_eval_batch_size 2
-            --max_validation_size 100
-            --eval_steps 4
+            --num_train_epochs 1
+            --set_seq_size 4
             --encoder_model full-1st-token
             --decoder_model full-single-token
             --latent_size 2
@@ -383,5 +379,3 @@ class TrainTests(TestCasePlus):
 
         with patch.object(sys, "argv", testargs):
             result = main()
-            self.assertGreater(result["eval_loss"], 0.0)
-            self.assertNotIn("epoch", result)
