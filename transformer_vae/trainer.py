@@ -130,10 +130,10 @@ class VAE_Trainer(trainer_script.Trainer):
         eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
         self._interpolate_samples(eval_dataset)
         self._random_samples()
-        latents_with_class = self._latent_with_class(eval_dataset)
         if self.has_class_label:
+            latents_with_class = self._latent_with_class(eval_dataset)
             self._svm_classification(latents_with_class)
-        self._t_sne(latents_with_class)
+        # self._t_sne(latents_with_class)
 
     def evaluate(self, eval_dataset: Optional[Dataset] = None) -> Dict[str, float]:
         """
