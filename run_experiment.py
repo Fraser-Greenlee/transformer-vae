@@ -9,6 +9,8 @@ from unittest.mock import patch
 
 from transformer_vae.train import main
 
+os.environ['WANDB_PROJECT'] = "transformer-vae-tests"
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
 args_with_content = {}
 
