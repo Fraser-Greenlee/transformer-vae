@@ -13,6 +13,7 @@ from transformers import (
     AutoTokenizer,
     HfArgumentParser,
     TrainingArguments,
+    Adafactor,
     set_seed,
 )
 from transformers.integrations import is_wandb_available
@@ -22,7 +23,6 @@ from transformer_vae.trainer import VAE_Trainer
 from transformer_vae.data_collator import DataCollatorForLanguageAutoencoding
 from transformer_vae.trainer_callback import TellModelGlobalStep
 from transformer_vae.model import T5_VAE_Model, Funnel_VAE_Model, Funnel_T5_VAE_Model
-from transformer_vae.metrics import METRICS_MAP
 from transformer_vae.sequence_checks import SEQ_CHECKS
 from transformer_vae.config import T5_VAE_Config, Funnel_VAE_Config, Funnel_T5_VAE_Config
 
@@ -53,12 +53,6 @@ class VAE_TrainingArguments(TrainingArguments):
         default=20,
         metadata={"help": "The maximum length of sequences to be generated from latent points during evaluation."},
     )
-    metrics: str = field(
-        default=None,
-        metadata={
-            "help": f"Use extra metrics during evaluation, use multiple by seperating them with commas. Options: {','.join(METRICS_MAP.keys())}"
-        },
-    )
     n_random_samples: int = field(
         default=10,
         metadata={"help": "Number of random latent codes to sample from during evaluation."},
@@ -78,6 +72,10 @@ class VAE_TrainingArguments(TrainingArguments):
     max_validation_size: int = field(
         default=None,
         metadata={"help": "Limit the eval dataset size, defaults to not limiting it, must be < validation size."},
+    )
+    use_adafactor: bool = field(
+        default=False,
+        metadata={"help": "Whether to use one the Adafactor optimizer."},
     )
 
 
@@ -228,7 +226,7 @@ def check_seq_size(tokenizer, text_column_name, data_args, datasets, set_seq_siz
         )
 
 
-def main():
+def get_args():
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, VAE_TrainingArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
@@ -257,7 +255,10 @@ def main():
             "Use --overwrite_output_dir to overcome."
         )
 
-    # Setup logging
+    return model_args, data_args, training_args
+
+
+def setup_logs(training_args):
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
@@ -274,9 +275,8 @@ def main():
         transformers.utils.logging.set_verbosity_info()
     logger.info("Training/evaluation parameters %s", training_args)
 
-    # Set seed before initializing model.
-    set_seed(training_args.seed)
 
+def get_datasets(data_args):
     # Get the datasets: you can either provide your own CSV/JSON/TXT training and evaluation files (see below)
     # or just provide the name of one of the public datasets available on the hub at https://huggingface.co/datasets/
     # (the dataset will be downloaded automatically from the datasets Hub).
@@ -288,23 +288,22 @@ def main():
     # download the dataset.
     if data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
-        datasets = load_dataset(data_args.dataset_name, data_args.dataset_config_name)
-    else:
-        data_files = {}
-        if data_args.train_file is not None:
-            data_files["train"] = data_args.train_file
-        if data_args.validation_file is not None:
-            data_files["validation"] = data_args.validation_file
-        extension = data_args.train_file.split(".")[-1]
-        if extension == "txt":
-            extension = "text"
-        # TODO have this dataset split samples on some substring
-        datasets = load_dataset(extension, data_files=data_files)
+        return load_dataset(data_args.dataset_name, data_args.dataset_config_name)
+    data_files = {}
+    if data_args.train_file is not None:
+        data_files["train"] = data_args.train_file
+    if data_args.validation_file is not None:
+        data_files["validation"] = data_args.validation_file
+    extension = data_args.train_file.split(".")[-1]
+    if extension == "txt":
+        extension = "text"
+    # TODO have this dataset split samples on some substring
+    return load_dataset(extension, data_files=data_files)
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
 
-    # Load pretrained model and tokenizer
-    #
+
+def load_model_and_tokenizer(model_args):
     # Distributed training:
     # The `.from_pretrained` methods guarantee that only one local process can concurrently
     # download model & vocab.
@@ -368,8 +367,10 @@ def main():
         tokenizer.model_max_length = model_args.set_seq_size
     tokenizer.mask_token = tokenizer.unk_token
 
-    # Preprocessing the datasets.
+    return model, tokenizer
 
+
+def preprocess_datasets(training_args, data_args, model_args, tokenizer, datasets):
     # Add class_label if needed
     if training_args.classification_column:
 
@@ -380,7 +381,7 @@ def main():
         if not training_args.num_classes:
             training_args.num_classes = datasets["validation"].features[training_args.classification_column].num_classes
 
-    # First we tokenize all the texts.
+    # tokenize all the texts.
     if training_args.do_train:
         column_names = datasets["train"].column_names
     else:
@@ -408,27 +409,47 @@ def main():
         load_from_cache_file=not data_args.overwrite_cache,
     )
 
+    if training_args.max_validation_size:
+        tokenized_datasets["validation"] = tokenized_datasets["validation"].train_test_split(training_args.max_validation_size)["test"]
+
     data_collator = DataCollatorForLanguageAutoencoding(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
 
-    compute_metrics = None
-    if training_args.metrics:
-        all_metrics = []
-        for metric in training_args.metrics.strip().split(","):
-            all_metrics.append(METRICS_MAP[metric]())
+    return data_collator, tokenized_datasets
 
-        def compute_metrics(p: EvalPrediction):
-            result = dict()
-            for metric in all_metrics:
-                result = {**result, **metric.compute(predictions=p.predictions, references=p.label_ids)}
-            assert len(result) >= len(
-                all_metrics
-            ), f"Not all metrics are returning results. result: {result}; all_metrics: {all_metrics}"
-            return result
 
-    if training_args.max_validation_size:
-        tokenized_datasets["validation"] = tokenized_datasets["validation"].train_test_split(
-            training_args.max_validation_size
-        )["test"]
+def get_optimizers(training_args, model):
+    optimizers = [None, None]
+    if training_args.use_adafactor:
+        no_decay = ["bias", "LayerNorm.weight"]
+        optimizer_grouped_parameters = [
+            {
+                "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+                "weight_decay": training_args.weight_decay,
+            },
+            {
+                "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+                "weight_decay": 0.0,
+            },
+        ]
+        optimizers[0] = Adafactor(
+            optimizer_grouped_parameters, lr=training_args.learning_rate, scale_parameter=False, relative_step=False
+        )
+    return tuple(optimizers)
+
+
+def main():
+    model_args, data_args, training_args = get_args()
+
+    setup_logs(training_args)
+
+    # Set seed before initializing model.
+    set_seed(training_args.seed)
+
+    datasets = get_datasets(data_args)
+
+    model, tokenizer = load_model_and_tokenizer(model_args)
+
+    data_collator, tokenized_datasets = preprocess_datasets(training_args, data_args, model_args, tokenizer, datasets)
 
     # Initialize our Trainer
     trainer = VAE_Trainer(
@@ -438,8 +459,8 @@ def main():
         eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        compute_metrics=compute_metrics,
         callbacks=[TellModelGlobalStep],
+        optimizers=get_optimizers(training_args, model)
     )
     trainer.log({})
 
