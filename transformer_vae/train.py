@@ -237,6 +237,9 @@ def main():
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
+    # use train batch size if eval is default
+    training_args.per_device_eval_batch_size = training_args.per_device_train_batch_size if training_args.per_device_eval_batch_size == 8 else training_args.per_device_eval_batch_size
+
     if model_args.transformer_name is None:
         model_args.transformer_name = DEFAULT_TRANSFORMER_NAME[model_args.transformer_type]
 
