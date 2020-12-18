@@ -100,6 +100,7 @@ class VAE_Trainer(trainer_script.Trainer):
             if self.has_class_label:
                 class_label = inputs.pop("class_label")
 
+            inputs = self._prepare_inputs(inputs)
             outputs = self.model(**inputs)
 
             row = [outputs.get("latent").tolist()]
