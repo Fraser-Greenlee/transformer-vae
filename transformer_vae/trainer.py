@@ -144,13 +144,16 @@ class VAE_Trainer(trainer_script.Trainer):
         if class column provided?
         - tSNE plots with class-label colouring.
         """
+        import pdb; pdb.set_trace()
         if is_wandb_available():
             start_eval = time.time()
             with torch.no_grad():
                 self.model.eval()
                 self._evaluate_latent_samples(eval_dataset=eval_dataset)
             generate_time = time.time() - start_eval
+        import pdb; pdb.set_trace()
         output_metrics = super().evaluate(eval_dataset=eval_dataset)
+        import pdb; pdb.set_trace()
         if is_wandb_available():
             self.log({"eval_get_test_loss_time": time.time() - start_eval + generate_time})  # type: ignore
             self.log({"eval_generate_time": generate_time})  # type: ignore
