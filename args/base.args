@@ -3,7 +3,7 @@ do_train
 do_eval
 metrics sequence-accuracy,token-accuracy
 evaluation_strategy steps
-eval_steps 500
+eval_steps 1
 n_previous_latent_codes 0
 logging_steps 100
 overwrite_output_dir

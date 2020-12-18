@@ -144,16 +144,13 @@ class VAE_Trainer(trainer_script.Trainer):
         if class column provided?
         - tSNE plots with class-label colouring.
         """
-        import pdb; pdb.set_trace()
         if is_wandb_available():
             start_eval = time.time()
             with torch.no_grad():
                 self.model.eval()
                 self._evaluate_latent_samples(eval_dataset=eval_dataset)
             generate_time = time.time() - start_eval
-        import pdb; pdb.set_trace()
         output_metrics = super().evaluate(eval_dataset=eval_dataset)
-        import pdb; pdb.set_trace()
         if is_wandb_available():
             self.log({"eval_get_test_loss_time": time.time() - start_eval + generate_time})  # type: ignore
             self.log({"eval_generate_time": generate_time})  # type: ignore
@@ -207,10 +204,10 @@ class VAE_Trainer(trainer_script.Trainer):
 
             if has_labels:
                 if isinstance(outputs, dict):
-                    loss = outputs["loss"].mean().detach()
+                    loss = outputs["loss"].mean().detach().cpu()
                     logits = (outputs.get("logits", None),)
                 else:
-                    loss = outputs[0].mean().detach()
+                    loss = outputs[0].mean().detach().cpu()
                     logits = outputs[1:]
             else:
                 loss = None
@@ -232,5 +229,10 @@ class VAE_Trainer(trainer_script.Trainer):
                 labels = labels[0]
         else:
             labels = None
+
+        if logits:
+            logits = logits.cpu()
+        if labels:
+            labels = labels.cpu()
 
         return (loss, logits, labels)
