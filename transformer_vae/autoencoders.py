@@ -123,7 +123,7 @@ class LatentDecoderSingleToken(nn.Module):
 
 class LatentDecoderFullSingleToken(nn.Module):
     def __init__(self, dim_m, set_seq_size, latent_size, config):
-        assert dim_m == latent_size
+        assert dim_m <= latent_size
         self.dim_m = dim_m
         super().__init__()
 
