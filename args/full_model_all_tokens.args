@@ -1,0 +1,2 @@
+encoder_model full-all-tokens
+decoder_model full-single-token
