@@ -162,6 +162,10 @@ class ModelArguments:
         default=6.25,
         metadata={"help": "Added to global step in sigmoid, further delays increase in regulariser loss weight."},
     )
+    n_latent_tokens: int = field(
+        default=None,
+        metadata={"help": "Number of latent tokens to use for full sequence VAE (set to sequence length if its shorter), used with `encoder_model full-n-tokens`."},
+    )
 
 
 @dataclass

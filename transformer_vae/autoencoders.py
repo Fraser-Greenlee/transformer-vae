@@ -4,12 +4,12 @@ from transformers.models.t5.modeling_t5 import T5LayerFF, T5LayerSelfAttention
 
 
 class LatentEncoder(nn.Module):
-    def __init__(self, dim_m, set_seq_size, latent_size):
+    def __init__(self, config):
         super().__init__()
-        assert(dim_m > 100)
-        assert(100 * set_seq_size > latent_size)
-        self.shrink_tokens = nn.Linear(dim_m, 100)
-        self.shrink_sequence = nn.Linear(100 * set_seq_size, latent_size)
+        assert(config.transformer.dim_m > 100)
+        assert(100 * config.set_seq_size > config.latent_size)
+        self.shrink_tokens = nn.Linear(config.transformer.dim_m, 100)
+        self.shrink_sequence = nn.Linear(100 * config.set_seq_size, config.latent_size)
         self.tanh = nn.Tanh()
 
     def forward(self, encoding) -> torch.Tensor:
@@ -20,9 +20,10 @@ class LatentEncoder(nn.Module):
 
 
 class LatentEncoder1stToken(nn.Module):
-    def __init__(self, dim_m, _set_seq_size, latent_size):
+    def __init__(self, config):
         super().__init__()
-        self.token_to_latent = nn.Linear(dim_m, latent_size)
+        assert(config.transformer.dim_m > config.latent_size)
+        self.token_to_latent = nn.Linear(config.transformer.dim_m, config.latent_size)
         self.tanh = nn.Tanh()
 
     def forward(self, encoding) -> torch.Tensor:
@@ -30,34 +31,23 @@ class LatentEncoder1stToken(nn.Module):
 
 
 class LatentEncoderFull1stToken(nn.Module):
-    def __init__(self, dim_m, _set_seq_size, latent_size):
+    def __init__(self, config):
         super().__init__()
-        assert dim_m == latent_size
+        assert config.transformer.dim_m == config.latent_size
 
     def forward(self, encoding) -> torch.Tensor:
         return encoding[:, 0, :]
 
 
 class LatentEncoderFullNTokens(nn.Module):
-    def __init__(self, dim_m, _set_seq_size, latent_size):
+    def __init__(self, config):
         super().__init__()
-        n_tokens = 4  # just going to hard-code for now
-        assert dim_m * n_tokens == latent_size
-        self.n_tokens = n_tokens
+        assert config.transformer.dim_m * config.n_latent_tokens == config.latent_size
+        self.n_tokens = config.n_latent_tokens
 
     def forward(self, encoding) -> torch.Tensor:
         batch_size = encoding.size(0)
         return encoding[:, :self.n_tokens, :].view(batch_size, -1)
-
-
-class LatentEncoderFullAllTokens(nn.Module):
-    def __init__(self, dim_m, _set_seq_size, latent_size):
-        super().__init__()
-        assert dim_m >= latent_size
-
-    def forward(self, encoding) -> torch.Tensor:
-        batch_size = encoding.size(0)
-        return encoding.view(batch_size, -1)
 
 
 class LatentEncoderAttention(LatentEncoder):
@@ -66,11 +56,9 @@ class LatentEncoderAttention(LatentEncoder):
 
     Should weight each individual token's expected importance for the overall sequence representation.
     """
-
-    def __init__(self, dim_m, set_seq_size, latent_size):
-        super().__init__(dim_m, set_seq_size, latent_size)
-        assert dim_m > 100
-        self.token_scorer = nn.Linear(dim_m, 1)
+    def __init__(self, config):
+        super().__init__(config)
+        self.token_scorer = nn.Linear(config.transformer.dim_m, 1)
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, encoding) -> torch.Tensor:
@@ -82,11 +70,11 @@ class LatentEncoderAttention(LatentEncoder):
 
 
 class LatentDecoder(nn.Module):
-    def __init__(self, dim_m, set_seq_size, latent_size, config):
+    def __init__(self, config):
         super().__init__()
-        self.decode_latent = nn.Linear(latent_size, 10 * set_seq_size)
-        self.grow_sequence = nn.Linear(10 * set_seq_size, 100 * set_seq_size)
-        self.grow_tokens = nn.Linear(100, dim_m)
+        self.decode_latent = nn.Linear(config.latent_size, 10 * config.set_seq_size)
+        self.grow_sequence = nn.Linear(10 * config.set_seq_size, 100 * config.set_seq_size)
+        self.grow_tokens = nn.Linear(100, config.transformer.dim_m)
 
         if config.model_type == "t5":
             # TODO would this actually effect `dropout_rate`?
@@ -95,7 +83,7 @@ class LatentDecoder(nn.Module):
             self.norm = T5LayerFF(config)
             config.dropout_rate = dropout_rate
         elif config.model_type == "funnel":
-            self.norm = nn.LayerNorm(config.d_model, config.layer_norm_eps)
+            self.norm = nn.LayerNorm(config.transformer.d_model, config.layer_norm_eps)
         else:
             raise ValueError(f'Unknown config.model_type "{config.model_type}"')
 
@@ -111,17 +99,17 @@ class LatentDecoder(nn.Module):
 
 
 class LatentDecoderSingleToken(nn.Module):
-    def __init__(self, dim_m, set_seq_size, latent_size, config):
+    def __init__(self, config):
         super().__init__()
-        self.decode_latent = nn.Linear(latent_size, 100)
-        self.grow_token = nn.Linear(100, dim_m)
-        self.dim_m = dim_m
+        self.decode_latent = nn.Linear(config.latent_size, 100)
+        self.grow_token = nn.Linear(100, config.transformer.dim_m)
+        self.dim_m = config.transformer.dim_m
 
         if config.model_type == "t5":
             config.dropout_rate = 0
             self.norm = T5LayerFF(config)
         elif config.model_type == "funnel":
-            self.norm = nn.LayerNorm(config.d_model, config.layer_norm_eps)
+            self.norm = nn.LayerNorm(config.transformer.d_model, config.layer_norm_eps)
         else:
             raise ValueError(f'Unknown config.model_type "{config.model_type}"')
 
@@ -132,9 +120,9 @@ class LatentDecoderSingleToken(nn.Module):
 
 
 class LatentDecoderFullSingleToken(nn.Module):
-    def __init__(self, dim_m, set_seq_size, latent_size, config):
-        assert dim_m <= latent_size
-        self.dim_m = dim_m
+    def __init__(self, config):
+        assert config.transformer.dim_m <= config.latent_size
+        self.dim_m = config.transformer.dim_m
         super().__init__()
 
     def forward(self, latent) -> torch.Tensor:
@@ -147,9 +135,9 @@ class LatentDecoderMatchEncoder(LatentDecoder):
     Just do one jump from latent -> 100x sequence.
     """
 
-    def __init__(self, dim_m, set_seq_size, latent_size, config):
-        super().__init__(dim_m, set_seq_size, latent_size, config)
-        self.grow_sequence = nn.Linear(latent_size, 100 * set_seq_size)
+    def __init__(self, config):
+        super().__init__(config)
+        self.grow_sequence = nn.Linear(config.latent_size, 100 * config.set_seq_size)
 
     def forward(self, latent) -> torch.Tensor:
         batch_size = latent.size(0)
@@ -161,14 +149,13 @@ class LatentDecoderSelfAttnGrow(LatentDecoder):
     """
     Start with 10-dim tokens and grow them whith cross-attention.
     """
-
     # TODO add position bias
-    def __init__(self, dim_m, set_seq_size, latent_size, config):
-        super().__init__(dim_m, set_seq_size, latent_size, config)
+    def __init__(self, config):
+        super().__init__(config)
         self.grow_tokens_to_100 = nn.Linear(10, 100)
-        self.grow_tokens_to_dim_m = nn.Linear(100, dim_m)
-        config.d_model = 100
-        self.self_attention = T5LayerSelfAttention(config)
+        self.grow_tokens_to_dim_m = nn.Linear(100, config.dim_m)
+        config.transformer.d_model = 100
+        self.self_attention = T5LayerSelfAttention(config.transformer)
 
     def forward(self, latent) -> torch.Tensor:
         batch_size = latent.size(0)
@@ -182,7 +169,6 @@ VAE_ENCODER_MODELS = {
     "1st-token": LatentEncoder1stToken,
     "full-1st-token": LatentEncoderFull1stToken,
     "full-n-tokens": LatentEncoderFullNTokens,
-    "full-all-tokens": LatentEncoderFullAllTokens,
     "basic-attention": LatentEncoderAttention,
 }
 VAE_DECODER_MODELS = {

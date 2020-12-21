@@ -350,7 +350,7 @@ class TrainTests(TestCasePlus):
             self.assertGreater(result["eval_loss"], 0.0)
             self.assertNotIn("epoch", result)
 
-    def test_train_adafactor(self):
+    def test_train_n_tokens_model(self):
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
 
@@ -362,7 +362,8 @@ class TrainTests(TestCasePlus):
             --per_device_train_batch_size 2
             --num_train_epochs 1
             --set_seq_size 4
-            --encoder_model full-1st-token
+            --encoder_model full-n-tokens
+            --n_latent_tokens 2
             --decoder_model full-single-token
             --latent_size 2
             --transformer_name t5-small
