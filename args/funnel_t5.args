@@ -1,1 +1,3 @@
 transformer_type funnel-t5
+transformer_name funnel-transformer/intermediate
+transformer_decoder_name t5-base
