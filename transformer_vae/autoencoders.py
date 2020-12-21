@@ -6,9 +6,9 @@ from transformers.models.t5.modeling_t5 import T5LayerFF, T5LayerSelfAttention
 class LatentEncoder(nn.Module):
     def __init__(self, config):
         super().__init__()
-        assert(config.transformer.dim_m > 100)
+        assert(config.transformer.d_model > 100)
         assert(100 * config.set_seq_size > config.latent_size)
-        self.shrink_tokens = nn.Linear(config.transformer.dim_m, 100)
+        self.shrink_tokens = nn.Linear(config.transformer.d_model, 100)
         self.shrink_sequence = nn.Linear(100 * config.set_seq_size, config.latent_size)
         self.tanh = nn.Tanh()
 
@@ -22,8 +22,8 @@ class LatentEncoder(nn.Module):
 class LatentEncoder1stToken(nn.Module):
     def __init__(self, config):
         super().__init__()
-        assert(config.transformer.dim_m > config.latent_size)
-        self.token_to_latent = nn.Linear(config.transformer.dim_m, config.latent_size)
+        assert(config.transformer.d_model > config.latent_size)
+        self.token_to_latent = nn.Linear(config.transformer.d_model, config.latent_size)
         self.tanh = nn.Tanh()
 
     def forward(self, encoding) -> torch.Tensor:
@@ -33,7 +33,7 @@ class LatentEncoder1stToken(nn.Module):
 class LatentEncoderFull1stToken(nn.Module):
     def __init__(self, config):
         super().__init__()
-        assert config.transformer.dim_m == config.latent_size
+        assert config.transformer.d_model == config.latent_size
 
     def forward(self, encoding) -> torch.Tensor:
         return encoding[:, 0, :]
@@ -42,7 +42,7 @@ class LatentEncoderFull1stToken(nn.Module):
 class LatentEncoderFullNTokens(nn.Module):
     def __init__(self, config):
         super().__init__()
-        assert config.transformer.dim_m * config.n_latent_tokens == config.latent_size
+        assert config.transformer.d_model * config.n_latent_tokens == config.latent_size
         self.n_tokens = config.n_latent_tokens
 
     def forward(self, encoding) -> torch.Tensor:
@@ -58,7 +58,7 @@ class LatentEncoderAttention(LatentEncoder):
     """
     def __init__(self, config):
         super().__init__(config)
-        self.token_scorer = nn.Linear(config.transformer.dim_m, 1)
+        self.token_scorer = nn.Linear(config.transformer.d_model, 1)
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, encoding) -> torch.Tensor:
@@ -74,7 +74,7 @@ class LatentDecoder(nn.Module):
         super().__init__()
         self.decode_latent = nn.Linear(config.latent_size, 10 * config.set_seq_size)
         self.grow_sequence = nn.Linear(10 * config.set_seq_size, 100 * config.set_seq_size)
-        self.grow_tokens = nn.Linear(100, config.transformer.dim_m)
+        self.grow_tokens = nn.Linear(100, config.transformer.d_model)
 
         if config.model_type == "t5":
             # TODO would this actually effect `dropout_rate`?
@@ -102,8 +102,8 @@ class LatentDecoderSingleToken(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.decode_latent = nn.Linear(config.latent_size, 100)
-        self.grow_token = nn.Linear(100, config.transformer.dim_m)
-        self.dim_m = config.transformer.dim_m
+        self.grow_token = nn.Linear(100, config.transformer.d_model)
+        self.dim_m = config.transformer.d_model
 
         if config.model_type == "t5":
             config.dropout_rate = 0
@@ -121,8 +121,8 @@ class LatentDecoderSingleToken(nn.Module):
 
 class LatentDecoderFullSingleToken(nn.Module):
     def __init__(self, config):
-        assert config.transformer.dim_m <= config.latent_size
-        self.dim_m = config.transformer.dim_m
+        assert config.transformer.d_model <= config.latent_size
+        self.dim_m = config.transformer.d_model
         super().__init__()
 
     def forward(self, latent) -> torch.Tensor:

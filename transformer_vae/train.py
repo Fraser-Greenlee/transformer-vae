@@ -17,7 +17,7 @@ from transformers import (
     set_seed,
 )
 from transformers.integrations import is_wandb_available
-from transformers.trainer_utils import is_main_process, EvalPrediction
+from transformers.trainer_utils import is_main_process
 
 from transformer_vae.trainer import VAE_Trainer
 from transformer_vae.data_collator import DataCollatorForLanguageAutoencoding
@@ -337,6 +337,7 @@ def load_model_and_tokenizer(model_args):
             use_reg_loss=(not model_args.dont_use_reg_loss),
             reg_schedule_k=model_args.reg_schedule_k,
             reg_schedule_b=model_args.reg_schedule_b,
+            n_latent_tokens=model_args.n_latent_tokens,
             use_extra_logs=is_wandb_available(),
         )
         logger.warning("You are instantiating a new config instance from scratch (still using T5 checkpoint).")

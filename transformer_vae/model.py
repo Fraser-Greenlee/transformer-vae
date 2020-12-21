@@ -181,15 +181,8 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
             raise ValueError(f'Unrecognised model type: "{config.transformer.model_type }"')
 
         self.vae = EncoderDecoderVAE(
-            VAE_ENCODER_MODELS[config.encoder_model](
-                self.transformer.config.d_model, self.config.encoded_seq_size, self.config.latent_size
-            ),
-            VAE_DECODER_MODELS[config.decoder_model](
-                self.transformer.config.d_model,
-                self.config.encoded_seq_size,
-                self.config.latent_size,
-                self.transformer.config,
-            ),
+            VAE_ENCODER_MODELS[config.encoder_model](self.config),
+            VAE_DECODER_MODELS[config.decoder_model](self.config),
             self.config.n_previous_latent_codes,
             self.config.mmd_batch_size,
             self.config.use_reg_loss,

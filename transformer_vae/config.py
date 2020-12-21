@@ -67,6 +67,7 @@ class Transformer_VAE_Config(PretrainedConfig):
         reg_schedule_b=6.25,
         use_extra_logs=False,
         cache_dir=None,
+        n_latent_tokens=None,
         **kwargs,
     ):
         assertIn(encoder_model, VAE_ENCODER_MODELS.keys(), "Unexpected VAE encoder.")
@@ -77,11 +78,12 @@ class Transformer_VAE_Config(PretrainedConfig):
         self.transformer.decoder_start_token_id = decoder_start_token_id
         self.encoder_model = encoder_model
         self.decoder_model = decoder_model
+        self.n_latent_tokens = n_latent_tokens
 
-        if self.encoder_model in ['full-1st-token', 'full-single-token']:
+        if self.encoder_model in ['full-1st-token']:
             self.latent_size = self.transformer.d_model
         elif self.encoder_model == 'full-n-tokens':
-            self.latent_size = self.transformer.d_model * 4
+            self.latent_size = self.transformer.d_model * n_latent_tokens
         else:
             self.latent_size = latent_size
 
