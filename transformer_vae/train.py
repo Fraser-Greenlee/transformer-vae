@@ -194,6 +194,10 @@ class DataTrainingArguments:
     mlm_probability: float = field(
         default=0.0, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
     )
+    validation_name: str = field(
+        default='validation',
+        metadata={"help": "Name of the set to run evaluation on."},
+    )
 
     def __post_init__(self):
         if self.dataset_name is None and self.train_file is None and self.validation_file is None:
@@ -301,7 +305,7 @@ def get_datasets(data_args):
     if data_args.train_file is not None:
         data_files["train"] = data_args.train_file
     if data_args.validation_file is not None:
-        data_files["validation"] = data_args.validation_file
+        data_files[data_args.validation_name] = data_args.validation_file
     extension = data_args.train_file.split(".")[-1]
     if extension == "txt":
         extension = "text"
@@ -388,13 +392,13 @@ def preprocess_datasets(training_args, data_args, model_args, tokenizer, dataset
 
         datasets = datasets.map(add_class_column)
         if not training_args.num_classes:
-            training_args.num_classes = datasets["validation"].features[training_args.classification_column].num_classes
+            training_args.num_classes = datasets[data_args.validation_name].features[training_args.classification_column].num_classes
 
     # tokenize all the texts.
     if training_args.do_train:
         column_names = datasets["train"].column_names
     else:
-        column_names = datasets["validation"].column_names
+        column_names = datasets[data_args.validation_name].column_names
     if data_args.text_column is not None:
         text_column_name = data_args.text_column
     else:
@@ -419,7 +423,7 @@ def preprocess_datasets(training_args, data_args, model_args, tokenizer, dataset
     )
 
     if training_args.max_validation_size:
-        tokenized_datasets["validation"] = tokenized_datasets["validation"].train_test_split(training_args.max_validation_size)["test"]
+        tokenized_datasets["validation"] = tokenized_datasets[data_args.validation_name].train_test_split(training_args.max_validation_size)["test"]
 
     data_collator = DataCollatorForLanguageAutoencoding(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
 
