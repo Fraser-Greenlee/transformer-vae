@@ -413,4 +413,4 @@ class TrainTests(TestCasePlus):
             testargs.append("--no_cuda")
 
         with patch.object(sys, "argv", testargs):
-            result = main()
+            main()
