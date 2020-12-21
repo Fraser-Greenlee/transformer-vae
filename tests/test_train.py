@@ -380,3 +380,37 @@ class TrainTests(TestCasePlus):
 
         with patch.object(sys, "argv", testargs):
             main()
+
+    def test_train_unsupervised_classification_agnews(self):
+        stream_handler = logging.StreamHandler(sys.stdout)
+        logger.addHandler(stream_handler)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        testargs = f"""
+            train.py
+            --dataset_name=ag_news
+            --classification_column=label
+            --do_train
+            --max_steps=10
+            --validation_name=test
+            --test_classification
+            --per_device_train_batch_size 2
+            --per_device_eval_batch_size 2
+            --max_validation_size 100
+            --encoder_model full-1st-token
+            --decoder_model full-single-token
+            --latent_size 2
+            --transformer_name t5-small
+            --output_dir {tmp_dir}
+            --overwrite_output_dir
+            """.split()
+
+        if torch.cuda.device_count() > 1:
+            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
+            return
+
+        if torch_device != "cuda":
+            testargs.append("--no_cuda")
+
+        with patch.object(sys, "argv", testargs):
+            result = main()

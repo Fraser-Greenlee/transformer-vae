@@ -61,14 +61,6 @@ class VAE_TrainingArguments(TrainingArguments):
         default=None,
         metadata={"help": f"Run check on sequences from random latent codes. Options: {', '.join(SEQ_CHECKS.keys())}"},
     )
-    classification_column: str = field(
-        default=None,
-        metadata={"help": "Test SVM classification using latent codes."},
-    )
-    num_classes: int = field(
-        default=None,
-        metadata={"help": "How many classes in the data, found using a ClassLabel column if none given."},
-    )
     max_validation_size: int = field(
         default=None,
         metadata={"help": "Limit the eval dataset size, defaults to not limiting it, must be < validation size."},
@@ -80,6 +72,10 @@ class VAE_TrainingArguments(TrainingArguments):
     sample_from_latent: bool = field(
         default=False,
         metadata={"help": "Whether to sample from the latent space during evaluation."},
+    )
+    test_classification: bool = field(
+        default=False,
+        metadata={"help": "Test using latent codes for unsupervised classification."},
     )
 
 
@@ -197,6 +193,14 @@ class DataTrainingArguments:
     validation_name: str = field(
         default='validation',
         metadata={"help": "Name of the set to run evaluation on."},
+    )
+    classification_column: str = field(
+        default='class_label',
+        metadata={"help": "Test SVM classification using latent codes."},
+    )
+    num_classes: int = field(
+        default=None,
+        metadata={"help": "How many classes in the data, found using a ClassLabel column if none given."},
     )
 
     def __post_init__(self):
@@ -385,14 +389,16 @@ def load_model_and_tokenizer(model_args):
 
 def preprocess_datasets(training_args, data_args, model_args, tokenizer, datasets):
     # Add class_label if needed
-    if training_args.classification_column:
+    if training_args.test_classification:
+        if data_args.classification_column != "class_label":
 
-        def add_class_column(examples):
-            return {"class_label": examples[training_args.classification_column]}
+            if not data_args.num_classes:
+                data_args.num_classes = datasets[data_args.validation_name].features[data_args.classification_column].num_classes
 
-        datasets = datasets.map(add_class_column)
-        if not training_args.num_classes:
-            training_args.num_classes = datasets[data_args.validation_name].features[training_args.classification_column].num_classes
+            def add_class_column(examples):
+                return {"class_label": examples[data_args.classification_column]}
+
+            datasets = datasets.map(add_class_column, remove_columns=[data_args.classification_column])
 
     # tokenize all the texts.
     if training_args.do_train:

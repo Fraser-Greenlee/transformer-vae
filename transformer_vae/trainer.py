@@ -48,8 +48,7 @@ for logger_integration in NOT_ALLOWED_LOGGERS:
 class VAE_Trainer(trainer_script.Trainer):
     def __init__(self, args=None, **kwargs):
         if args:
-            self.num_classes = args.num_classes
-            self.has_class_label = self.num_classes is not None
+            self.test_classification = args.test_classification
         super().__init__(args=args, **kwargs)
 
     def _text_from_latent(self, latent):
@@ -99,14 +98,14 @@ class VAE_Trainer(trainer_script.Trainer):
         dataloader = self.get_eval_dataloader(eval_dataset)
         latents_with_class = []
         for inputs in dataloader:
-            if self.has_class_label:
+            if self.test_classification:
                 class_label = inputs.pop("class_label")
 
             inputs = self._prepare_inputs(inputs)
             outputs = self.model(**inputs)
 
             row = [outputs.get("latent").tolist()]
-            if self.has_class_label:
+            if self.test_classification:
                 row.append(class_label.tolist())  # type: ignore
 
             latents_with_class.append(row)
@@ -132,7 +131,7 @@ class VAE_Trainer(trainer_script.Trainer):
         if self.args.sample_from_latent:
             self._interpolate_samples(eval_dataset)
             self._random_samples()
-        if self.has_class_label:
+        if self.test_classification:
             latents_with_class = self._latent_with_class(eval_dataset)
             self._svm_classification(latents_with_class)
         # self._t_sne(latents_with_class)
