@@ -6,8 +6,8 @@ from transformers.models.t5.modeling_t5 import T5LayerFF, T5LayerSelfAttention
 class LatentEncoder(nn.Module):
     def __init__(self, config):
         super().__init__()
-        assert(config.transformer.d_model > 100)
-        assert(100 * config.transformer.n_positions > config.latent_size)
+        assert config.transformer.d_model > 100
+        assert 100 * config.transformer.n_positions > config.latent_size
         self.shrink_tokens = nn.Linear(config.transformer.d_model, 100)
         self.shrink_sequence = nn.Linear(100 * config.transformer.n_positions, config.latent_size)
         self.tanh = nn.Tanh()
@@ -22,7 +22,7 @@ class LatentEncoder(nn.Module):
 class LatentEncoder1stToken(nn.Module):
     def __init__(self, config):
         super().__init__()
-        assert(config.transformer.d_model > config.latent_size)
+        assert config.transformer.d_model > config.latent_size
         self.token_to_latent = nn.Linear(config.transformer.d_model, config.latent_size)
         self.tanh = nn.Tanh()
 
@@ -47,7 +47,7 @@ class LatentEncoderFullNTokens(nn.Module):
 
     def forward(self, encoding) -> torch.Tensor:
         batch_size = encoding.size(0)
-        return encoding[:, :self.n_tokens, :].view(batch_size, -1)
+        return encoding[:, : self.n_tokens, :].view(batch_size, -1)
 
 
 class LatentEncoderAttention(LatentEncoder):
@@ -56,6 +56,7 @@ class LatentEncoderAttention(LatentEncoder):
 
     Should weight each individual token's expected importance for the overall sequence representation.
     """
+
     def __init__(self, config):
         super().__init__(config)
         self.token_scorer = nn.Linear(config.transformer.d_model, 1)
@@ -91,11 +92,7 @@ class LatentDecoder(nn.Module):
         batch_size = latent.size(0)
         latent = self.decode_latent(latent)
         latent = self.grow_sequence(latent)
-        return self.norm(
-            self.grow_tokens(
-                latent.view(batch_size, -1, 100)
-            )
-        )
+        return self.norm(self.grow_tokens(latent.view(batch_size, -1, 100)))
 
 
 class LatentDecoderSingleToken(nn.Module):
@@ -149,6 +146,7 @@ class LatentDecoderSelfAttnGrow(LatentDecoder):
     """
     Start with 10-dim tokens and grow them whith cross-attention.
     """
+
     # TODO add position bias
     def __init__(self, config):
         super().__init__(config)

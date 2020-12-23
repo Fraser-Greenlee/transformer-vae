@@ -25,6 +25,7 @@ class EncoderDecoderVAE(nn.Module):
     An MMD-VAE used with encoder-decoder models.
     Encodes all token encodings into a single latent & spits them back out.
     """
+
     batch_size = None
 
     def __init__(self, encoder, decoder, use_n_previous_latent_codes=0, smaller_mmd_batch_size=None, use_reg_loss=True):

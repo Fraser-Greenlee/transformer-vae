@@ -160,7 +160,9 @@ class ModelArguments:
     )
     n_latent_tokens: int = field(
         default=None,
-        metadata={"help": "Number of latent tokens to use for full sequence VAE (set to sequence length if its shorter), used with `encoder_model full-n-tokens`."},
+        metadata={
+            "help": "Number of latent tokens to use for full sequence VAE (set to sequence length if its shorter), used with `encoder_model full-n-tokens`."
+        },
     )
 
 
@@ -191,11 +193,11 @@ class DataTrainingArguments:
         default=0.0, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
     )
     validation_name: str = field(
-        default='validation',
+        default="validation",
         metadata={"help": "Name of the set to run evaluation on."},
     )
     classification_column: str = field(
-        default='class_label',
+        default="class_label",
         metadata={"help": "Test SVM classification using latent codes."},
     )
     num_classes: int = field(
@@ -222,13 +224,16 @@ def check_seq_size(tokenizer, text_column_name, data_args, datasets, set_seq_siz
     tokenized_datasets = datasets.map(
         tokenize_function,
         batched=True,
-        batch_size=None,  # apply tokenize_function to whole dataset at once (ensures longest length is global)
+        batch_size=1_000,
         num_proc=data_args.preprocessing_num_workers,
         remove_columns=[text_column_name],
         load_from_cache_file=not data_args.overwrite_cache,
     )
 
-    max_seq_size = len(tokenized_datasets["train"]["input_ids"][0])
+    max_seq_size = max(
+        max([len(row) for row in tokenized_datasets["train"]["input_ids"][::1_000]]),
+        max([len(row) for row in tokenized_datasets["validation"]["input_ids"][::1_000]]),
+    )
 
     if max_seq_size > set_seq_size:
         logger.warn(
@@ -252,7 +257,11 @@ def get_args():
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
     # use train batch size if eval is default
-    training_args.per_device_eval_batch_size = training_args.per_device_train_batch_size if training_args.per_device_eval_batch_size == 8 else training_args.per_device_eval_batch_size
+    training_args.per_device_eval_batch_size = (
+        training_args.per_device_train_batch_size
+        if training_args.per_device_eval_batch_size == 8
+        else training_args.per_device_eval_batch_size
+    )
 
     if model_args.transformer_name is None:
         model_args.transformer_name = DEFAULT_TRANSFORMER_NAME[model_args.transformer_type]
@@ -393,7 +402,9 @@ def preprocess_datasets(training_args, data_args, model_args, tokenizer, dataset
         if data_args.classification_column != "class_label":
 
             if not data_args.num_classes:
-                data_args.num_classes = datasets[data_args.validation_name].features[data_args.classification_column].num_classes
+                data_args.num_classes = (
+                    datasets[data_args.validation_name].features[data_args.classification_column].num_classes
+                )
 
             def add_class_column(examples):
                 return {"class_label": examples[data_args.classification_column]}
@@ -429,7 +440,9 @@ def preprocess_datasets(training_args, data_args, model_args, tokenizer, dataset
     )
 
     if training_args.max_validation_size:
-        tokenized_datasets["validation"] = tokenized_datasets[data_args.validation_name].train_test_split(training_args.max_validation_size)["test"]
+        tokenized_datasets["validation"] = tokenized_datasets[data_args.validation_name].train_test_split(
+            training_args.max_validation_size
+        )["test"]
 
     data_collator = DataCollatorForLanguageAutoencoding(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
 
@@ -479,7 +492,7 @@ def main():
         tokenizer=tokenizer,
         data_collator=data_collator,
         callbacks=[TellModelGlobalStep],
-        optimizers=get_optimizers(training_args, model)
+        optimizers=get_optimizers(training_args, model),
     )
     trainer.log({})
 

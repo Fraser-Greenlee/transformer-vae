@@ -80,9 +80,9 @@ class Transformer_VAE_Config(PretrainedConfig):
         self.decoder_model = decoder_model
         self.n_latent_tokens = n_latent_tokens
 
-        if self.encoder_model in ['full-1st-token']:
+        if self.encoder_model in ["full-1st-token"]:
             self.latent_size = self.transformer.d_model
-        elif self.encoder_model == 'full-n-tokens':
+        elif self.encoder_model == "full-n-tokens":
             self.latent_size = self.transformer.d_model * n_latent_tokens
         else:
             self.latent_size = latent_size

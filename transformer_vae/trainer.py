@@ -76,7 +76,7 @@ class VAE_Trainer(trainer_script.Trainer):
         table = wandb.Table(columns=["Interpolation Ratio", "Text"])
         table.add_data(-10, self.tokenizer.decode(samples["input_ids"][0]))
 
-        for i in tqdm(range(11), desc='Sampling from interpolated latent points.'):
+        for i in tqdm(range(11), desc="Sampling from interpolated latent points."):
             ratio = i / 10
             latent = start_latent + ratio * latent_diff
             table.add_data(ratio, self._text_from_latent(latent))
@@ -88,7 +88,7 @@ class VAE_Trainer(trainer_script.Trainer):
         table = wandb.Table(columns=["Text", "Valid", "IsMaxLen"])
         latent_points = torch.randn(self.args.n_random_samples, self.model.config.latent_size, device=self.model.device)
         # TODO can I greedy decode these in parallel?
-        for i in tqdm(range(latent_points.size(0)), desc='Sampling from random latent points.'):
+        for i in tqdm(range(latent_points.size(0)), desc="Sampling from random latent points."):
             text = self._text_from_latent(latent_points[i].view(1, -1))
             valid = None if not self.args.seq_check else SEQ_CHECKS[self.args.seq_check](text)
             table.add_data(text, valid, len(text) == self.args.generate_max_len)
