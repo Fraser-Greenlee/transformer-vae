@@ -7,9 +7,9 @@ class LatentEncoder(nn.Module):
     def __init__(self, config):
         super().__init__()
         assert(config.transformer.d_model > 100)
-        assert(100 * config.set_seq_size > config.latent_size)
+        assert(100 * config.transformer.n_positions > config.latent_size)
         self.shrink_tokens = nn.Linear(config.transformer.d_model, 100)
-        self.shrink_sequence = nn.Linear(100 * config.set_seq_size, config.latent_size)
+        self.shrink_sequence = nn.Linear(100 * config.transformer.n_positions, config.latent_size)
         self.tanh = nn.Tanh()
 
     def forward(self, encoding) -> torch.Tensor:
@@ -72,8 +72,8 @@ class LatentEncoderAttention(LatentEncoder):
 class LatentDecoder(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.decode_latent = nn.Linear(config.latent_size, 10 * config.set_seq_size)
-        self.grow_sequence = nn.Linear(10 * config.set_seq_size, 100 * config.set_seq_size)
+        self.decode_latent = nn.Linear(config.latent_size, 10 * config.transformer.n_positions)
+        self.grow_sequence = nn.Linear(10 * config.transformer.n_positions, 100 * config.transformer.n_positions)
         self.grow_tokens = nn.Linear(100, config.transformer.d_model)
 
         if config.model_type == "t5":
@@ -137,7 +137,7 @@ class LatentDecoderMatchEncoder(LatentDecoder):
 
     def __init__(self, config):
         super().__init__(config)
-        self.grow_sequence = nn.Linear(config.latent_size, 100 * config.set_seq_size)
+        self.grow_sequence = nn.Linear(config.latent_size, 100 * config.transformer.n_positions)
 
     def forward(self, latent) -> torch.Tensor:
         batch_size = latent.size(0)
