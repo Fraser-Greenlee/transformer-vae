@@ -1,2 +1,2 @@
 dataset_name=Fraser/python-lines
-seq_check="python"
+seq_check=python
