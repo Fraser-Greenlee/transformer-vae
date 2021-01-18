@@ -73,20 +73,22 @@ class LatentEncoderAttention(LatentEncoder):
 class LatentDecoder(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.decode_latent = nn.Linear(config.latent_size, 10 * config.transformer.n_positions)
-        self.grow_sequence = nn.Linear(10 * config.transformer.n_positions, 100 * config.transformer.n_positions)
-        self.grow_tokens = nn.Linear(100, config.transformer.d_model)
+        t_config = config.transformer
 
-        if config.model_type == "t5":
+        self.decode_latent = nn.Linear(config.latent_size, 10 * t_config.n_positions)
+        self.grow_sequence = nn.Linear(10 * t_config.n_positions, 100 * t_config.n_positions)
+        self.grow_tokens = nn.Linear(100, t_config.d_model)
+
+        if t_config.model_type == "t5":
             # TODO would this actually effect `dropout_rate`?
-            dropout_rate = config.dropout_rate
-            config.dropout_rate = 0
-            self.norm = T5LayerFF(config)
-            config.dropout_rate = dropout_rate
-        elif config.model_type == "funnel":
-            self.norm = nn.LayerNorm(config.transformer.d_model, config.layer_norm_eps)
+            dropout_rate = t_config.dropout_rate
+            t_config.dropout_rate = 0
+            self.norm = T5LayerFF(t_config)
+            t_config.dropout_rate = dropout_rate
+        elif t_config.model_type == "funnel":
+            self.norm = nn.LayerNorm(t_config.d_model, t_config.layer_norm_eps)
         else:
-            raise ValueError(f'Unknown config.model_type "{config.model_type}"')
+            raise ValueError(f'Unknown config.transformer.model_type: "{t_config.model_type}"')
 
     def forward(self, latent) -> torch.Tensor:
         batch_size = latent.size(0)

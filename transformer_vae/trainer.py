@@ -85,14 +85,21 @@ class VAE_Trainer(trainer_script.Trainer):
         wandb.log({"interpolate points": table}, step=self.state.global_step)
 
     def _random_samples(self):
+        # TODO can I greedy decode these in parallel?
         table = wandb.Table(columns=["Text", "Valid", "IsMaxLen"])
         latent_points = torch.randn(self.args.n_random_samples, self.model.config.latent_size, device=self.model.device)
-        # TODO can I greedy decode these in parallel?
+        seq_check_results = 0
+        seq_check = SEQ_CHECKS[self.args.seq_check]
+
         for i in tqdm(range(latent_points.size(0)), desc="Sampling from random latent points."):
             text = self._text_from_latent(latent_points[i].view(1, -1))
-            valid = None if not self.args.seq_check else SEQ_CHECKS[self.args.seq_check](text)
+            valid = seq_check(text)
             table.add_data(text, valid, len(text) == self.args.generate_max_len)
+            seq_check_results += int(valid)
+
         wandb.log({"random points": table}, step=self.state.global_step)
+        if self.args.seq_check:
+            wandb.log({'ratio of random samples passing sequence checks': seq_check_results / latent_points.size(0)})
 
     def _latent_with_class(self, eval_dataset):
         dataloader = self.get_eval_dataloader(eval_dataset)
