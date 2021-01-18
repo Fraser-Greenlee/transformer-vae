@@ -56,7 +56,7 @@ class VAE_Trainer(trainer_script.Trainer):
         generation = self.model.generate(
             latent=latent, bos_token_id=0, min_length=self.args.generate_min_len, max_length=self.args.generate_max_len
         )
-        return self.tokenizer.decode(generation[0].tolist())
+        return self.tokenizer.decode(generation[0].tolist(), skip_special_tokens=True)
 
     def _interpolate_samples(self, eval_dataset):
         mini_eval_dataloader_iter = iter(
