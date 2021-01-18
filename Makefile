@@ -23,5 +23,5 @@ publish:
 	twine upload --repository pypi dist/*
 
 baselines:
-	!cd transformer-vae; python run_experiment.py batch_small grad_accumulation_small semantics funnel_t5 full_model_30_tokens 30Seq eval --run_name News Headlines Baseline
-	!cd transformer-vae; python run_experiment.py batch_small grad_accumulation_small syntax funnel_t5 full_model_30_tokens 30Seq eval
+	!cd transformer-vae; python run_experiment.py batch_small grad_accumulation_small semantics funnel_t5 full_30_tkn 30Seq eval --run_name News Headlines Baseline
+	!cd transformer-vae; python run_experiment.py batch_small grad_accumulation_small syntax funnel_t5 full_30_tkn 30Seq eval
