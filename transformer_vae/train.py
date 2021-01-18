@@ -232,7 +232,7 @@ def check_seq_size(tokenizer, text_column_name, data_args, datasets, set_seq_siz
 
     max_seq_size = max(
         max([len(row) for row in tokenized_datasets["train"]["input_ids"][::1_000]]),
-        max([len(row) for row in tokenized_datasets["validation"]["input_ids"][::1_000]]),
+        max([len(row) for row in tokenized_datasets[data_args.validation_name]["input_ids"][::1_000]]),
     )
 
     if max_seq_size > set_seq_size:
