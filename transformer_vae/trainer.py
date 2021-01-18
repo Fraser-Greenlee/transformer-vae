@@ -76,7 +76,7 @@ class VAE_Trainer(trainer_script.Trainer):
         table = wandb.Table(columns=["Interpolation Ratio", "Text"])
         table.add_data(-10, self.tokenizer.decode(samples["input_ids"][0]))
 
-        for i in tqdm(range(11), desc="Sampling from interpolated latent points."):
+        for i in tqdm(range(11), desc="Sampling from interpolated latent points"):
             ratio = i / 10
             latent = start_latent + ratio * latent_diff
             table.add_data(ratio, self._text_from_latent(latent))
@@ -91,7 +91,7 @@ class VAE_Trainer(trainer_script.Trainer):
         seq_check_results = 0
         seq_check = SEQ_CHECKS[self.args.seq_check]
 
-        for i in tqdm(range(latent_points.size(0)), desc="Sampling from random latent points."):
+        for i in tqdm(range(latent_points.size(0)), desc="Sampling from random latent points"):
             text = self._text_from_latent(latent_points[i].view(1, -1))
             valid = seq_check(text)
             table.add_data(text, valid, len(text) == self.args.generate_max_len)
@@ -99,7 +99,10 @@ class VAE_Trainer(trainer_script.Trainer):
 
         wandb.log({"random points": table}, step=self.state.global_step)
         if self.args.seq_check:
-            wandb.log({'ratio of random samples passing sequence checks': seq_check_results / latent_points.size(0)})
+            wandb.log(
+                {'ratio of random samples passing sequence checks': seq_check_results / latent_points.size(0)},
+                step=self.state.global_step
+            )
 
     def _latent_with_class(self, eval_dataset):
         dataloader = self.get_eval_dataloader(eval_dataset)

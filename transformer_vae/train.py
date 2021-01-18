@@ -59,7 +59,7 @@ class VAE_TrainingArguments(TrainingArguments):
     )
     seq_check: str = field(
         default=None,
-        metadata={"help": f"Run check on sequences from random latent codes. Options: {', '.join(SEQ_CHECKS.keys())}"},
+        metadata={"help": f"Run check on sequences from random latent codes. Options: {', '.join([str(k) for k in SEQ_CHECKS.keys()])}"},
     )
     max_validation_size: int = field(
         default=None,

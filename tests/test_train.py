@@ -261,9 +261,10 @@ class TrainTests(TestCasePlus):
             --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
             --do_train
             --do_eval
+            --sample_from_latent
             --per_device_train_batch_size 4
             --per_device_eval_batch_size 4
-            --num_train_epochs 2
+            --num_train_epochs 1
             --set_seq_size 4
             --latent_size 2
             --transformer_name t5-small
@@ -281,7 +282,7 @@ class TrainTests(TestCasePlus):
 
         with patch.object(sys, "argv", testargs):
             result = main()
-            self.assertAlmostEqual(result["epoch"], 2.0)
+            self.assertAlmostEqual(result["epoch"], 1.0)
 
     def test_train_non_vae(self):
         stream_handler = logging.StreamHandler(sys.stdout)
