@@ -53,7 +53,6 @@ class VAE_Trainer(trainer_script.Trainer):
 
     def _text_from_latent(self, latent):
         # TODO can I do many latents in parallel?
-        # TODO this may not work for Funnel-VAE
         generation = self.model.generate(
             latent=latent, bos_token_id=0, min_length=self.args.generate_min_len, max_length=self.args.generate_max_len
         )
