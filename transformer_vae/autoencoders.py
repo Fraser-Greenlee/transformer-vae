@@ -34,12 +34,37 @@ class LatentEncoderFull1stToken(nn.Module):
     def __init__(self, config):
         super().__init__()
         assert config.transformer.d_model == config.latent_size
+        self.token_to_latent = nn.Linear(config.transformer.d_model, config.transformer.d_model)
+        self.tanh = nn.Tanh()
+
+    def forward(self, encoding) -> torch.Tensor:
+        return self.tanh(self.token_to_latent(encoding[:, 0, :]))
+
+
+class LatentEncoderFull1stTokenOLD(nn.Module):
+    # Old one not actually using a tanh activation
+    def __init__(self, config):
+        super().__init__()
+        assert config.transformer.d_model == config.latent_size
 
     def forward(self, encoding) -> torch.Tensor:
         return encoding[:, 0, :]
 
 
 class LatentEncoderFullNTokens(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        assert config.transformer.d_model * config.n_latent_tokens == config.latent_size
+        self.n_tokens = config.n_latent_tokens
+        self.token_to_latent = nn.Linear(config.transformer.d_model, config.transformer.d_model)
+        self.tanh = nn.Tanh()
+
+    def forward(self, encoding) -> torch.Tensor:
+        batch_size = encoding.size(0)
+        return self.tanh(self.token_to_latent(encoding))[:, : self.n_tokens, :].view(batch_size, -1)
+
+
+class LatentEncoderFullNTokensOLD(nn.Module):
     def __init__(self, config):
         super().__init__()
         assert config.transformer.d_model * config.n_latent_tokens == config.latent_size
@@ -118,7 +143,10 @@ class LatentDecoderSingleToken(nn.Module):
         return self.norm(self.grow_token(latent).view(batch_size, -1, self.dim_m))
 
 
-class LatentDecoderFullSingleToken(nn.Module):
+class LatentDecoderFullTokens(nn.Module):
+    '''
+        Treats latent as full token encodings.
+    '''
     def __init__(self, config):
         assert config.transformer.d_model <= config.latent_size
         self.dim_m = config.transformer.d_model
@@ -174,7 +202,7 @@ VAE_ENCODER_MODELS = {
 VAE_DECODER_MODELS = {
     None: LatentDecoder,
     "single-token": LatentDecoderSingleToken,
-    "full-single-token": LatentDecoderFullSingleToken,
+    "full-tokens": LatentDecoderFullTokens,
     "match-encoder": LatentDecoderMatchEncoder,
     "attention": LatentDecoderSelfAttnGrow,
 }
