@@ -2,10 +2,10 @@ format:
 	black -l 120 -t py37 .
 
 setup-env:
-	# virtualenv t5_vae_env -p python3
+	# virtualenv t_vae_env -p python3
 
 activate:
-	# source t5_vae_env/bin/activate
+	# source t_vae_env/bin/activate
 
 test:
 	black --check -l 120 -t py37 .
@@ -21,3 +21,7 @@ install-dev:
 publish:
 	python setup.py sdist bdist_wheel
 	twine upload --repository pypi dist/*
+
+baselines:
+	!cd transformer-vae; python run_experiment.py batch_small grad_accumulation_small semantics funnel_t5 full_model_30_tokens 30Seq eval --run_name News Headlines Baseline
+	!cd transformer-vae; python run_experiment.py batch_small grad_accumulation_small syntax funnel_t5 full_model_30_tokens 30Seq eval

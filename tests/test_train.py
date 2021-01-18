@@ -250,7 +250,7 @@ class TrainTests(TestCasePlus):
             result = main()
             self.assertAlmostEqual(result["epoch"], 2.0)
 
-    def test_train_seq_check(self):
+    def test_train_python_syntax_seq_check(self):
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
 
@@ -304,7 +304,6 @@ class TrainTests(TestCasePlus):
             --transformer_name t5-small
             --output_dir {tmp_dir}
             --overwrite_output_dir
-            --seq_check python
             """.split()
 
         if torch.cuda.device_count() > 1:
