@@ -440,7 +440,7 @@ def preprocess_datasets(training_args, data_args, model_args, tokenizer, dataset
     )
 
     if training_args.max_validation_size:
-        tokenized_datasets["validation"] = tokenized_datasets[data_args.validation_name].train_test_split(
+        tokenized_datasets[data_args.validation_name] = tokenized_datasets[data_args.validation_name].train_test_split(
             training_args.max_validation_size
         )["test"]
 
@@ -488,7 +488,7 @@ def main():
         model=model,
         args=training_args,
         train_dataset=tokenized_datasets["train"] if training_args.do_train else None,
-        eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
+        eval_dataset=tokenized_datasets[data_args.validation_name] if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
         callbacks=[TellModelGlobalStep],
