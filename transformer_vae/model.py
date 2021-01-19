@@ -765,7 +765,6 @@ class Funnel_gpt2_VAE_Model(Funnel_VAE_Model_Base):
         if self.training and self.config.use_extra_logs:
             self._update_logs(decoder_ce=decoder_outputs.loss.item(), reg_loss=vae_outputs.reg_loss.item(), reg_loss_w=reg_loss_w)
 
-        import pdb; pdb.set_trace()
         return BaseTransformerVAE_Output(
             loss=loss,
             logits=decoder_outputs.logits,
