@@ -746,9 +746,15 @@ class Funnel_gpt2_VAE_Model(Funnel_VAE_Model_Base):
 
         if labels is not None and decoder_input_ids is None:
             # get decoder inputs from shifting labels to the right
-            decoder_input_ids = self._shift_right(labels)
-            # gpt2 doesn't natively support padding so just mask out those -100's
-            attention_mask = decoder_input_ids.ne(-100).long()
+            decoder_input_ids = self._shift_right(input_ids)
+            # use old attention mask shifted right
+            attention_mask = torch.cat(
+                (
+                    torch.ones(2, 1, device=attention_mask.device),
+                    attention_mask
+                ),
+                1
+            )[:, :attention_mask.size(1) - 1]
 
         # TODO is this letting the model cheat by just looking at its labels?
         decoder_outputs = self.decoder(
