@@ -379,27 +379,6 @@ class Funnel_VAE_Model_Base(Transformer_VAE_Base_Model):
     def get_input_embeddings(self):
         return self.transformer.funnel.embeddings.word_embeddings
 
-    def _shift_right(self, input_ids):
-        decoder_start_token_id = self.config.transformer_decoder.decoder_start_token_id
-        pad_token_id = self.config.transformer_decoder.pad_token_id
-
-        assert (
-            decoder_start_token_id is not None
-        ), "self.model.config.decoder_start_token_id has to be defined. In T5 it is usually set to the pad_token_id. See T5 docs for more information"
-
-        # shift inputs to the right
-        shifted_input_ids = input_ids.new_zeros(input_ids.shape)
-        shifted_input_ids[..., 1:] = input_ids[..., :-1].clone()
-        shifted_input_ids[..., 0] = decoder_start_token_id
-
-        assert pad_token_id is not None, "self.model.config.pad_token_id has to be defined."
-        # replace possible -100 values in labels by `pad_token_id`
-        shifted_input_ids.masked_fill_(shifted_input_ids == -100, pad_token_id)
-
-        assert torch.all(shifted_input_ids >= 0).item(), "Verify that `shifted_input_ids` has only positive values"
-
-        return shifted_input_ids
-
     def _get_encoder_outputs(
         self,
         input_ids=None,
@@ -696,6 +675,20 @@ class Funnel_gpt2_VAE_Model(Funnel_VAE_Model_Base):
         super().__init__(config=config)
         self.decoder = AutoModelForCausalLM.from_config(config.transformer_decoder)
 
+    def _shift_right(self, input_ids):
+        bos_token_id = self.config.transformer_decoder.bos_token_id
+
+        assert (
+            bos_token_id is not None
+        ), "self.config.transformer_decoder.bos_token_id has to be defined."
+
+        # shift inputs to the right
+        shifted_input_ids = input_ids.new_zeros(input_ids.shape)
+        shifted_input_ids[..., 1:] = input_ids[..., :-1].clone()
+        shifted_input_ids[..., 0] = bos_token_id
+
+        return shifted_input_ids
+
     def forward(
         self,
         input_ids=None,
@@ -750,9 +743,16 @@ class Funnel_gpt2_VAE_Model(Funnel_VAE_Model_Base):
             upsampled_encoding = vae_outputs.reconstructed_encoding
 
         # Now using gpt2 decoder
+
+        if labels is not None and decoder_input_ids is None:
+            # get decoder inputs from shifting labels to the right
+            decoder_input_ids = self._shift_right(labels)
+            # gpt2 doesn't natively support padding so just mask out those -100's
+            attention_mask = decoder_input_ids.ne(-100).long()
+
         # TODO is this letting the model cheat by just looking at its labels?
         decoder_outputs = self.decoder(
-            input_ids=input_ids,
+            input_ids=decoder_input_ids,
             encoder_hidden_states=upsampled_encoding,
             attention_mask=attention_mask,
             labels=labels,
