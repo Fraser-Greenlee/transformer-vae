@@ -11,5 +11,5 @@ def check_python(s):
 
 SEQ_CHECKS = {
     "python": check_python,
-    None: lambda x: x
+    None: lambda x: False
 }
