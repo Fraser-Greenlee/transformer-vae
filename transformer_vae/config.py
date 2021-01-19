@@ -190,6 +190,17 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
             "Funnel & T5 transformers have different dimensions."
         )
 
+    def to_dict(self):
+        """
+        Serializes this instance to a Python dictionary. Override the default `to_dict()` from `PretrainedConfig`.
+
+        Returns:
+            :obj:`Dict[str, any]`: Dictionary of all the attributes that make up this configuration instance,
+        """
+        output = super().to_dict()
+        output['transformer_decoder'] = self.transformer_decoder.to_dict()
+        return output
+
 
 class Funnel_gpt2_VAE_Config(Transformer_VAE_Config):
     r"""
@@ -237,3 +248,14 @@ class Funnel_gpt2_VAE_Config(Transformer_VAE_Config):
             self.transformer_decoder.n_embd,
             "Funnel & gpt2 transformers have different dimensions.",
         )
+
+    def to_dict(self):
+        """
+        Serializes this instance to a Python dictionary. Override the default `to_dict()` from `PretrainedConfig`.
+
+        Returns:
+            :obj:`Dict[str, any]`: Dictionary of all the attributes that make up this configuration instance,
+        """
+        output = super().to_dict()
+        output['transformer_decoder'] = self.transformer_decoder.to_dict()
+        return output
