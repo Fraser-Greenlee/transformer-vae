@@ -254,7 +254,7 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
         decoder_input_ids=None,
         latent=None,
         return_dict=True,
-        class_label=None,
+        **unused_kwargs
     ):
         raise NotImplementedError()
 
@@ -305,7 +305,7 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
         latent=None,
         use_cache=None,
         return_dict=True,
-        class_label=None,
+        **unused_kwargs
     ):
         assert return_dict, "Need return_dict=True, using tuple's is not implimented"
         use_cache = use_cache if use_cache is not None else self.config.use_cache
@@ -389,6 +389,7 @@ class Funnel_VAE_Model_Base(Transformer_VAE_Base_Model):
         output_hidden_states=None,
         return_dict=True,
         class_label=None,
+        label=None,
     ):
         funnel = self.transformer.funnel
 
@@ -448,9 +449,8 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
         encoder_outputs=None,
         decoder_input_ids=None,
         latent=None,
-        use_cache=None,
         return_dict=True,
-        class_label=None,
+        **unused_kwargs
     ):
         assert return_dict, "Need return_dict=True, using tuple's is not implimented"
 
@@ -572,7 +572,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         latent=None,
         use_cache=None,
         return_dict=True,
-        class_label=None,
+        **unused_kwargs
     ):
         assert return_dict, "Need return_dict=True, using tuple's is not implimented"
         use_cache = use_cache if use_cache is not None else self.config.use_cache
