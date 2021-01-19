@@ -540,14 +540,14 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         t5_model = AutoModelForSeq2SeqLM.from_config(config.transformer_decoder)
         self.transformer.decoder = t5_model.decoder
         self.transformer.lm_head = t5_model.lm_head
+        self.decoder_start_token_id = self.config.transformer_decoder.decoder_start_token_id
+        assert (
+            self.decoder_start_token_id is not None
+        ), "`self.config.transformer_decoder.decoder_start_token_id` has to be defined. In T5 it is usually set to the pad_token_id. See T5 docs for more information"
 
     def _shift_right(self, input_ids):
         decoder_start_token_id = self.config.transformer_decoder.decoder_start_token_id
         pad_token_id = self.config.transformer_decoder.pad_token_id
-
-        assert (
-            decoder_start_token_id is not None
-        ), "self.model.config.decoder_start_token_id has to be defined. In T5 it is usually set to the pad_token_id. See T5 docs for more information"
 
         # shift inputs to the right
         shifted_input_ids = input_ids.new_zeros(input_ids.shape)
@@ -674,19 +674,15 @@ class Funnel_gpt2_VAE_Model(Funnel_VAE_Model_Base):
     def __init__(self, config: Funnel_gpt2_VAE_Config):
         super().__init__(config=config)
         self.decoder = AutoModelForCausalLM.from_config(config.transformer_decoder)
+        self.decoder_start_token_id = self.config.transformer_decoder.bos_token_id
+        assert (
+            self.decoder_start_token_id is not None
+        ), "`self.config.transformer_decoder.bos_token_id` has to be defined."
 
     def _shift_right(self, input_ids):
-        bos_token_id = self.config.transformer_decoder.bos_token_id
-
-        assert (
-            bos_token_id is not None
-        ), "self.config.transformer_decoder.bos_token_id has to be defined."
-
-        # shift inputs to the right
         shifted_input_ids = input_ids.new_zeros(input_ids.shape)
         shifted_input_ids[..., 1:] = input_ids[..., :-1].clone()
-        shifted_input_ids[..., 0] = bos_token_id
-
+        shifted_input_ids[..., 0] = self.decoder_start_token_id
         return shifted_input_ids
 
     def forward(

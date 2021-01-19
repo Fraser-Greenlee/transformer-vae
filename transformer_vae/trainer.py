@@ -54,7 +54,7 @@ class VAE_Trainer(trainer_script.Trainer):
     def _text_from_latent(self, latent):
         # TODO can I do many latents in parallel?
         generation = self.model.generate(
-            latent=latent, bos_token_id=0, min_length=self.args.generate_min_len, max_length=self.args.generate_max_len
+            latent=latent, bos_token_id=self.model.decoder_start_token_id, min_length=self.args.generate_min_len, max_length=self.args.generate_max_len
         )
         return self.tokenizer.decode(generation[0].tolist(), skip_special_tokens=True)
 
