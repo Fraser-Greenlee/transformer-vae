@@ -1,0 +1,4 @@
+transformer_type funnel-gpt2
+transformer_name funnel-transformer/intermediate
+transformer_decoder_name distilgpt2
+tokenizer_name distilgpt2
