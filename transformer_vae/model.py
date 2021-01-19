@@ -746,7 +746,7 @@ class Funnel_gpt2_VAE_Model(Funnel_VAE_Model_Base):
             # use old attention mask shifted right
             attention_mask = torch.cat(
                 (
-                    torch.ones(2, 1, device=attention_mask.device),
+                    torch.ones(attention_mask.size(0), 1, device=attention_mask.device),
                     attention_mask
                 ),
                 1
