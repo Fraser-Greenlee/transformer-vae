@@ -187,20 +187,53 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
         assertEqual(
             self.transformer.d_model,
             self.transformer_decoder.d_model,
-            "Funnel & T5 transformers have different dimensions.",
-            "Funnel",
-            "T5",
+            "Funnel & T5 transformers have different dimensions."
         )
 
-    def to_dict(self):
-        """
-        Serializes this instance to a Python dictionary. Override the default `to_dict()` from `PretrainedConfig`.
 
-        Returns:
-            :obj:`Dict[str, any]`: Dictionary of all the attributes that make up this configuration instance,
-        """
-        output = copy.deepcopy(self.__dict__)
-        output["transformer"] = self.transformer.to_dict()
-        output["transformer_decoder"] = self.transformer_decoder.to_dict()
-        output["model_type"] = self.__class__.model_type
-        return output
+class Funnel_gpt2_VAE_Config(Transformer_VAE_Config):
+    r"""
+    Arguments:
+        encoded_seq_size (:obj:`int`):
+            Size of the encoding sequence after all Funnel encoder blocks.
+            Usually 1/4 of your input size.
+        transformer_decoder_name (:obj:`str`, `optional`, defaults to distilgpt2):
+            Name of the Transformer model to use as encoder & decoder.
+    """
+
+    def __init__(
+        self,
+        transformer_name="funnel-transformer/large",
+        encoded_seq_size=None,
+        transformer_decoder_name="distilgpt2",
+        decoder_start_token_id=0,
+        cache_dir=None,
+        **kwargs,
+    ):
+        super().__init__(
+            transformer_name=transformer_name,
+            encoded_seq_size=encoded_seq_size,
+            transformer_decoder_name=transformer_decoder_name,
+            decoder_start_token_id=decoder_start_token_id,
+            cache_dir=cache_dir,
+            **kwargs,
+        )
+        if self.padding_input:
+            pooling_division = 2 ** (len(self.transformer.block_sizes) - 1)
+            calc_encoded_seq_size = math.ceil(self.transformer.n_positions / pooling_division)
+            if encoded_seq_size is None:
+                self.encoded_seq_size = calc_encoded_seq_size
+            else:
+                self.encoded_seq_size = encoded_seq_size
+                assert self.encoded_seq_size == calc_encoded_seq_size
+        self.transformer_decoder = AutoConfig.from_pretrained(transformer_decoder_name, cache_dir=cache_dir)
+        self.transformer_decoder.add_cross_attention = True
+        self.transformer_decoder.decoder_start_token_id = decoder_start_token_id
+        if self.padding_input:
+            self.transformer_decoder.n_positions = self.transformer.n_positions
+        assertEqual(self.transformer_decoder.model_type, "gpt2", "Need gpt2 model type for transformer_decoder.")
+        assertEqual(
+            self.transformer.d_model,
+            self.transformer_decoder.n_embd,
+            "Funnel & gpt2 transformers have different dimensions.",
+        )

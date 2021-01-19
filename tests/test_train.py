@@ -417,3 +417,36 @@ class TrainTests(TestCasePlus):
 
         with patch.object(sys, "argv", testargs):
             main()
+
+    def test_train_gpt2_decoder(self):
+        stream_handler = logging.StreamHandler(sys.stdout)
+        logger.addHandler(stream_handler)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        testargs = f"""
+            train.py
+            --train_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --do_train
+            --max_steps=10
+            --per_device_train_batch_size 2
+            --encoder_model full-1st-token
+            --decoder_model full-tokens
+            --set_seq_size 8
+            --transformer_type funnel-gpt2
+            --transformer_name funnel-transformer/intermediate
+            --transformer_decoder_name distilgpt2
+            --tokenizer_name distilgpt2
+            --output_dir {tmp_dir}
+            --overwrite_output_dir
+            """.split()
+
+        if torch.cuda.device_count() > 1:
+            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
+            return
+
+        if torch_device != "cuda":
+            testargs.append("--no_cuda")
+
+        with patch.object(sys, "argv", testargs):
+            main()

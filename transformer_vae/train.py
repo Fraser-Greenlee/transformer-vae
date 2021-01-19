@@ -22,16 +22,16 @@ from transformers.trainer_utils import is_main_process
 from transformer_vae.trainer import VAE_Trainer
 from transformer_vae.data_collator import DataCollatorForLanguageAutoencoding
 from transformer_vae.trainer_callback import TellModelGlobalStep
-from transformer_vae.model import T5_VAE_Model, Funnel_VAE_Model, Funnel_T5_VAE_Model
+from transformer_vae.model import T5_VAE_Model, Funnel_VAE_Model, Funnel_T5_VAE_Model, Funnel_gpt2_VAE_Model
 from transformer_vae.sequence_checks import SEQ_CHECKS
-from transformer_vae.config import T5_VAE_Config, Funnel_VAE_Config, Funnel_T5_VAE_Config
+from transformer_vae.config import T5_VAE_Config, Funnel_VAE_Config, Funnel_T5_VAE_Config, Funnel_gpt2_VAE_Config
 
 
 logger = logging.getLogger(__name__)
 
 
-CONFIG = {"t5": T5_VAE_Config, "funnel": Funnel_VAE_Config, "funnel-t5": Funnel_T5_VAE_Config}
-MODEL = {"t5": T5_VAE_Model, "funnel": Funnel_VAE_Model, "funnel-t5": Funnel_T5_VAE_Model}
+CONFIG = {"t5": T5_VAE_Config, "funnel": Funnel_VAE_Config, "funnel-t5": Funnel_T5_VAE_Config, 'funnel-gpt2': Funnel_gpt2_VAE_Config}
+MODEL = {"t5": T5_VAE_Model, "funnel": Funnel_VAE_Model, "funnel-t5": Funnel_T5_VAE_Model, 'funnel-gpt2': Funnel_gpt2_VAE_Model}
 DEFAULT_TRANSFORMER_NAME = {
     "t5": "t5-base",
     "funnel": "funnel-transformer/intermediate",
@@ -363,6 +363,8 @@ def load_model_and_tokenizer(model_args):
         tokenizer = AutoTokenizer.from_pretrained(
             model_args.tokenizer_name, cache_dir=model_args.cache_dir, use_fast=model_args.use_fast_tokenizer
         )
+        if 'gpt' in model_args.tokenizer_name:
+            tokenizer.pad_token = tokenizer.eos_token
     elif model_args.model_path:
         tokenizer = AutoTokenizer.from_pretrained(
             model_args.model_path, cache_dir=model_args.cache_dir, use_fast=model_args.use_fast_tokenizer
