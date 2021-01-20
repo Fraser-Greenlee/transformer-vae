@@ -1,6 +1,11 @@
+import logging
 import torch
 from torch import nn
 from transformers.models.t5.modeling_t5 import T5LayerFF, T5LayerSelfAttention
+
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger()
 
 
 class LatentEncoder(nn.Module):
@@ -19,80 +24,20 @@ class LatentEncoder(nn.Module):
         return self.tanh(encoding)
 
 
-class LatentEncoder1stToken(nn.Module):
+class LatentEncoderNTokens(nn.Module):
     def __init__(self, config):
         super().__init__()
-        assert config.transformer.d_model > config.latent_size
-        self.token_to_latent = nn.Linear(config.transformer.d_model, config.latent_size)
-        self.tanh = nn.Tanh()
-
-    def forward(self, encoding) -> torch.Tensor:
-        return self.tanh(self.token_to_latent(encoding[:, 0, :]))
-
-
-class LatentEncoderFull1stToken(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        assert config.transformer.d_model == config.latent_size
-        self.token_to_latent = nn.Linear(config.transformer.d_model, config.transformer.d_model)
-        self.tanh = nn.Tanh()
-
-    def forward(self, encoding) -> torch.Tensor:
-        return self.tanh(self.token_to_latent(encoding[:, 0, :]))
-
-
-class LatentEncoderFull1stTokenOLD(nn.Module):
-    # Old one not actually using a tanh activation
-    def __init__(self, config):
-        super().__init__()
-        assert config.transformer.d_model == config.latent_size
-
-    def forward(self, encoding) -> torch.Tensor:
-        return encoding[:, 0, :]
-
-
-class LatentEncoderFullNTokens(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        assert config.transformer.d_model * config.n_latent_tokens == config.latent_size
+        assert config.latent_size % config.n_latent_tokens == 0
+        self.new_token_dim = config.latent_size // config.n_latent_tokens
+        if self.new_token_dim == config.transformer.d_model:
+            logger.info('Latent encoder is not rescaling the latent code.')
+        self.token_to_latent = nn.Linear(config.transformer.d_model, self.new_token_dim)
         self.n_tokens = config.n_latent_tokens
-        self.token_to_latent = nn.Linear(config.transformer.d_model, config.transformer.d_model)
         self.tanh = nn.Tanh()
 
     def forward(self, encoding) -> torch.Tensor:
         batch_size = encoding.size(0)
         return self.tanh(self.token_to_latent(encoding))[:, : self.n_tokens, :].view(batch_size, -1)
-
-
-class LatentEncoderFullNTokensOLD(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        assert config.transformer.d_model * config.n_latent_tokens == config.latent_size
-        self.n_tokens = config.n_latent_tokens
-
-    def forward(self, encoding) -> torch.Tensor:
-        batch_size = encoding.size(0)
-        return encoding[:, : self.n_tokens, :].view(batch_size, -1)
-
-
-class LatentEncoderAttention(LatentEncoder):
-    """
-    Uses attention on token-encodings before compressing them.
-
-    Should weight each individual token's expected importance for the overall sequence representation.
-    """
-
-    def __init__(self, config):
-        super().__init__(config)
-        self.token_scorer = nn.Linear(config.transformer.d_model, 1)
-        self.softmax = nn.Softmax(dim=1)
-
-    def forward(self, encoding) -> torch.Tensor:
-        batch_size = encoding.size(0)
-        token_scores = self.softmax(self.token_scorer(encoding))
-        encoding = self.shrink_tokens(encoding * token_scores)
-        encoding = self.shrink_sequence(encoding.view(batch_size, -1))
-        return self.tanh(encoding)
 
 
 class LatentDecoder(nn.Module):
@@ -122,39 +67,23 @@ class LatentDecoder(nn.Module):
         return self.norm(self.grow_tokens(latent.view(batch_size, -1, 100)))
 
 
-class LatentDecoderSingleToken(nn.Module):
+class LatentDecoderNTokens(nn.Module):
+    '''
+        Convert multiple token encodings into a single latent.
+    '''
     def __init__(self, config):
         super().__init__()
-        self.decode_latent = nn.Linear(config.latent_size, 100)
-        self.grow_token = nn.Linear(100, config.transformer.d_model)
-        self.dim_m = config.transformer.d_model
-
-        if config.model_type == "t5":
-            config.dropout_rate = 0
-            self.norm = T5LayerFF(config)
-        elif config.model_type == "funnel":
-            self.norm = nn.LayerNorm(config.transformer.d_model, config.layer_norm_eps)
+        assert config.latent_size % config.n_latent_tokens == 0
+        self.latent_token_dim = config.latent_size // config.n_latent_tokens
+        if self.latent_token_dim == config.transformer.d_model:
+            logger.info('Latent decoder is not rescaling the latent code.')
+            self.latent_to_token = lambda x: x
         else:
-            raise ValueError(f'Unknown config.model_type "{config.model_type}"')
+            self.latent_to_token = nn.Linear(self.latent_token_dim, config.transformer.d_model)
 
     def forward(self, latent) -> torch.Tensor:
         batch_size = latent.size(0)
-        latent = self.decode_latent(latent)
-        return self.norm(self.grow_token(latent).view(batch_size, -1, self.dim_m))
-
-
-class LatentDecoderFullTokens(nn.Module):
-    '''
-        Treats latent as full token encodings.
-    '''
-    def __init__(self, config):
-        assert config.transformer.d_model <= config.latent_size
-        self.dim_m = config.transformer.d_model
-        super().__init__()
-
-    def forward(self, latent) -> torch.Tensor:
-        batch_size = latent.size(0)
-        return latent.view(batch_size, -1, self.dim_m)
+        return self.latent_to_token(latent.view(batch_size, -1, self.latent_token_dim))
 
 
 class LatentDecoderMatchEncoder(LatentDecoder):
@@ -194,15 +123,11 @@ class LatentDecoderSelfAttnGrow(LatentDecoder):
 
 VAE_ENCODER_MODELS = {
     None: LatentEncoder,
-    "1st-token": LatentEncoder1stToken,
-    "full-1st-token": LatentEncoderFull1stToken,
-    "full-n-tokens": LatentEncoderFullNTokens,
-    "basic-attention": LatentEncoderAttention,
+    "n-tokens": LatentEncoderNTokens,
 }
 VAE_DECODER_MODELS = {
     None: LatentDecoder,
-    "single-token": LatentDecoderSingleToken,
-    "full-tokens": LatentDecoderFullTokens,
+    "n-tokens": LatentDecoderNTokens,
     "match-encoder": LatentDecoderMatchEncoder,
     "attention": LatentDecoderSelfAttnGrow,
 }

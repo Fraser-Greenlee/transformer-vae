@@ -161,7 +161,7 @@ class ModelArguments:
     n_latent_tokens: int = field(
         default=None,
         metadata={
-            "help": "Number of latent tokens to use for full sequence VAE (set to sequence length if its shorter), used with `encoder_model full-n-tokens`."
+            "help": "Number of latent tokens to use for full sequence VAE (set to sequence length if its shorter), used with `encoder_model n-tokens`."
         },
     )
 

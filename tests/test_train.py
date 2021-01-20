@@ -158,8 +158,8 @@ class TrainTests(TestCasePlus):
             --per_device_eval_batch_size 4
             --num_train_epochs 2
             --set_seq_size 8
-            --encoder_model full-n-tokens
-            --decoder_model full-tokens
+            --encoder_model n-tokens
+            --decoder_model n-tokens
             --n_latent_tokens 8
             --encoded_seq_size 2
             --latent_size 2
@@ -301,7 +301,7 @@ class TrainTests(TestCasePlus):
             --set_seq_size 4
             --dont_use_reg_loss
             --encoder_model full-1st-token
-            --decoder_model full-tokens
+            --decoder_model n-tokens
             --transformer_name t5-small
             --output_dir {tmp_dir}
             --overwrite_output_dir
@@ -334,7 +334,7 @@ class TrainTests(TestCasePlus):
             --max_validation_size 100
             --eval_steps 4
             --encoder_model full-1st-token
-            --decoder_model full-tokens
+            --decoder_model n-tokens
             --latent_size 2
             --transformer_name t5-small
             --output_dir {tmp_dir}
@@ -361,13 +361,14 @@ class TrainTests(TestCasePlus):
         testargs = f"""
             train.py
             --train_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
             --do_train
             --per_device_train_batch_size 2
             --num_train_epochs 1
             --set_seq_size 4
-            --encoder_model full-n-tokens
+            --encoder_model n-tokens
             --n_latent_tokens 2
-            --decoder_model full-tokens
+            --decoder_model n-tokens
             --latent_size 2
             --transformer_name t5-small
             --output_dir {tmp_dir}
@@ -401,7 +402,7 @@ class TrainTests(TestCasePlus):
             --per_device_eval_batch_size 2
             --max_validation_size 100
             --encoder_model full-1st-token
-            --decoder_model full-tokens
+            --decoder_model n-tokens
             --latent_size 2
             --transformer_name t5-small
             --output_dir {tmp_dir}
@@ -431,7 +432,7 @@ class TrainTests(TestCasePlus):
             --max_steps=10
             --per_device_train_batch_size 2
             --encoder_model full-1st-token
-            --decoder_model full-tokens
+            --decoder_model n-tokens
             --set_seq_size 8
             --transformer_type funnel-gpt2
             --transformer_name funnel-transformer/intermediate
