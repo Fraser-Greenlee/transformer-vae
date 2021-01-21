@@ -451,3 +451,42 @@ class TrainTests(TestCasePlus):
 
         with patch.object(sys, "argv", testargs):
             main()
+
+    def test_train_funnel_t5_skip_connection(self):
+        stream_handler = logging.StreamHandler(sys.stdout)
+        logger.addHandler(stream_handler)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        testargs = f"""
+            train.py
+            --train_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --do_train
+            --do_eval
+            --per_device_train_batch_size 4
+            --per_device_eval_batch_size 4
+            --num_train_epochs 2
+            --set_seq_size 8
+            --encoder_model n-tokens
+            --decoder_model n-tokens
+            --n_latent_tokens 8
+            --encoded_seq_size 2
+            --latent_size 2
+            --transformer_type funnel-t5
+            --transformer_name funnel-transformer/intermediate
+            --transformer_decoder_name t5-base
+            --use_skip_connection
+            --output_dir {tmp_dir}
+            --overwrite_output_dir
+            """.split()
+
+        if torch.cuda.device_count() > 1:
+            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
+            return
+
+        if torch_device != "cuda":
+            testargs.append("--no_cuda")
+
+        with patch.object(sys, "argv", testargs):
+            result = main()
+            self.assertAlmostEqual(result["epoch"], 2.0)

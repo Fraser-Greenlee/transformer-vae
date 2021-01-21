@@ -615,6 +615,9 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         else:
             upsampled_encoding = vae_outputs.reconstructed_encoding
 
+        if self.config.use_skip_connection:
+            upsampled_encoding += encoder_outputs.hidden_states[self.config.transformer.block_sizes[0]]
+
         # Now using T5 decoder
 
         if labels is not None and decoder_input_ids is None:

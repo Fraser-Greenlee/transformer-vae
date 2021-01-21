@@ -164,6 +164,12 @@ class ModelArguments:
             "help": "Number of latent tokens to use for full sequence VAE (set to sequence length if its shorter), used with `encoder_model n-tokens`."
         },
     )
+    use_skip_connection: bool = field(
+        default=False,
+        metadata={
+            "help": "Add the encoders last full-length layer to the upsampled one. Only used with `Funnel encoder`."
+        },
+    )
 
 
 @dataclass

@@ -158,6 +158,7 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
         transformer_decoder_name="t5-base",
         decoder_start_token_id=0,
         cache_dir=None,
+        use_skip_connection=False,
         **kwargs,
     ):
         super().__init__(
@@ -186,6 +187,9 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
             self.transformer_decoder.d_model,
             "Funnel & T5 transformers have different dimensions."
         )
+        self.use_skip_connection = use_skip_connection
+        if self.use_skip_connection:
+            assert 'funnel' in transformer_name, 'No use for skip connection with non-funnel model.'
 
     def to_dict(self):
         """
