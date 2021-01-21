@@ -28,7 +28,7 @@ class EncoderDecoderVAE(nn.Module):
 
     batch_size = None
 
-    def __init__(self, encoder, decoder, use_n_previous_latent_codes=0, smaller_mmd_batch_size=None, use_reg_loss=True):
+    def __init__(self, encoder, decoder, use_n_previous_latent_codes=0, smaller_mmd_batch_size=None, use_reg_loss=True, use_latent_dropout=False, latent_dropout_schedule_k=0.0006, latent_dropout_schedule_b=11, max_latent_dropout_rate=0.9):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
@@ -39,23 +39,57 @@ class EncoderDecoderVAE(nn.Module):
         self.prev_latents = None
         self.prev_latents_index = 0
         self.use_reg_loss = use_reg_loss
+        self.use_latent_dropout = use_latent_dropout
+        self.latent_dropout_schedule_k = latent_dropout_schedule_k
+        self.latent_dropout_schedule_b = latent_dropout_schedule_b
+        assert max_latent_dropout_rate < 1, "Must not dropout all latent tokens."
+        self.max_latent_dropout_rate = max_latent_dropout_rate
 
-    def _model_forward(self, encoding, latent=None):
+    def _model_forward(self, encoding, latent=None, global_step=None):
         if latent is None:
             latent = self.encoder(encoding)
+        if self.use_latent_dropout and global_step:
+            latent = nn.Dropout(p=self._latent_dropout_schedule(global_step))(latent)
         return self.decoder(latent), latent
+
+    def _latent_dropout_schedule(self, global_step):
+        if global_step is None:
+            return 0
+        # edit using https://www.desmos.com/calculator/mqzxhecfxz
+        return self.max_latent_dropout_rate * torch.sigmoid(
+            torch.tensor(global_step * self.latent_dropout_schedule_k - self.latent_dropout_schedule_b)
+        ).item()
+
+    def _latent_dropout(self, global_step, latent):
+        if not self.use_latent_dropout:
+            return None, latent
+        '''
+            Current system just does random dropout and hopes the dropout points are well distributed.
+
+            LATER:
+            1. Find groups of per-token hidden units.
+            2. Find dropout schedule value using the current global step.
+            3. Dropout these groups ensuring each has at least 1 unit.
+            4. Return inv-dropout index & dropped out latent code.
+        '''
+        dropout_latent = nn.Dropout(p=self._latent_dropout_schedule(global_step))(latent)
+        return dropout_latent != 0, dropout_latent
 
     def forward(
         self,
         input_encoding=None,
         latent=None,
+        global_step=None
     ):
         if input_encoding is None and latent is None:
             raise ValueError("Both `input_encoding` and `latent` sent to VAE are Null.")
-        recon_encoding, latent = self._model_forward(input_encoding, latent=latent)
-        reg_loss = torch.tensor(0, device=latent.device)
+        recon_encoding, latent = self._model_forward(input_encoding, latent=latent, global_step=global_step)
         if self.use_reg_loss:
-            reg_loss = self._regularliser_loss(latent)
+            reg_loss = self._regularliser_loss(
+                latent[latent != 0].view(latent.size(0), -1) if self.use_latent_dropout and global_step else latent
+            )
+        else:
+            reg_loss = torch.tensor(0, device=latent.device)
         return BaseVAE_Output(latent=latent, reconstructed_encoding=recon_encoding, reg_loss=reg_loss)
 
     @staticmethod
@@ -187,6 +221,10 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
             self.config.n_previous_latent_codes,
             self.config.mmd_batch_size,
             self.config.use_reg_loss,
+            self.config.use_latent_dropout,
+            self.config.latent_dropout_schedule_k,
+            self.config.latent_dropout_schedule_b,
+            self.config.max_latent_dropout_rate,
         )
 
     def get_input_embeddings(self):
@@ -337,7 +375,7 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
             )
 
         vae_outputs = self.vae(
-            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent=latent
+            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent=latent, global_step=self.global_step
         )
 
         if labels is not None and decoder_input_ids is None:
@@ -487,7 +525,7 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
             )
 
         vae_outputs = self.vae(
-            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent=latent
+            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent=latent, global_step=self.global_step
         )
 
         initial_encoding_size = (
@@ -610,7 +648,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             )
 
         vae_outputs = self.vae(
-            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent=latent
+            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent=latent, global_step=self.global_step
         )
 
         # TODO allow more options here
@@ -742,7 +780,7 @@ class Funnel_gpt2_VAE_Model(Funnel_VAE_Model_Base):
             )
 
         vae_outputs = self.vae(
-            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent=latent
+            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent=latent, global_step=self.global_step
         )
 
         # TODO allow more options here
@@ -756,7 +794,7 @@ class Funnel_gpt2_VAE_Model(Funnel_VAE_Model_Base):
             )
             if self.config.use_skip_connections:
                 # TODO use skip connections like in the O.G. Funnel model
-                import pdb; pdb.set_trace()
+                raise NotImplementedError()
         else:
             upsampled_encoding = vae_outputs.reconstructed_encoding
 

@@ -178,6 +178,24 @@ class ModelArguments:
             "help": "Add the encoders last full-length layer to the upsampled one. Only used with `Funnel encoder`."
         },
     )
+    use_latent_dropout: bool = field(
+        default=False,
+        metadata={
+            "help": "Start training by using all encoding tokens as latent, gradually dropout hidden units till only a small latent code is left."
+        },
+    )
+    max_latent_dropout_rate: float = field(
+        default=0.9,
+        metadata={"help": "If using latent dropout, max dropout rate during training."},
+    )
+    latent_dropout_schedule_k: float = field(
+        default=0.0006,
+        metadata={"help": "If using latent dropout, gradually increase the dropout rate until at max_latent_dropout_rate."},
+    )
+    latent_dropout_schedule_b: float = field(
+        default=11,
+        metadata={"help": "If using latent dropout, gradually increase the dropout rate until at max_latent_dropout_rate."},
+    )
 
 
 @dataclass
@@ -373,6 +391,10 @@ def load_model_and_tokenizer(model_args):
             n_latent_tokens=model_args.n_latent_tokens,
             use_extra_logs=is_wandb_available(),
             use_skip_connection=model_args.use_skip_connection,
+            use_latent_dropout=model_args.use_latent_dropout,
+            max_latent_dropout_rate=model_args.max_latent_dropout_rate,
+            latent_dropout_schedule_k=model_args.latent_dropout_schedule_k,
+            latent_dropout_schedule_b=model_args.latent_dropout_schedule_b,
         )
         logger.warning("You are instantiating a new config instance from scratch (still using T5 checkpoint).")
 
