@@ -46,12 +46,14 @@ class EncoderDecoderVAE(nn.Module):
         self.max_latent_dropout_rate = max_latent_dropout_rate
 
     def _model_forward(self, encoding, latent=None, global_step=None):
+        latent_dropout = 0
         if latent is None:
             latent = self.encoder(encoding)
         if self.use_latent_dropout and global_step:
             # TODO may switch this to dropout consistently across batch for MMD reg loss
-            latent = nn.Dropout(p=self._latent_dropout_schedule(global_step))(latent)
-        return self.decoder(latent), latent
+            latent_dropout = self._latent_dropout_schedule(global_step)
+            latent = nn.Dropout(p=latent_dropout)(latent)
+        return self.decoder(latent), latent, latent_dropout
 
     def _latent_dropout_schedule(self, global_step):
         if global_step is None:
@@ -69,14 +71,14 @@ class EncoderDecoderVAE(nn.Module):
     ):
         if input_encoding is None and latent is None:
             raise ValueError("Both `input_encoding` and `latent` sent to VAE are Null.")
-        recon_encoding, latent = self._model_forward(input_encoding, latent=latent, global_step=global_step)
+        recon_encoding, latent, latent_dropout = self._model_forward(input_encoding, latent=latent, global_step=global_step)
         if self.use_reg_loss:
             # TODO is this even valid with 90% dropout?
             reg_loss = self._regularliser_loss(latent)
             # latent[latent != 0].view(latent.size(0), -1) if self.use_latent_dropout and global_step else latent
         else:
             reg_loss = torch.tensor(0, device=latent.device)
-        return BaseVAE_Output(latent=latent, reconstructed_encoding=recon_encoding, reg_loss=reg_loss)
+        return BaseVAE_Output(latent=latent, reconstructed_encoding=recon_encoding, reg_loss=reg_loss, latent_dropout=latent_dropout)
 
     @staticmethod
     def _compute_kernel(x, y):
@@ -187,6 +189,7 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
         "decoder_ce": 0,
         "reg_loss_w": 0,
         "skip_conn_w": 0,
+        "latent_dropout": 0,
         "reg_loss": 0,
     }
     _last_logs: Dict[str, float] = {}
@@ -684,7 +687,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         loss = decoder_ce + vae_outputs.reg_loss * reg_loss_w
 
         if self.training and self.config.use_extra_logs:
-            self._update_logs(decoder_ce=decoder_ce.item(), reg_loss=vae_outputs.reg_loss.item(), reg_loss_w=reg_loss_w, skip_conn_w=skip_conn_w)
+            self._update_logs(decoder_ce=decoder_ce.item(), reg_loss=vae_outputs.reg_loss.item(), reg_loss_w=reg_loss_w, skip_conn_w=skip_conn_w, latent_dropout=vae_outputs.latent_dropout)
 
         return BaseTransformerVAE_Output(
             loss=loss,
