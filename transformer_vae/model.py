@@ -28,7 +28,7 @@ class EncoderDecoderVAE(nn.Module):
 
     batch_size = None
 
-    def __init__(self, encoder, decoder, use_n_previous_latent_codes=0, smaller_mmd_batch_size=None, use_reg_loss=True, use_latent_dropout=False, latent_dropout_schedule_k=0.0006, latent_dropout_schedule_b=11, max_latent_dropout_rate=0.9):
+    def __init__(self, encoder, decoder, use_n_previous_latent_codes=0, smaller_mmd_batch_size=None, use_reg_loss=True, use_latent_dropout=False, latent_dropout_schedule_k=0.0009, latent_dropout_schedule_b=11, max_latent_dropout_rate=0.9):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder

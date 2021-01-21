@@ -189,7 +189,7 @@ class ModelArguments:
         metadata={"help": "If using latent dropout, max dropout rate during training."},
     )
     latent_dropout_schedule_k: float = field(
-        default=0.0006,
+        default=0.0009,
         metadata={"help": "If using latent dropout, gradually increase the dropout rate until at max_latent_dropout_rate."},
     )
     latent_dropout_schedule_b: float = field(

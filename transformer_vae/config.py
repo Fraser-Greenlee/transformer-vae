@@ -69,7 +69,7 @@ class Transformer_VAE_Config(PretrainedConfig):
         skip_schedule_b=11,
         use_latent_dropout=False,
         max_latent_dropout_rate=0.9,
-        latent_dropout_schedule_k=0.0006,
+        latent_dropout_schedule_k=0.0009,
         latent_dropout_schedule_b=11,
         use_extra_logs=False,
         cache_dir=None,
