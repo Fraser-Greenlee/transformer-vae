@@ -65,6 +65,8 @@ class Transformer_VAE_Config(PretrainedConfig):
         mmd_batch_size=None,
         reg_schedule_k=0.0025,
         reg_schedule_b=6.25,
+        skip_schedule_k=0.0006,
+        skip_schedule_b=11,
         use_extra_logs=False,
         cache_dir=None,
         n_latent_tokens=None,
@@ -100,6 +102,8 @@ class Transformer_VAE_Config(PretrainedConfig):
             logger.warn("Regularisation loss is turned off, you are training an Autoencoder (not a VAE).")
         self.reg_schedule_k = reg_schedule_k
         self.reg_schedule_b = reg_schedule_b
+        self.skip_schedule_k = skip_schedule_k
+        self.skip_schedule_b = skip_schedule_b
         self.use_extra_logs = use_extra_logs
         self.use_cache = getattr(self.transformer, "use_cache", False)
 

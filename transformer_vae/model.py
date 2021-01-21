@@ -209,6 +209,14 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
             torch.tensor(self.global_step * self.config.reg_schedule_k - self.config.reg_schedule_b)
         ).item()
 
+    def _skip_conn_schedule(self):
+        if self.global_step is None:
+            return 0
+        # edit using https://www.desmos.com/calculator/wfzduw7ioa
+        return 1 - torch.sigmoid(
+            torch.tensor(self.global_step * self.config.skip_schedule_k - self.config.skip_schedule_b)
+        ).item()
+
     def _update_logs(self, **logs):
         self._calls_since_last_log += 1
         for k, v in logs.items():
@@ -617,7 +625,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             upsampled_encoding = vae_outputs.reconstructed_encoding
 
         if encoder_outputs and self.config.use_skip_connection:
-            upsampled_encoding += encoder_outputs.hidden_states[
+            upsampled_encoding += self._skip_conn_schedule() * encoder_outputs.hidden_states[
                 self.config.transformer.block_sizes[0]
             ][
                 :, :upsampled_encoding.size(1)

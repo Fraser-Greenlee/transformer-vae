@@ -158,6 +158,14 @@ class ModelArguments:
         default=6.25,
         metadata={"help": "Added to global step in sigmoid, further delays increase in regulariser loss weight."},
     )
+    skip_schedule_k: float = field(
+        default=0.0006,
+        metadata={"help": "If using a skip connection, gradually zero the connection."},
+    )
+    skip_schedule_b: float = field(
+        default=11,
+        metadata={"help": "If using a skip connection, gradually zero the connection."},
+    )
     n_latent_tokens: int = field(
         default=None,
         metadata={
@@ -360,6 +368,8 @@ def load_model_and_tokenizer(model_args):
             use_reg_loss=(not model_args.dont_use_reg_loss),
             reg_schedule_k=model_args.reg_schedule_k,
             reg_schedule_b=model_args.reg_schedule_b,
+            skip_schedule_k=model_args.skip_schedule_k,
+            skip_schedule_b=model_args.skip_schedule_b,
             n_latent_tokens=model_args.n_latent_tokens,
             use_extra_logs=is_wandb_available(),
             use_skip_connection=model_args.use_skip_connection,
