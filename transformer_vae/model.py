@@ -166,6 +166,7 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
     latest_logs = {
         "decoder_ce": 0,
         "reg_loss_w": 0,
+        "skip_conn_w": 0,
         "reg_loss": 0,
     }
     _last_logs: Dict[str, float] = {}
@@ -624,8 +625,10 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         else:
             upsampled_encoding = vae_outputs.reconstructed_encoding
 
+        skip_conn_w = 0
         if encoder_outputs and self.config.use_skip_connection:
-            upsampled_encoding += self._skip_conn_schedule() * encoder_outputs.hidden_states[
+            skip_conn_w = self._skip_conn_schedule()
+            upsampled_encoding += skip_conn_w * encoder_outputs.hidden_states[
                 self.config.transformer.block_sizes[0]
             ][
                 :, :upsampled_encoding.size(1)
@@ -657,7 +660,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         loss = decoder_ce + vae_outputs.reg_loss * reg_loss_w
 
         if self.training and self.config.use_extra_logs:
-            self._update_logs(decoder_ce=decoder_ce.item(), reg_loss=vae_outputs.reg_loss.item(), reg_loss_w=reg_loss_w)
+            self._update_logs(decoder_ce=decoder_ce.item(), reg_loss=vae_outputs.reg_loss.item(), reg_loss_w=reg_loss_w, skip_conn_w=skip_conn_w)
 
         return BaseTransformerVAE_Output(
             loss=loss,
