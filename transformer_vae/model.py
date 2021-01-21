@@ -736,7 +736,7 @@ class Funnel_gpt2_VAE_Model(Funnel_VAE_Model_Base):
                 truncate_seq=self.config.transformer.truncate_seq,
             )
             if self.config.use_skip_connections:
-                # TODO use skip connections like in the O.G. model
+                # TODO use skip connections like in the O.G. Funnel model
                 import pdb; pdb.set_trace()
         else:
             upsampled_encoding = vae_outputs.reconstructed_encoding

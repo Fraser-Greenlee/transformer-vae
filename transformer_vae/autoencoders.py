@@ -28,10 +28,7 @@ class LatentEncoder(nn.Module):
 class LatentEncoderNTokens(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.new_token_dim = math.ceil(config.latent_size / config.n_latent_tokens)
-        if self.new_token_dim == config.transformer.d_model:
-            logger.info('Latent encoder is not rescaling the latent code.')
-        self.token_to_latent = nn.Linear(config.transformer.d_model, self.new_token_dim)
+        self.token_to_latent = nn.Linear(config.transformer.d_model, config.latent_token_dim)
         self.n_tokens = config.n_latent_tokens
         self.tanh = nn.Tanh()
 
@@ -73,7 +70,7 @@ class LatentDecoderNTokens(nn.Module):
     '''
     def __init__(self, config):
         super().__init__()
-        self.latent_token_dim = math.ceil(config.latent_size / config.n_latent_tokens)
+        self.latent_token_dim = config.latent_token_dim
         if self.latent_token_dim == config.transformer.d_model:
             logger.info('Latent decoder is not rescaling the latent code.')
             self.latent_to_token = lambda x: x

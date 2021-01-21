@@ -78,8 +78,11 @@ class Transformer_VAE_Config(PretrainedConfig):
         self.transformer.decoder_start_token_id = decoder_start_token_id
         self.encoder_model = encoder_model
         self.decoder_model = decoder_model
+        self.latent_token_dim = math.ceil(latent_size / n_latent_tokens)
         self.n_latent_tokens = n_latent_tokens
-        self.latent_size = latent_size
+        self.latent_size = self.latent_token_dim * n_latent_tokens
+        if self.latent_size != latent_size:
+            logger.warn(f'model dimension, latent_size & n_latent_tokens don\'t match. Now using latent_size={self.latent_size} from latent_size={latent_size}')
 
         self.padding_input = encoder_model != "1st-token"
         self.prepend_eos_token = False  # TODO manually check if adding a set 1st token improves performance
