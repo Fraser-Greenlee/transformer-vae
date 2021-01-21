@@ -362,6 +362,7 @@ def load_model_and_tokenizer(model_args):
             reg_schedule_b=model_args.reg_schedule_b,
             n_latent_tokens=model_args.n_latent_tokens,
             use_extra_logs=is_wandb_available(),
+            use_skip_connection=model_args.use_skip_connection,
         )
         logger.warning("You are instantiating a new config instance from scratch (still using T5 checkpoint).")
 

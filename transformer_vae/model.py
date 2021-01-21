@@ -204,6 +204,7 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
     def _regulariser_loss_weight_schedule(self):
         if self.global_step is None or not self.config.use_reg_loss:
             return 0
+        # edit using https://www.desmos.com/calculator/mqzxhecfxz
         return torch.sigmoid(
             torch.tensor(self.global_step * self.config.reg_schedule_k - self.config.reg_schedule_b)
         ).item()
@@ -616,7 +617,11 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             upsampled_encoding = vae_outputs.reconstructed_encoding
 
         if self.config.use_skip_connection:
-            upsampled_encoding += encoder_outputs.hidden_states[self.config.transformer.block_sizes[0]]
+            upsampled_encoding += encoder_outputs.hidden_states[
+                self.config.transformer.block_sizes[0]
+            ][
+                :, :upsampled_encoding.size(1)
+            ]
 
         # Now using T5 decoder
 
