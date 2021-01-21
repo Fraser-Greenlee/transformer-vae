@@ -49,6 +49,7 @@ class EncoderDecoderVAE(nn.Module):
         if latent is None:
             latent = self.encoder(encoding)
         if self.use_latent_dropout and global_step:
+            # TODO may switch this to dropout consistently across batch for MMD reg loss
             latent = nn.Dropout(p=self._latent_dropout_schedule(global_step))(latent)
         return self.decoder(latent), latent
 
@@ -60,21 +61,6 @@ class EncoderDecoderVAE(nn.Module):
             torch.tensor(global_step * self.latent_dropout_schedule_k - self.latent_dropout_schedule_b)
         ).item()
 
-    def _latent_dropout(self, global_step, latent):
-        if not self.use_latent_dropout:
-            return None, latent
-        '''
-            Current system just does random dropout and hopes the dropout points are well distributed.
-
-            LATER:
-            1. Find groups of per-token hidden units.
-            2. Find dropout schedule value using the current global step.
-            3. Dropout these groups ensuring each has at least 1 unit.
-            4. Return inv-dropout index & dropped out latent code.
-        '''
-        dropout_latent = nn.Dropout(p=self._latent_dropout_schedule(global_step))(latent)
-        return dropout_latent != 0, dropout_latent
-
     def forward(
         self,
         input_encoding=None,
@@ -85,9 +71,9 @@ class EncoderDecoderVAE(nn.Module):
             raise ValueError("Both `input_encoding` and `latent` sent to VAE are Null.")
         recon_encoding, latent = self._model_forward(input_encoding, latent=latent, global_step=global_step)
         if self.use_reg_loss:
-            reg_loss = self._regularliser_loss(
-                latent[latent != 0].view(latent.size(0), -1) if self.use_latent_dropout and global_step else latent
-            )
+            # TODO is this even valid with 90% dropout?
+            reg_loss = self._regularliser_loss(latent)
+            # latent[latent != 0].view(latent.size(0), -1) if self.use_latent_dropout and global_step else latent
         else:
             reg_loss = torch.tensor(0, device=latent.device)
         return BaseVAE_Output(latent=latent, reconstructed_encoding=recon_encoding, reg_loss=reg_loss)
