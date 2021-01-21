@@ -469,7 +469,7 @@ class TrainTests(TestCasePlus):
             --set_seq_size 8
             --encoder_model n-tokens
             --decoder_model n-tokens
-            --n_latent_tokens 8
+            --n_latent_tokens 1
             --encoded_seq_size 2
             --latent_size 2
             --transformer_type funnel-t5
