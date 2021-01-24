@@ -1,0 +1,3 @@
+dataset_name=Fraser/mnist-text-small
+set_seq_size=225
+validation_name=test

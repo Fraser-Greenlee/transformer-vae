@@ -20,8 +20,7 @@ install_requires = [
     "transformers==4.1.1",
     "wandb>=0.10.12",
     "torch==1.7.0",
-    "sklearn",  # for accuracy metric
-    "bert_score",  # for bertscore metric
+    "sklearn",  # for SVM
 ]
 
 tests_require = ["pytest", "flake8", "flake8-mypy", "black", "twine"]

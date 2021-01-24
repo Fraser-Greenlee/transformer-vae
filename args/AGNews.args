@@ -1,0 +1,4 @@
+dataset_name=ag_news
+classification_column=label
+validation_name=test
+test_classification

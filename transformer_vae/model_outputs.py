@@ -17,11 +17,14 @@ class BaseVAE_Output(ModelOutput):
             Latent codes representing encoded sequences.
         reg_loss (:obj:`torch.FloatTensor` of shape :obj:`(batch_size)`):
             MMD-VAE regularisation loss for this step.
+        latent_dropout (:obj:`float`):
+            Dropout rate of the latent code, needed for logging during training.
     """
 
     latent: torch.FloatTensor = None
     reconstructed_encoding: torch.FloatTensor = None
     reg_loss: Optional[torch.FloatTensor] = None
+    latent_dropout: Optional[float] = None
 
 
 @dataclass

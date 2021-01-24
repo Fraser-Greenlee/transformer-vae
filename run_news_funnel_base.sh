@@ -9,7 +9,6 @@ WANDB_PROJECT="transformer-vae-tests" python -c "from transformer_vae.train impo
     --text_column=headline \
     --per_device_train_batch_size 10 \
     --gradient_accumulation_steps 3 \
-    --n_previous_latent_codes 0 \
     --transformer_type funnel-t5 \
     --set_seq_size 40 \
     --encoded_seq_size 10 \
@@ -17,4 +16,3 @@ WANDB_PROJECT="transformer-vae-tests" python -c "from transformer_vae.train impo
     --overwrite_output_dir \
     --save_total_limit 3 \
     --save_steps 1000 \
-    --mlm_probability 0 \

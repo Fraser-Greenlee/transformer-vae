@@ -7,7 +7,6 @@ WANDB_PROJECT="transformer-vae-tests" TOKENIZERS_PARALLELISM=false python -c "fr
     --dataset_name="Fraser/news-category-dataset" \
     --text_column=headline \
     --per_device_train_batch_size 75 \
-    --n_previous_latent_codes 0 \
     --transformer_type funnel-t5 \
     --latent_size 100 \
     --set_seq_size 45 \
@@ -16,4 +15,3 @@ WANDB_PROJECT="transformer-vae-tests" TOKENIZERS_PARALLELISM=false python -c "fr
     --overwrite_output_dir \
     --save_total_limit 3 \
     --save_steps 1000 \
-    --mlm_probability 0 \

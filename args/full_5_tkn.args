@@ -1,0 +1,4 @@
+encoder_model n-tokens
+decoder_model n-tokens
+n_latent_tokens 5
+latent_size 3840

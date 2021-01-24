@@ -13,25 +13,25 @@ from transformers import (
     AutoTokenizer,
     HfArgumentParser,
     TrainingArguments,
+    Adafactor,
     set_seed,
 )
 from transformers.integrations import is_wandb_available
-from transformers.trainer_utils import is_main_process, EvalPrediction
+from transformers.trainer_utils import is_main_process
 
 from transformer_vae.trainer import VAE_Trainer
 from transformer_vae.data_collator import DataCollatorForLanguageAutoencoding
 from transformer_vae.trainer_callback import TellModelGlobalStep
-from transformer_vae.model import T5_VAE_Model, Funnel_VAE_Model, Funnel_T5_VAE_Model
-from transformer_vae.metrics import METRICS_MAP
+from transformer_vae.model import T5_VAE_Model, Funnel_VAE_Model, Funnel_T5_VAE_Model, Funnel_gpt2_VAE_Model
 from transformer_vae.sequence_checks import SEQ_CHECKS
-from transformer_vae.config import T5_VAE_Config, Funnel_VAE_Config, Funnel_T5_VAE_Config
+from transformer_vae.config import T5_VAE_Config, Funnel_VAE_Config, Funnel_T5_VAE_Config, Funnel_gpt2_VAE_Config
 
 
 logger = logging.getLogger(__name__)
 
 
-CONFIG = {"t5": T5_VAE_Config, "funnel": Funnel_VAE_Config, "funnel-t5": Funnel_T5_VAE_Config}
-MODEL = {"t5": T5_VAE_Model, "funnel": Funnel_VAE_Model, "funnel-t5": Funnel_T5_VAE_Model}
+CONFIG = {"t5": T5_VAE_Config, "funnel": Funnel_VAE_Config, "funnel-t5": Funnel_T5_VAE_Config, 'funnel-gpt2': Funnel_gpt2_VAE_Config}
+MODEL = {"t5": T5_VAE_Model, "funnel": Funnel_VAE_Model, "funnel-t5": Funnel_T5_VAE_Model, 'funnel-gpt2': Funnel_gpt2_VAE_Model}
 DEFAULT_TRANSFORMER_NAME = {
     "t5": "t5-base",
     "funnel": "funnel-transformer/intermediate",
@@ -53,31 +53,29 @@ class VAE_TrainingArguments(TrainingArguments):
         default=20,
         metadata={"help": "The maximum length of sequences to be generated from latent points during evaluation."},
     )
-    metrics: str = field(
-        default=None,
-        metadata={
-            "help": f"Use extra metrics during evaluation, use multiple by seperating them with commas. Options: {','.join(METRICS_MAP.keys())}"
-        },
-    )
     n_random_samples: int = field(
         default=10,
         metadata={"help": "Number of random latent codes to sample from during evaluation."},
     )
     seq_check: str = field(
         default=None,
-        metadata={"help": f"Run check on sequences from random latent codes. Options: {', '.join(SEQ_CHECKS.keys())}"},
-    )
-    classification_column: str = field(
-        default=None,
-        metadata={"help": "Test SVM classification using latent codes."},
-    )
-    num_classes: int = field(
-        default=None,
-        metadata={"help": "How many classes in the data, found using a ClassLabel column if none given."},
+        metadata={"help": f"Run check on sequences from random latent codes. Options: {', '.join([str(k) for k in SEQ_CHECKS.keys()])}"},
     )
     max_validation_size: int = field(
         default=None,
         metadata={"help": "Limit the eval dataset size, defaults to not limiting it, must be < validation size."},
+    )
+    use_adafactor: bool = field(
+        default=False,
+        metadata={"help": "Whether to use one the Adafactor optimizer."},
+    )
+    sample_from_latent: bool = field(
+        default=False,
+        metadata={"help": "Whether to sample from the latent space during evaluation."},
+    )
+    test_classification: bool = field(
+        default=False,
+        metadata={"help": "Test using latent codes for unsupervised classification."},
     )
 
 
@@ -123,7 +121,7 @@ class ModelArguments:
         metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
     )
     latent_size: int = field(default=1_000, metadata={"help": "The size of the VAE's latent space."})
-    set_seq_size: int = field(default=60, metadata={"help": "Set sequence size."})
+    set_seq_size: int = field(default=None, metadata={"help": "Set sequence size, must be set for some autoencoders."})
     encoded_seq_size: int = field(
         default=None, metadata={"help": "Sequence size of encoded sequence, needed for Funnel-VAE."}
     )
@@ -160,6 +158,44 @@ class ModelArguments:
         default=6.25,
         metadata={"help": "Added to global step in sigmoid, further delays increase in regulariser loss weight."},
     )
+    skip_schedule_k: float = field(
+        default=0.0006,
+        metadata={"help": "If using a skip connection, gradually zero the connection."},
+    )
+    skip_schedule_b: float = field(
+        default=11,
+        metadata={"help": "If using a skip connection, gradually zero the connection."},
+    )
+    n_latent_tokens: int = field(
+        default=None,
+        metadata={
+            "help": "Number of latent tokens to use for full sequence VAE (set to sequence length if its shorter), used with `encoder_model n-tokens`."
+        },
+    )
+    use_skip_connection: bool = field(
+        default=False,
+        metadata={
+            "help": "Add the encoders last full-length layer to the upsampled one. Only used with `Funnel encoder`."
+        },
+    )
+    use_latent_dropout: bool = field(
+        default=False,
+        metadata={
+            "help": "Start training by using all encoding tokens as latent, gradually dropout hidden units till only a small latent code is left."
+        },
+    )
+    max_latent_dropout_rate: float = field(
+        default=0.8,
+        metadata={"help": "If using latent dropout, max dropout rate during training."},
+    )
+    latent_dropout_schedule_k: float = field(
+        default=0.0009,
+        metadata={"help": "If using latent dropout, gradually increase the dropout rate until at max_latent_dropout_rate."},
+    )
+    latent_dropout_schedule_b: float = field(
+        default=11,
+        metadata={"help": "If using latent dropout, gradually increase the dropout rate until at max_latent_dropout_rate."},
+    )
 
 
 @dataclass
@@ -186,7 +222,19 @@ class DataTrainingArguments:
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
     mlm_probability: float = field(
-        default=0.15, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
+        default=0.0, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
+    )
+    validation_name: str = field(
+        default="validation",
+        metadata={"help": "Name of the set to run evaluation on."},
+    )
+    classification_column: str = field(
+        default="class_label",
+        metadata={"help": "Test SVM classification using latent codes."},
+    )
+    num_classes: int = field(
+        default=None,
+        metadata={"help": "How many classes in the data, found using a ClassLabel column if none given."},
     )
 
     def __post_init__(self):
@@ -208,13 +256,16 @@ def check_seq_size(tokenizer, text_column_name, data_args, datasets, set_seq_siz
     tokenized_datasets = datasets.map(
         tokenize_function,
         batched=True,
-        batch_size=None,  # apply tokenize_function to whole dataset at once (ensures longest length is global)
+        batch_size=1_000,
         num_proc=data_args.preprocessing_num_workers,
         remove_columns=[text_column_name],
         load_from_cache_file=not data_args.overwrite_cache,
     )
 
-    max_seq_size = len(tokenized_datasets["train"]["input_ids"][0])
+    max_seq_size = max(
+        max([len(row) for row in tokenized_datasets["train"]["input_ids"][::1_000]]),
+        max([len(row) for row in tokenized_datasets[data_args.validation_name]["input_ids"][::1_000]]),
+    )
 
     if max_seq_size > set_seq_size:
         logger.warn(
@@ -228,7 +279,7 @@ def check_seq_size(tokenizer, text_column_name, data_args, datasets, set_seq_siz
         )
 
 
-def main():
+def get_args():
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, VAE_TrainingArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
@@ -236,6 +287,13 @@ def main():
         model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+
+    # use train batch size if eval is default
+    training_args.per_device_eval_batch_size = (
+        training_args.per_device_train_batch_size
+        if training_args.per_device_eval_batch_size == 8
+        else training_args.per_device_eval_batch_size
+    )
 
     if model_args.transformer_name is None:
         model_args.transformer_name = DEFAULT_TRANSFORMER_NAME[model_args.transformer_type]
@@ -254,7 +312,10 @@ def main():
             "Use --overwrite_output_dir to overcome."
         )
 
-    # Setup logging
+    return model_args, data_args, training_args
+
+
+def setup_logs(training_args):
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
@@ -271,9 +332,8 @@ def main():
         transformers.utils.logging.set_verbosity_info()
     logger.info("Training/evaluation parameters %s", training_args)
 
-    # Set seed before initializing model.
-    set_seed(training_args.seed)
 
+def get_datasets(data_args):
     # Get the datasets: you can either provide your own CSV/JSON/TXT training and evaluation files (see below)
     # or just provide the name of one of the public datasets available on the hub at https://huggingface.co/datasets/
     # (the dataset will be downloaded automatically from the datasets Hub).
@@ -285,23 +345,22 @@ def main():
     # download the dataset.
     if data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
-        datasets = load_dataset(data_args.dataset_name, data_args.dataset_config_name)
-    else:
-        data_files = {}
-        if data_args.train_file is not None:
-            data_files["train"] = data_args.train_file
-        if data_args.validation_file is not None:
-            data_files["validation"] = data_args.validation_file
-        extension = data_args.train_file.split(".")[-1]
-        if extension == "txt":
-            extension = "text"
-        # TODO have this dataset split samples on some substring
-        datasets = load_dataset(extension, data_files=data_files)
+        return load_dataset(data_args.dataset_name, data_args.dataset_config_name)
+    data_files = {}
+    if data_args.train_file is not None:
+        data_files["train"] = data_args.train_file
+    if data_args.validation_file is not None:
+        data_files[data_args.validation_name] = data_args.validation_file
+    extension = data_args.train_file.split(".")[-1]
+    if extension == "txt":
+        extension = "text"
+    # TODO have this dataset split samples on some substring
+    return load_dataset(extension, data_files=data_files)
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
 
-    # Load pretrained model and tokenizer
-    #
+
+def load_model_and_tokenizer(model_args):
     # Distributed training:
     # The `.from_pretrained` methods guarantee that only one local process can concurrently
     # download model & vocab.
@@ -327,7 +386,15 @@ def main():
             use_reg_loss=(not model_args.dont_use_reg_loss),
             reg_schedule_k=model_args.reg_schedule_k,
             reg_schedule_b=model_args.reg_schedule_b,
+            skip_schedule_k=model_args.skip_schedule_k,
+            skip_schedule_b=model_args.skip_schedule_b,
+            n_latent_tokens=model_args.n_latent_tokens,
             use_extra_logs=is_wandb_available(),
+            use_skip_connection=model_args.use_skip_connection,
+            use_latent_dropout=model_args.use_latent_dropout,
+            max_latent_dropout_rate=model_args.max_latent_dropout_rate,
+            latent_dropout_schedule_k=model_args.latent_dropout_schedule_k,
+            latent_dropout_schedule_b=model_args.latent_dropout_schedule_b,
         )
         logger.warning("You are instantiating a new config instance from scratch (still using T5 checkpoint).")
 
@@ -335,6 +402,8 @@ def main():
         tokenizer = AutoTokenizer.from_pretrained(
             model_args.tokenizer_name, cache_dir=model_args.cache_dir, use_fast=model_args.use_fast_tokenizer
         )
+        if 'gpt' in model_args.tokenizer_name:
+            tokenizer.pad_token = tokenizer.eos_token
     elif model_args.model_path:
         tokenizer = AutoTokenizer.from_pretrained(
             model_args.model_path, cache_dir=model_args.cache_dir, use_fast=model_args.use_fast_tokenizer
@@ -361,26 +430,33 @@ def main():
         model = MODEL[model_args.transformer_type](config)
 
     model.resize_token_embeddings(len(tokenizer))
-    tokenizer.model_max_length = model_args.set_seq_size
+    if model_args.set_seq_size:
+        tokenizer.model_max_length = model_args.set_seq_size
     tokenizer.mask_token = tokenizer.unk_token
 
-    # Preprocessing the datasets.
+    return model, tokenizer
 
+
+def preprocess_datasets(training_args, data_args, model_args, tokenizer, datasets):
     # Add class_label if needed
-    if training_args.classification_column:
+    if training_args.test_classification:
+        if data_args.classification_column != "class_label":
 
-        def add_class_column(examples):
-            return {"class_label": examples[training_args.classification_column]}
+            if not data_args.num_classes:
+                data_args.num_classes = (
+                    datasets[data_args.validation_name].features[data_args.classification_column].num_classes
+                )
 
-        datasets = datasets.map(add_class_column)
-        if not training_args.num_classes:
-            training_args.num_classes = datasets["validation"].features[training_args.classification_column].num_classes
+            def add_class_column(examples):
+                return {"class_label": examples[data_args.classification_column]}
 
-    # First we tokenize all the texts.
+            datasets = datasets.map(add_class_column, remove_columns=[data_args.classification_column])
+
+    # tokenize all the texts.
     if training_args.do_train:
         column_names = datasets["train"].column_names
     else:
-        column_names = datasets["validation"].column_names
+        column_names = datasets[data_args.validation_name].column_names
     if data_args.text_column is not None:
         text_column_name = data_args.text_column
     else:
@@ -389,7 +465,8 @@ def main():
     if text_column_name != "text":
         logger.info(f'Using column "{text_column_name}" as text column.')
 
-    check_seq_size(tokenizer, text_column_name, data_args, datasets, model_args.set_seq_size)
+    if model_args.set_seq_size:
+        check_seq_size(tokenizer, text_column_name, data_args, datasets, model_args.set_seq_size)
 
     def tokenize_function(examples):
         return tokenizer(examples[text_column_name], padding="max_length", truncation=True)
@@ -403,38 +480,60 @@ def main():
         load_from_cache_file=not data_args.overwrite_cache,
     )
 
-    data_collator = DataCollatorForLanguageAutoencoding(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
-
-    compute_metrics = None
-    if training_args.metrics:
-        all_metrics = []
-        for metric in training_args.metrics.strip().split(","):
-            all_metrics.append(METRICS_MAP[metric]())
-
-        def compute_metrics(p: EvalPrediction):
-            result = dict()
-            for metric in all_metrics:
-                result = {**result, **metric.compute(predictions=p.predictions, references=p.label_ids)}
-            assert len(result) >= len(
-                all_metrics
-            ), f"Not all metrics are returning results. result: {result}; all_metrics: {all_metrics}"
-            return result
-
     if training_args.max_validation_size:
-        tokenized_datasets["validation"] = tokenized_datasets["validation"].train_test_split(
+        tokenized_datasets[data_args.validation_name] = tokenized_datasets[data_args.validation_name].train_test_split(
             training_args.max_validation_size
         )["test"]
+
+    data_collator = DataCollatorForLanguageAutoencoding(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
+
+    return data_collator, tokenized_datasets
+
+
+def get_optimizers(training_args, model):
+    optimizers = [None, None]
+    if training_args.use_adafactor:
+        no_decay = ["bias", "LayerNorm.weight"]
+        optimizer_grouped_parameters = [
+            {
+                "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+                "weight_decay": training_args.weight_decay,
+            },
+            {
+                "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+                "weight_decay": 0.0,
+            },
+        ]
+        optimizers[0] = Adafactor(
+            optimizer_grouped_parameters, lr=training_args.learning_rate, scale_parameter=False, relative_step=False
+        )
+    return tuple(optimizers)
+
+
+def main():
+    model_args, data_args, training_args = get_args()
+
+    setup_logs(training_args)
+
+    # Set seed before initializing model.
+    set_seed(training_args.seed)
+
+    datasets = get_datasets(data_args)
+
+    model, tokenizer = load_model_and_tokenizer(model_args)
+
+    data_collator, tokenized_datasets = preprocess_datasets(training_args, data_args, model_args, tokenizer, datasets)
 
     # Initialize our Trainer
     trainer = VAE_Trainer(
         model=model,
         args=training_args,
         train_dataset=tokenized_datasets["train"] if training_args.do_train else None,
-        eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
+        eval_dataset=tokenized_datasets[data_args.validation_name] if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        compute_metrics=compute_metrics,
         callbacks=[TellModelGlobalStep],
+        optimizers=get_optimizers(training_args, model),
     )
     trainer.log({})
 

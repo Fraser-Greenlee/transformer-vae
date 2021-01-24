@@ -1,0 +1,4 @@
+do_eval
+evaluation_strategy steps
+eval_steps 500
+sample_from_latent

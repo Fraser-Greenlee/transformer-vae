@@ -1,13 +1,21 @@
+import logging
+import math
 import torch
 from torch import nn
 from transformers.models.t5.modeling_t5 import T5LayerFF, T5LayerSelfAttention
 
 
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger()
+
+
 class LatentEncoder(nn.Module):
-    def __init__(self, dim_m, set_seq_size, latent_size):
+    def __init__(self, config):
         super().__init__()
-        self.shrink_tokens = nn.Linear(dim_m, 100)
-        self.shrink_sequence = nn.Linear(100 * set_seq_size, latent_size)
+        assert config.transformer.d_model > 100
+        assert 100 * config.transformer.n_positions > config.latent_size
+        self.shrink_tokens = nn.Linear(config.transformer.d_model, 100)
+        self.shrink_sequence = nn.Linear(100 * config.transformer.n_positions, config.latent_size)
         self.tanh = nn.Tanh()
 
     def forward(self, encoding) -> torch.Tensor:
@@ -17,60 +25,37 @@ class LatentEncoder(nn.Module):
         return self.tanh(encoding)
 
 
-class LatentEncoder1stToken(nn.Module):
-    def __init__(self, dim_m, _set_seq_size, latent_size):
+class LatentEncoderNTokens(nn.Module):
+    def __init__(self, config):
         super().__init__()
-        self.token_to_latent = nn.Linear(dim_m, latent_size)
+        self.token_to_latent = nn.Linear(config.transformer.d_model, config.latent_token_dim)
+        self.n_tokens = config.n_latent_tokens
         self.tanh = nn.Tanh()
 
     def forward(self, encoding) -> torch.Tensor:
-        return self.tanh(self.token_to_latent(encoding[:, 0, :]))
-
-
-class LatentEncoderFull1stToken(nn.Module):
-    def __init__(self, dim_m, _set_seq_size, latent_size):
-        super().__init__()
-        assert dim_m == latent_size
-
-    def forward(self, encoding) -> torch.Tensor:
-        return encoding[:, 0, :]
-
-
-class LatentEncoderAttention(LatentEncoder):
-    """
-    Uses attention on token-encodings before compressing them.
-
-    Should weight each individual token's expected importance for the overall sequence representation.
-    """
-
-    def __init__(self, dim_m, set_seq_size, latent_size):
-        super().__init__(dim_m, set_seq_size, latent_size)
-        assert dim_m > 100
-        self.token_scorer = nn.Linear(dim_m, 1)
-        self.softmax = nn.Softmax(dim=1)
-
-    def forward(self, encoding) -> torch.Tensor:
         batch_size = encoding.size(0)
-        token_scores = self.softmax(self.token_scorer(encoding))
-        encoding = self.shrink_tokens(encoding * token_scores)
-        encoding = self.shrink_sequence(encoding.view(batch_size, -1))
-        return self.tanh(encoding)
+        return self.tanh(self.token_to_latent(encoding))[:, : self.n_tokens, :].view(batch_size, -1)
 
 
 class LatentDecoder(nn.Module):
-    def __init__(self, dim_m, set_seq_size, latent_size, config):
+    def __init__(self, config):
         super().__init__()
-        self.decode_latent = nn.Linear(latent_size, 10 * set_seq_size)
-        self.grow_sequence = nn.Linear(10 * set_seq_size, 100 * set_seq_size)
-        self.grow_tokens = nn.Linear(100, dim_m)
+        t_config = config.transformer
 
-        if config.model_type == "t5":
-            config.dropout_rate = 0
-            self.norm = T5LayerFF(config)
-        elif config.model_type == "funnel":
-            self.norm = nn.LayerNorm(config.d_model, config.layer_norm_eps)
+        self.decode_latent = nn.Linear(config.latent_size, 10 * t_config.n_positions)
+        self.grow_sequence = nn.Linear(10 * t_config.n_positions, 100 * t_config.n_positions)
+        self.grow_tokens = nn.Linear(100, t_config.d_model)
+
+        if t_config.model_type == "t5":
+            # TODO would this actually effect `dropout_rate`?
+            dropout_rate = t_config.dropout_rate
+            t_config.dropout_rate = 0
+            self.norm = T5LayerFF(t_config)
+            t_config.dropout_rate = dropout_rate
+        elif t_config.model_type == "funnel":
+            self.norm = nn.LayerNorm(t_config.d_model, t_config.layer_norm_eps)
         else:
-            raise ValueError(f'Unknown config.model_type "{config.model_type}"')
+            raise ValueError(f'Unknown config.transformer.model_type: "{t_config.model_type}"')
 
     def forward(self, latent) -> torch.Tensor:
         batch_size = latent.size(0)
@@ -79,36 +64,22 @@ class LatentDecoder(nn.Module):
         return self.norm(self.grow_tokens(latent.view(batch_size, -1, 100)))
 
 
-class LatentDecoderSingleToken(nn.Module):
-    def __init__(self, dim_m, set_seq_size, latent_size, config):
+class LatentDecoderNTokens(nn.Module):
+    '''
+        Convert multiple token encodings into a single latent.
+    '''
+    def __init__(self, config):
         super().__init__()
-        self.decode_latent = nn.Linear(latent_size, 100)
-        self.grow_token = nn.Linear(100, dim_m)
-        self.dim_m = dim_m
-
-        if config.model_type == "t5":
-            config.dropout_rate = 0
-            self.norm = T5LayerFF(config)
-        elif config.model_type == "funnel":
-            self.norm = nn.LayerNorm(config.d_model, config.layer_norm_eps)
+        self.latent_token_dim = config.latent_token_dim
+        if self.latent_token_dim == config.transformer.d_model:
+            logger.info('Latent decoder is not rescaling the latent code.')
+            self.latent_to_token = lambda x: x
         else:
-            raise ValueError(f'Unknown config.model_type "{config.model_type}"')
+            self.latent_to_token = nn.Linear(self.latent_token_dim, config.transformer.d_model)
 
     def forward(self, latent) -> torch.Tensor:
         batch_size = latent.size(0)
-        latent = self.decode_latent(latent)
-        return self.norm(self.grow_token(latent).view(batch_size, -1, self.dim_m))
-
-
-class LatentDecoderFullSingleToken(nn.Module):
-    def __init__(self, dim_m, set_seq_size, latent_size, config):
-        assert dim_m == latent_size
-        self.dim_m = dim_m
-        super().__init__()
-
-    def forward(self, latent) -> torch.Tensor:
-        batch_size = latent.size(0)
-        return latent.view(batch_size, -1, self.dim_m)
+        return self.latent_to_token(latent.view(batch_size, -1, self.latent_token_dim))
 
 
 class LatentDecoderMatchEncoder(LatentDecoder):
@@ -116,9 +87,9 @@ class LatentDecoderMatchEncoder(LatentDecoder):
     Just do one jump from latent -> 100x sequence.
     """
 
-    def __init__(self, dim_m, set_seq_size, latent_size, config):
-        super().__init__(dim_m, set_seq_size, latent_size, config)
-        self.grow_sequence = nn.Linear(latent_size, 100 * set_seq_size)
+    def __init__(self, config):
+        super().__init__(config)
+        self.grow_sequence = nn.Linear(config.latent_size, 100 * config.transformer.n_positions)
 
     def forward(self, latent) -> torch.Tensor:
         batch_size = latent.size(0)
@@ -132,12 +103,12 @@ class LatentDecoderSelfAttnGrow(LatentDecoder):
     """
 
     # TODO add position bias
-    def __init__(self, dim_m, set_seq_size, latent_size, config):
-        super().__init__(dim_m, set_seq_size, latent_size, config)
+    def __init__(self, config):
+        super().__init__(config)
         self.grow_tokens_to_100 = nn.Linear(10, 100)
-        self.grow_tokens_to_dim_m = nn.Linear(100, dim_m)
-        config.d_model = 100
-        self.self_attention = T5LayerSelfAttention(config)
+        self.grow_tokens_to_dim_m = nn.Linear(100, config.dim_m)
+        config.transformer.d_model = 100
+        self.self_attention = T5LayerSelfAttention(config.transformer)
 
     def forward(self, latent) -> torch.Tensor:
         batch_size = latent.size(0)
@@ -148,14 +119,11 @@ class LatentDecoderSelfAttnGrow(LatentDecoder):
 
 VAE_ENCODER_MODELS = {
     None: LatentEncoder,
-    "1st-token": LatentEncoder1stToken,
-    "full-1st-token": LatentEncoderFull1stToken,
-    "basic-attention": LatentEncoderAttention,
+    "n-tokens": LatentEncoderNTokens,
 }
 VAE_DECODER_MODELS = {
     None: LatentDecoder,
-    "single-token": LatentDecoderSingleToken,
-    "full-single-token": LatentDecoderFullSingleToken,
+    "n-tokens": LatentDecoderNTokens,
     "match-encoder": LatentDecoderMatchEncoder,
     "attention": LatentDecoderSelfAttnGrow,
 }
