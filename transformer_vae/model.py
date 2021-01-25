@@ -2,6 +2,7 @@
     Base transformer-VAE model.
 """
 import logging
+import pdb
 import torch
 from torch import nn
 from typing import Dict, Any
@@ -187,6 +188,8 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
     _calls_since_last_log = 0
     latest_logs = {
         "decoder_ce": 0,
+        "seq_accuracy": 0,
+        "token_accuracy": 0,
         "reg_loss_w": 0,
         "skip_conn_w": 0,
         "latent_dropout": 0,
@@ -409,6 +412,7 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
             latent=vae_outputs.latent,
             reg_loss=vae_outputs.reg_loss,
             decoder_ce=decoder_ce,
+            accuracy=None,
         )
 
 
@@ -640,7 +644,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent=latent, global_step=self.global_step
         )
 
-        # TODO allow more options here
+        # TODO allow more options here, specifically allow an extra encoder block after upsampling
         if self.config.padding_input:
             upsampled_encoding = upsample(
                 vae_outputs.reconstructed_encoding,
@@ -678,16 +682,26 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         lm_logits = self.transformer.lm_head(sequence_output)
 
         decoder_ce = torch.tensor(0.0, device=lm_logits.device)
+        seq_accuracy = torch.tensor(0.0, device=lm_logits.device)
+        token_accuracy = torch.tensor(0.0, device=lm_logits.device)
         if labels is not None:
             loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
             decoder_ce = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), labels.view(-1))
-            # TODO(thom): Add z_loss https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L666
+            chosen_tokens = torch.argmax(lm_logits, 2)
+            pad_tokens = (labels == -100).int()
+            correct_tokens = (chosen_tokens == labels).int() + pad_tokens
+            seq_accuracy = (torch.min(correct_tokens, dim=1).values.sum() / labels.size(0)).detach()
+            num_pad_tokens = pad_tokens.sum()
+            token_accuracy = ((correct_tokens.sum() - num_pad_tokens) / (labels.numel() - num_pad_tokens)).detach()
 
         reg_loss_w = self._regulariser_loss_weight_schedule()
         loss = decoder_ce + vae_outputs.reg_loss * reg_loss_w
 
         if self.training and self.config.use_extra_logs:
-            self._update_logs(decoder_ce=decoder_ce.item(), reg_loss=vae_outputs.reg_loss.item(), reg_loss_w=reg_loss_w, skip_conn_w=skip_conn_w, latent_dropout=vae_outputs.latent_dropout)
+            self._update_logs(
+                decoder_ce=decoder_ce.item(), seq_accuracy=seq_accuracy, token_accuracy=token_accuracy, reg_loss=vae_outputs.reg_loss.item(),
+                reg_loss_w=reg_loss_w, skip_conn_w=skip_conn_w, latent_dropout=vae_outputs.latent_dropout
+            )
 
         return BaseTransformerVAE_Output(
             loss=loss,
@@ -702,6 +716,8 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             latent=vae_outputs.latent,
             reg_loss=vae_outputs.reg_loss,
             decoder_ce=decoder_ce,
+            seq_accuracy=seq_accuracy,
+            token_accuracy=token_accuracy
         )
 
 

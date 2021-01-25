@@ -72,20 +72,31 @@ class VAE_Trainer(trainer_script.Trainer):
         start_latent, end_latent = latents[0].view(1, -1), latents[1].view(1, -1)
         latent_diff = end_latent - start_latent
 
-        table = wandb.Table(columns=["Interpolation Ratio", "Text"])
-        table.add_data(-10, self.tokenizer.decode(samples["input_ids"][0]))
+        seq_check_results = 0
+        seq_check = SEQ_CHECKS[self.args.seq_check]
+        table = wandb.Table(columns=["Interpolation Ratio", "Text", "Valid"])
+        table.add_data(-10, self.tokenizer.decode(samples["input_ids"][0]), True)
 
         for i in tqdm(range(11), desc="Sampling from interpolated latent points"):
             ratio = i / 10
             latent = start_latent + ratio * latent_diff
-            table.add_data(ratio, self._text_from_latent(latent))
+            text = self._text_from_latent(latent)
+            valid = seq_check(text)
+            table.add_data(ratio, text, valid)
+            if ratio > 0 and i < 1:
+                seq_check_results += int(valid)
 
-        table.add_data(10, self.tokenizer.decode(samples["input_ids"][1]))
+        table.add_data(10, self.tokenizer.decode(samples["input_ids"][1]), True)
         wandb.log({"interpolate points": table}, step=self.state.global_step)
+        if self.args.seq_check:
+            wandb.log(
+                {'interpolation samples passing seq check': seq_check_results / 9},
+                step=self.state.global_step
+            )
 
     def _random_samples(self):
         # TODO can I greedy decode these in parallel?
-        table = wandb.Table(columns=["Text", "Valid", "IsMaxLen"])
+        table = wandb.Table(columns=["Text", "Valid"])
         latent_points = torch.randn(self.args.n_random_samples, self.model.config.latent_size, device=self.model.device)
         seq_check_results = 0
         seq_check = SEQ_CHECKS[self.args.seq_check]
@@ -93,13 +104,13 @@ class VAE_Trainer(trainer_script.Trainer):
         for i in tqdm(range(latent_points.size(0)), desc="Sampling from random latent points"):
             text = self._text_from_latent(latent_points[i].view(1, -1))
             valid = seq_check(text)
-            table.add_data(text, valid, len(text) == self.args.generate_max_len)
+            table.add_data(text, valid)
             seq_check_results += int(valid)
 
         wandb.log({"random points": table}, step=self.state.global_step)
         if self.args.seq_check:
             wandb.log(
-                {'ratio of random samples passing sequence checks': seq_check_results / latent_points.size(0)},
+                {'random samples passing seq check': seq_check_results / latent_points.size(0)},
                 step=self.state.global_step
             )
 

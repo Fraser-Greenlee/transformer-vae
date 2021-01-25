@@ -59,3 +59,5 @@ class BaseTransformerVAE_Output(ModelOutput):
     reconstructed_encoding: Optional[torch.FloatTensor] = None
     reg_loss: Optional[torch.FloatTensor] = None
     decoder_ce: Optional[torch.FloatTensor] = None
+    seq_accuracy: Optional[torch.FloatTensor] = None
+    token_accuracy: Optional[torch.FloatTensor] = None

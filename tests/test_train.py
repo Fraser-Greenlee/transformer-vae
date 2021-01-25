@@ -265,9 +265,15 @@ class TrainTests(TestCasePlus):
             --per_device_train_batch_size 4
             --per_device_eval_batch_size 4
             --num_train_epochs 1
-            --set_seq_size 4
+            --set_seq_size 8
+            --encoder_model n-tokens
+            --decoder_model n-tokens
+            --n_latent_tokens 1
+            --encoded_seq_size 2
             --latent_size 2
-            --transformer_name t5-small
+            --transformer_type funnel-t5
+            --transformer_name funnel-transformer/intermediate
+            --transformer_decoder_name t5-base
             --output_dir {tmp_dir}
             --overwrite_output_dir
             --seq_check python
