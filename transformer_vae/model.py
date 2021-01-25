@@ -569,14 +569,18 @@ class Critic(nn.Module):
     """
     def __init__(self, config):
         super().__init__()
-        critic_model = AutoModelForSeq2SeqLM.from_config(config)
-        self.critic = critic_model.encoder
-        self.fc = nn.Linear(critic_model.d_model, 1)
+        try:
+            self.critic = AutoModelForSeq2SeqLM.from_config(config).encoder
+        except ValueError:
+            # handle funnel critic model
+            self.critic = AutoModelForMaskedLM.from_config(config).funnel.encoder
+        self.fc = nn.Linear(config.d_model, 1)
         self.activation = nn.Sigmoid()
         self.loss = nn.MSELoss()
 
     def forward(self, hidden_state, targets=None):
-        final_hidden = self.critic(hidden_state)
+        final_hidden = self.critic(hidden_state).last_hidden_state
+        import pdb; pdb.set_trace()
         score = 0.5 * self.activation(self.fc(final_hidden[:, 0]))
         if targets:
             return self.loss(score, targets)
@@ -594,7 +598,6 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
     Funnel-Transformer's decoder is non auto-regressive meaning it generates all tokens in parallel, this is likely worse for generation.
     """
     config_class = Funnel_T5_VAE_Config
-    critic = None
 
     def __init__(self, config: Funnel_T5_VAE_Config):
         super().__init__(config=config)
@@ -605,6 +608,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         assert (
             self.decoder_start_token_id is not None
         ), "`self.config.transformer_decoder.decoder_start_token_id` has to be defined. In T5 it is usually set to the pad_token_id. See T5 docs for more information"
+        self.critic = None
         if config.transformer_critic:
             self.critic = Critic(config.transformer_critic)
 

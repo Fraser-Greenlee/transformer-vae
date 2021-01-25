@@ -222,6 +222,8 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
         """
         output = super().to_dict()
         output['transformer_decoder'] = self.transformer_decoder.to_dict()
+        if self.transformer_critic:
+            output['transformer_critic'] = self.transformer_critic.to_dict()
         return output
 
 

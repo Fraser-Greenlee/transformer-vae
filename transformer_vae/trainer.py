@@ -192,6 +192,8 @@ class VAE_Trainer(trainer_script.Trainer):
         else:
             loss.backward()
 
+        return loss
+
     def interpolation_inputs(self, latent):
         batch_size = latent.size(0)
         interpolation_ratios = torch.rand(batch_size) * 0.5
@@ -205,9 +207,11 @@ class VAE_Trainer(trainer_script.Trainer):
         For optimising model interpolations directly, find interpolated latent codes with their ratio.
         Produces 1 interpolation for every 2 samples.
         '''
-        interp_ratio, interp_latent = self.interpolation_inputs(outputs.latent)
+        interp_latent, interp_ratio = self.interpolation_inputs(outputs.latent.detach())
         # TODO greedily decode interp_latent to get interp_decoder_hidden, preferably in parallel
+        # b transformer_vae.model:700
         import pdb; pdb.set_trace()
+        # this breaks when running as a batch, should try find why....
         generation = self.model.generate(latent=interp_latent, bos_token_id=self.model.decoder_start_token_id, min_length=self.args.generate_min_len, max_length=self.args.generate_max_len)
         # TODO return final decoder hidden states using this
 
@@ -234,7 +238,7 @@ class VAE_Trainer(trainer_script.Trainer):
         # interpolate samples
         adv_loss += model.critic(interpolated_last_hidden_state_d, target_a)
         adv_loss.backward()  # accumulate gradient on advisery
-        model.transformer.to('cuda')
+        model.transformer.to(self.args.device)
 
     def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
         """
@@ -255,7 +259,7 @@ class VAE_Trainer(trainer_script.Trainer):
         outputs = model(**inputs)
 
         if model.critic:
-            model.critic.to('cuda')
+            model.critic.to(self.args.device)
             self.training_interpolation_step(outputs, model)
 
         return self.get_loss_grad(outputs, labels).detach()
