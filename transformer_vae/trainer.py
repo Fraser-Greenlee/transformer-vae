@@ -7,14 +7,9 @@ from torch import nn, autograd
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.sampler import RandomSampler
 from torch.utils.data.dataloader import DataLoader
-from torch.utils.data.distributed import DistributedSampler
 from torch.cuda.amp import autocast
 
-from transformers.optimization import Adafactor, AdamW, get_scheduler
 from transformers import trainer as trainer_script
-from transformers.trainer_callback import TrainerState
-from transformers.trainer_utils import TrainOutput
-from transformers.modeling_utils import PreTrainedModel
 from transformers.integrations import (
     WandbCallback,
     is_wandb_available,
@@ -22,9 +17,8 @@ from transformers.integrations import (
     CometCallback,
     AzureMLCallback,
     MLflowCallback,
-    hp_params
 )
-from transformers.file_utils import WEIGHTS_NAME, is_apex_available, speed_metrics
+from transformers.file_utils import is_apex_available
 if is_apex_available():
     from apex import amp
 
@@ -59,6 +53,7 @@ for logger_integration in NOT_ALLOWED_LOGGERS:
 class VAE_Trainer(trainer_script.Trainer):
     def _text_from_latent(self, latent):
         # TODO can I do many latents in a batch?
+        import pdb; pdb.set_trace()
         generation = self.model.generate(
             latent=latent, bos_token_id=self.model.decoder_start_token_id, min_length=self.args.generate_min_len, max_length=self.args.generate_max_len
         )
@@ -224,20 +219,20 @@ class VAE_Trainer(trainer_script.Trainer):
 
         # update model
         with torch.no_grad():
-            # don't acumulate gradients on adv model
-            disc_loss_no_grad = model.adv(interpolated_last_hidden_state_d)
+            # don't acumulate gradients on critic model
+            disc_loss_no_grad = model.critic(interpolated_last_hidden_state_d)
             # calculate gradient manually
             disc_loss_to_last_hidden = autograd.grad(disc_loss_no_grad, interpolated_last_hidden_state_d)
             # acumulate gradient in VAE model (will only be the VAE-decoder)
             interpolated_last_hidden_state.backward(disc_loss_to_last_hidden)
 
-        # update adv_model
+        # update critic
         # real samples
         import pdb; pdb.set_trace()  # TODO get final layer decoder hidden states
         d_final_decoder_hidden_state = outputs.decoder_hidden_states[:, -1].detach()
-        adv_loss = model.adv(d_final_decoder_hidden_state, torch.zeros(d_final_decoder_hidden_state.size(0)))
+        adv_loss = model.critic(d_final_decoder_hidden_state, torch.zeros(d_final_decoder_hidden_state.size(0)))
         # interpolate samples
-        adv_loss += model.adv(interpolated_last_hidden_state_d, target_a)
+        adv_loss += model.critic(interpolated_last_hidden_state_d, target_a)
         adv_loss.backward()  # accumulate gradient on advisery
         model.transformer.to('cuda')
 
@@ -245,11 +240,12 @@ class VAE_Trainer(trainer_script.Trainer):
         """
         Perform a training step on a batch of inputs.
 
-        Adds adviserial loss when using adv model.
+        Adds adviserial loss when using critic model.
         Adv is currently put on/off single GPU, will need to switch for multi-GPU training.
         """
         model.train()
-        model.adv.to('cpu')
+        if model.critic:
+            model.critic.to('cpu')
         inputs = self._prepare_inputs(inputs)
 
         if self.label_smoother is not None and "labels" in inputs:
@@ -257,9 +253,10 @@ class VAE_Trainer(trainer_script.Trainer):
         else:
             labels = None
         outputs = model(**inputs)
-        model.adv.to('cuda')
 
-        self.training_interpolation_step(outputs, model)
+        if model.critic:
+            model.critic.to('cuda')
+            self.training_interpolation_step(outputs, model)
 
         return self.get_loss_grad(outputs, labels).detach()
 

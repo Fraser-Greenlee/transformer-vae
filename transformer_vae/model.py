@@ -2,7 +2,6 @@
     Base transformer-VAE model.
 """
 import logging
-import pdb
 import torch
 from torch import nn
 from typing import Dict, Any
@@ -564,6 +563,26 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
         )
 
 
+class Critic(nn.Module):
+    """
+    Model uses an transformer encoder to judge if decoder hidden states are from real VS interpolated latent points.
+    """
+    def __init__(self, config):
+        super().__init__()
+        critic_model = AutoModelForSeq2SeqLM.from_config(config)
+        self.critic = critic_model.encoder
+        self.fc = nn.Linear(critic_model.d_model, 1)
+        self.activation = nn.Sigmoid()
+        self.loss = nn.MSELoss()
+
+    def forward(self, hidden_state, targets=None):
+        final_hidden = self.critic(hidden_state)
+        score = 0.5 * self.activation(self.fc(final_hidden[:, 0]))
+        if targets:
+            return self.loss(score, targets)
+        return score
+
+
 class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
     r"""
     The Funnel-VAE model was proposed in `Transformers as Variational Autoencoders
@@ -575,16 +594,19 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
     Funnel-Transformer's decoder is non auto-regressive meaning it generates all tokens in parallel, this is likely worse for generation.
     """
     config_class = Funnel_T5_VAE_Config
+    critic = None
 
     def __init__(self, config: Funnel_T5_VAE_Config):
         super().__init__(config=config)
-        t5_model = AutoModelForSeq2SeqLM.from_config(config.transformer_decoder)
-        self.transformer.decoder = t5_model.decoder
-        self.transformer.lm_head = t5_model.lm_head
+        transformer_model = AutoModelForSeq2SeqLM.from_config(config.transformer_decoder)
+        self.transformer.decoder = transformer_model.decoder
+        self.transformer.lm_head = transformer_model.lm_head
         self.decoder_start_token_id = self.config.transformer_decoder.decoder_start_token_id
         assert (
             self.decoder_start_token_id is not None
         ), "`self.config.transformer_decoder.decoder_start_token_id` has to be defined. In T5 it is usually set to the pad_token_id. See T5 docs for more information"
+        if config.transformer_critic:
+            self.critic = Critic(config.transformer_critic)
 
     def _shift_right(self, input_ids):
         decoder_start_token_id = self.config.transformer_decoder.decoder_start_token_id

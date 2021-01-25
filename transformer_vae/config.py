@@ -160,7 +160,9 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
             Size of the encoding sequence after all Funnel encoder blocks.
             Usually 1/4 of your input size.
         transformer_decoder_name (:obj:`str`, `optional`, defaults to t5-base):
-            Name of the Transformer model to use as encoder & decoder.
+            Name of the Transformer model to use as a decoder.
+        transformer_critic_name (:obj:`str`, `optional`, defaults to None):
+            Name of the Transformer model to use as an advisery on interpolations.
     """
 
     def __init__(
@@ -168,6 +170,7 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
         transformer_name="funnel-transformer/large",
         encoded_seq_size=None,
         transformer_decoder_name="t5-base",
+        transformer_critic_name=None,
         decoder_start_token_id=0,
         cache_dir=None,
         use_skip_connection=False,
@@ -176,7 +179,6 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
         super().__init__(
             transformer_name=transformer_name,
             encoded_seq_size=encoded_seq_size,
-            transformer_decoder_name=transformer_decoder_name,
             decoder_start_token_id=decoder_start_token_id,
             cache_dir=cache_dir,
             **kwargs,
@@ -199,6 +201,14 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
             self.transformer_decoder.d_model,
             "Funnel & T5 transformers have different dimensions."
         )
+        self.transformer_critic = None
+        if transformer_critic_name:
+            self.transformer_critic = AutoConfig.from_pretrained(transformer_critic_name, cache_dir=cache_dir)
+            assertEqual(
+                self.transformer_decoder.d_model,
+                self.transformer_critic.d_model,
+                "Funnel & T5 transformers have different dimensions."
+            )
         self.use_skip_connection = use_skip_connection
         if self.use_skip_connection:
             assert 'funnel' in transformer_name, 'No use for skip connection with non-funnel model.'

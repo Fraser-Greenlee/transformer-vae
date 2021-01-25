@@ -58,7 +58,7 @@ for logger_integration in NOT_ALLOWED_LOGGERS:
 
 class VAE_Trainer(trainer_script.Trainer):
     def __init__(self, **kwargs):
-        self.adv_model = kwargs.adv
+        self.critic = kwargs.critic
         super().__init__(**kwargs)
 
     def _text_from_latent(self, latent):
@@ -199,8 +199,8 @@ class VAE_Trainer(trainer_script.Trainer):
         """
         assert self.optimizer is None
         self.optimizer = self.get_optimizer(self.model)
-        if self.adv_model:
-            self.adv_optimizer = self.get_optimizer(self.adv_model)
+        if self.critic:
+            self.adv_optimizer = self.get_optimizer(self.critic)
 
         assert self.lr_scheduler is None
         self.lr_scheduler = get_scheduler(
@@ -279,27 +279,27 @@ class VAE_Trainer(trainer_script.Trainer):
 
         # update model
         with torch.no_grad():
-            # don't acumulate gradients on adv model
-            disc_loss_no_grad = self.adv_model(interpolated_last_hidden_state_d)
+            # don't acumulate gradients on critic model
+            disc_loss_no_grad = self.critic(interpolated_last_hidden_state_d)
             # calculate gradient manually
             disc_loss_to_last_hidden = autograd.grad(disc_loss_no_grad, interpolated_last_hidden_state_d)
             # acumulate gradient in VAE model (will only be the VAE-decoder)
             interpolated_last_hidden_state.backward(disc_loss_to_last_hidden)
 
-        # update adv_model
+        # update critic
         # real samples
         import pdb; pdb.set_trace()
         d_final_decoder_hidden_state = outputs.decoder_hidden_states[:, -1].detach()
-        adv_loss = self.adv_model(d_final_decoder_hidden_state, torch.zeros(d_final_decoder_hidden_state.size(0)))
+        adv_loss = self.critic(d_final_decoder_hidden_state, torch.zeros(d_final_decoder_hidden_state.size(0)))
         # interpolate samples
-        adv_loss += self.adv_model(interpolated_last_hidden_state_d, target_a)
+        adv_loss += self.critic(interpolated_last_hidden_state_d, target_a)
         adv_loss.backward()  # accumulate gradient on advisery
 
     def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
         """
         Perform a training step on a batch of inputs.
 
-        Adds adviserial loss when using adv model.
+        Adds adviserial loss when using critic model.
         """
         model.train()
         inputs = self._prepare_inputs(inputs)
@@ -681,7 +681,7 @@ class VAE_Trainer(trainer_script.Trainer):
                     self.lr_scheduler.step()
                     self.adv_lr_scheduler.step()
                     model.zero_grad()
-                    self.adv_model.zero_grad()
+                    self.critic.zero_grad()
 
                     self.state.global_step += 1
                     self.state.epoch = epoch + (step + 1) / steps_in_epoch

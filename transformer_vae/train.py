@@ -107,6 +107,12 @@ class ModelArguments:
             "help": "Name of the transformer model being using for decoding the funnel transformer (only `t5` type transformers supported)."
         },
     )
+    transformer_critic_name: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Name of the transformer model being using to critique interpolated hidden states, works with T5 & Funnel transformers."
+        },
+    )
     config_path: Optional[str] = field(
         default=None, metadata={"help": "Pretrained config path if not the same as model_name"}
     )
@@ -377,6 +383,7 @@ def load_model_and_tokenizer(model_args):
             latent_size=model_args.latent_size,
             transformer_name=model_args.transformer_name,
             transformer_decoder_name=model_args.transformer_decoder_name,
+            transformer_critic_name=model_args.transformer_critic_name,
             encoder_model=model_args.encoder_model,
             decoder_model=model_args.decoder_model,
             set_seq_size=model_args.set_seq_size,
