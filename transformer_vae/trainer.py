@@ -1,14 +1,20 @@
-import torch
-from torch import nn
+import time
 from tqdm import tqdm
 import logging
 from typing import Optional, Dict, List, Tuple, Union, Any
+import torch
+from torch import nn, autograd
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.sampler import RandomSampler
 from torch.utils.data.dataloader import DataLoader
-import time
+from torch.utils.data.distributed import DistributedSampler
+from torch.cuda.amp import autocast
 
+from transformers.optimization import Adafactor, AdamW, get_scheduler
 from transformers import trainer as trainer_script
+from transformers.trainer_callback import TrainerState
+from transformers.trainer_utils import TrainOutput
+from transformers.modeling_utils import PreTrainedModel
 from transformers.integrations import (
     WandbCallback,
     is_wandb_available,
@@ -16,11 +22,16 @@ from transformers.integrations import (
     CometCallback,
     AzureMLCallback,
     MLflowCallback,
+    hp_params
 )
+from transformers.file_utils import WEIGHTS_NAME, is_apex_available, speed_metrics
+if is_apex_available():
+    from apex import amp
 
 from transformer_vae.sequence_checks import SEQ_CHECKS
 from transformer_vae.trainer_callback import WandbCallbackUseModelLogs
 from transformer_vae.sklearn import train_svm
+from transformer_vae.utils import slerp
 
 
 logger = logging.getLogger(__name__)
@@ -46,13 +57,8 @@ for logger_integration in NOT_ALLOWED_LOGGERS:
 
 
 class VAE_Trainer(trainer_script.Trainer):
-    def __init__(self, args=None, **kwargs):
-        if args:
-            self.test_classification = args.test_classification
-        super().__init__(args=args, **kwargs)
-
     def _text_from_latent(self, latent):
-        # TODO can I do many latents in parallel?
+        # TODO can I do many latents in a batch?
         generation = self.model.generate(
             latent=latent, bos_token_id=self.model.decoder_start_token_id, min_length=self.args.generate_min_len, max_length=self.args.generate_max_len
         )
@@ -70,7 +76,6 @@ class VAE_Trainer(trainer_script.Trainer):
         samples = self._prepare_inputs(next(mini_eval_dataloader_iter))
         latents = self.model(**samples).latent
         start_latent, end_latent = latents[0].view(1, -1), latents[1].view(1, -1)
-        latent_diff = end_latent - start_latent
 
         seq_check_results = 0
         seq_check = SEQ_CHECKS[self.args.seq_check]
@@ -79,7 +84,7 @@ class VAE_Trainer(trainer_script.Trainer):
 
         for i in tqdm(range(11), desc="Sampling from interpolated latent points"):
             ratio = i / 10
-            latent = start_latent + ratio * latent_diff
+            latent = slerp(ratio, start_latent, end_latent)
             text = self._text_from_latent(latent)
             valid = seq_check(text)
             table.add_data(ratio, text, valid)
@@ -118,14 +123,14 @@ class VAE_Trainer(trainer_script.Trainer):
         dataloader = self.get_eval_dataloader(eval_dataset)
         latents_with_class = []
         for inputs in dataloader:
-            if self.test_classification:
+            if self.args.test_classification:
                 class_label = inputs.pop("class_label")
 
             inputs = self._prepare_inputs(inputs)
             outputs = self.model(**inputs)
 
             row = [outputs.get("latent").tolist()]
-            if self.test_classification:
+            if self.args.test_classification:
                 row.append(class_label.tolist())  # type: ignore
 
             latents_with_class.append(row)
@@ -151,10 +156,112 @@ class VAE_Trainer(trainer_script.Trainer):
         if self.args.sample_from_latent:
             self._interpolate_samples(eval_dataset)
             self._random_samples()
-        if self.test_classification:
+        if self.args.test_classification:
             latents_with_class = self._latent_with_class(eval_dataset)
             self._svm_classification(latents_with_class)
         # self._t_sne(latents_with_class)
+
+    def get_loss(self, outputs, labels):
+        """
+        How the loss is computed by Trainer. By default, all models return the loss in the first element.
+        """
+        # Save past state if it exists
+        # TODO: this needs to be fixed and made cleaner later.
+        if self.args.past_index >= 0:
+            self._past = outputs[self.args.past_index]
+
+        if labels is not None:
+            return self.label_smoother(outputs, labels)
+        else:
+            # We don't use .loss here since the model may return tuples instead of ModelOutput.
+            return outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+
+    def get_loss_grad(self, outputs, labels):
+        if self.use_amp:
+            with autocast():
+                loss = self.get_loss(outputs, labels)
+        else:
+            loss = self.get_loss(outputs, labels)
+
+        if self.args.n_gpu > 1:
+            loss = loss.mean()  # mean() to average on multi-gpu parallel training
+
+        if self.args.gradient_accumulation_steps > 1:
+            loss = loss / self.args.gradient_accumulation_steps
+
+        if self.use_amp:
+            self.scaler.scale(loss).backward()
+        elif self.use_apex:
+            with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                scaled_loss.backward()
+        else:
+            loss.backward()
+
+    def interpolation_inputs(self, latent):
+        batch_size = latent.size(0)
+        interpolation_ratios = torch.rand(batch_size) * 0.5
+        # TODO allow sphlerp interpolation here
+        shifted_indices = torch.arange(latent.size(0))[1:].tolist() + [0]
+        latent_interpolated = slerp(interpolation_ratios, latent, latent[shifted_indices])
+        return latent_interpolated, interpolation_ratios
+
+    def prepare_interpolation_data(self, outputs, model):
+        '''
+        For optimising model interpolations directly, find interpolated latent codes with their ratio.
+        Produces 1 interpolation for every 2 samples.
+        '''
+        interp_ratio, interp_latent = self.interpolation_inputs(outputs.latent)
+        # TODO greedily decode interp_latent to get interp_decoder_hidden, preferably in parallel
+        import pdb; pdb.set_trace()
+        generation = self.model.generate(latent=interp_latent, bos_token_id=self.model.decoder_start_token_id, min_length=self.args.generate_min_len, max_length=self.args.generate_max_len)
+        # TODO return final decoder hidden states using this
+
+    def training_interpolation_step(self, outputs, model):
+        model.transformer.to('cpu')
+        # TODO add adviserial interpolation loss here?
+        interpolated_last_hidden_state, target_a = self.prepare_interpolation_data(outputs, model)
+        interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
+
+        # update model
+        with torch.no_grad():
+            # don't acumulate gradients on adv model
+            disc_loss_no_grad = model.adv(interpolated_last_hidden_state_d)
+            # calculate gradient manually
+            disc_loss_to_last_hidden = autograd.grad(disc_loss_no_grad, interpolated_last_hidden_state_d)
+            # acumulate gradient in VAE model (will only be the VAE-decoder)
+            interpolated_last_hidden_state.backward(disc_loss_to_last_hidden)
+
+        # update adv_model
+        # real samples
+        import pdb; pdb.set_trace()  # TODO get final layer decoder hidden states
+        d_final_decoder_hidden_state = outputs.decoder_hidden_states[:, -1].detach()
+        adv_loss = model.adv(d_final_decoder_hidden_state, torch.zeros(d_final_decoder_hidden_state.size(0)))
+        # interpolate samples
+        adv_loss += model.adv(interpolated_last_hidden_state_d, target_a)
+        adv_loss.backward()  # accumulate gradient on advisery
+        model.transformer.to('cuda')
+
+    def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
+        """
+        Perform a training step on a batch of inputs.
+
+        Adds adviserial loss when using adv model.
+        Adv is currently put on/off single GPU, will need to switch for multi-GPU training.
+        """
+        model.train()
+        model.adv.to('cpu')
+        inputs = self._prepare_inputs(inputs)
+
+        if self.label_smoother is not None and "labels" in inputs:
+            labels = inputs.pop("labels")
+        else:
+            labels = None
+        outputs = model(**inputs)
+        model.adv.to('cuda')
+
+        self.training_interpolation_step(outputs, model)
+
+        return self.get_loss_grad(outputs, labels).detach()
 
     def evaluate(self, eval_dataset: Optional[Dataset] = None) -> Dict[str, float]:
         """
