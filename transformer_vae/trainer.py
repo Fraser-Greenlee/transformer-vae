@@ -225,7 +225,6 @@ class VAE_Trainer(trainer_script.Trainer):
         '''
             Only to be ran with Funnel-T5.
         '''
-        model.transformer.funnel.to('cpu')
         interpolated_logits, interpolated_last_hidden_state, target_a = self.prepare_interpolation_data(outputs, model)
         interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
 
@@ -254,8 +253,6 @@ class VAE_Trainer(trainer_script.Trainer):
         critic_loss /= 2
         critic_loss.backward()  # accumulate gradient on critic
 
-        model.transformer.funnel.to(self.args.device)
-
     def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
         """
         Perform a training step on a batch of inputs.
@@ -264,8 +261,6 @@ class VAE_Trainer(trainer_script.Trainer):
         Adv is currently put on/off single GPU, will need to switch for multi-GPU training.
         """
         model.train()
-        if model.critic:
-            model.critic.to('cpu')
         inputs = self._prepare_inputs(inputs)
 
         if self.label_smoother is not None and "labels" in inputs:
@@ -275,7 +270,6 @@ class VAE_Trainer(trainer_script.Trainer):
         outputs = model(**inputs, output_hidden_states=True)
 
         if model.critic:
-            model.critic.to(self.args.device)
             self.training_interpolation_step(outputs, model)
 
         return self.get_loss_grad(outputs, labels).detach()
