@@ -25,7 +25,7 @@ if is_apex_available():
 from transformer_vae.sequence_checks import SEQ_CHECKS
 from transformer_vae.trainer_callback import WandbCallbackUseModelLogs
 from transformer_vae.sklearn import train_svm
-from transformer_vae.utils import slerp
+from transformer_vae.utils import slerp, fake_object
 
 
 logger = logging.getLogger(__name__)
@@ -51,15 +51,22 @@ for logger_integration in NOT_ALLOWED_LOGGERS:
 
 
 class VAE_Trainer(trainer_script.Trainer):
+    def _tokens_from_latent(self, latent):
+        with torch.no_grad():
+            return self.model.generate(
+                input_ids=self.model.decoder_start_token_id * torch.ones((latent.size(0), 1), dtype=torch.long, device=latent.device),
+                latent=latent, bos_token_id=self.model.decoder_start_token_id, min_length=self.args.generate_min_len,
+                max_length=self.args.generate_max_len
+            )
+
     def _text_from_latent(self, latent):
-        # TODO can I do many latents in a batch?
-        import pdb; pdb.set_trace()
-        generation = self.model.generate(
-            latent=latent, bos_token_id=self.model.decoder_start_token_id, min_length=self.args.generate_min_len, max_length=self.args.generate_max_len
-        )
-        return self.tokenizer.decode(generation[0].tolist(), skip_special_tokens=True)
+        return self.tokenizer.batch_decode(self._tokens_from_latent(latent), skip_special_tokens=True)
 
     def _interpolate_samples(self, eval_dataset):
+        '''
+            Interpolates between 2 latent encodings of real points.
+            Results are logged to Weights and Biasis.
+        '''
         mini_eval_dataloader_iter = iter(
             DataLoader(
                 eval_dataset,
@@ -70,23 +77,21 @@ class VAE_Trainer(trainer_script.Trainer):
         )
         samples = self._prepare_inputs(next(mini_eval_dataloader_iter))
         latents = self.model(**samples).latent
-        start_latent, end_latent = latents[0].view(1, -1), latents[1].view(1, -1)
+        interp_latent, interp_ratio = self.gradual_interpolation_inputs(latents[0], latents[1])
 
         seq_check_results = 0
         seq_check = SEQ_CHECKS[self.args.seq_check]
         table = wandb.Table(columns=["Interpolation Ratio", "Text", "Valid"])
         table.add_data(-10, self.tokenizer.decode(samples["input_ids"][0]), True)
+        texts = self._text_from_latent(interp_latent)
 
-        for i in tqdm(range(11), desc="Sampling from interpolated latent points"):
-            ratio = i / 10
-            latent = slerp(ratio, start_latent, end_latent)
-            text = self._text_from_latent(latent)
-            valid = seq_check(text)
-            table.add_data(ratio, text, valid)
-            if ratio > 0 and i < 1:
+        for i in range(11):
+            valid = seq_check(texts[i])
+            table.add_data(interp_ratio[i].item(), texts[i], valid)
+            if i > 0 and i < 10:
                 seq_check_results += int(valid)
-
         table.add_data(10, self.tokenizer.decode(samples["input_ids"][1]), True)
+
         wandb.log({"interpolate points": table}, step=self.state.global_step)
         if self.args.seq_check:
             wandb.log(
@@ -95,16 +100,14 @@ class VAE_Trainer(trainer_script.Trainer):
             )
 
     def _random_samples(self):
-        # TODO can I greedy decode these in parallel?
         table = wandb.Table(columns=["Text", "Valid"])
-        latent_points = torch.randn(self.args.n_random_samples, self.model.config.latent_size, device=self.model.device)
         seq_check_results = 0
         seq_check = SEQ_CHECKS[self.args.seq_check]
-
-        for i in tqdm(range(latent_points.size(0)), desc="Sampling from random latent points"):
-            text = self._text_from_latent(latent_points[i].view(1, -1))
-            valid = seq_check(text)
-            table.add_data(text, valid)
+        latent_points = torch.randn(self.args.n_random_samples, self.model.config.latent_size, device=self.model.device)
+        texts = self._text_from_latent(latent_points)
+        for txt in texts:
+            valid = seq_check(txt)
+            table.add_data(txt, valid)
             seq_check_results += int(valid)
 
         wandb.log({"random points": table}, step=self.state.global_step)
@@ -142,7 +145,7 @@ class VAE_Trainer(trainer_script.Trainer):
         points = t_sne(latents_with_class)
         for point in points:
             table.add_data(point.x, point.y, point.class)
-        wandb.log({"my_custom_id" : wandb.plot.scatter(table, "x", "y", "class")})
+        wandb.log({"my_custom_id" : wandb.plot.scatter(table, "x", "y", "class")}, step=x)
         """
         pass
 
@@ -194,51 +197,57 @@ class VAE_Trainer(trainer_script.Trainer):
 
         return loss
 
-    def interpolation_inputs(self, latent):
+    def gradual_interpolation_inputs(self, latent_start, latent_end):
+        ratios = torch.arange(0, 1.1, 0.1)
+        interpolations = slerp(ratios, latent_start.repeat(11, 1), latent_end.repeat(11, 1))
+        return interpolations, ratios
+
+    def random_interpolation_inputs(self, latent):
         batch_size = latent.size(0)
         interpolation_ratios = torch.rand(batch_size) * 0.5
         # TODO allow sphlerp interpolation here
         shifted_indices = torch.arange(latent.size(0))[1:].tolist() + [0]
         latent_interpolated = slerp(interpolation_ratios, latent, latent[shifted_indices])
-        return latent_interpolated, interpolation_ratios
+        return latent_interpolated, interpolation_ratios.view(-1, 1)
 
     def prepare_interpolation_data(self, outputs, model):
         '''
         For optimising model interpolations directly, find interpolated latent codes with their ratio.
         Produces 1 interpolation for every 2 samples.
         '''
-        interp_latent, interp_ratio = self.interpolation_inputs(outputs.latent.detach())
-        # TODO greedily decode interp_latent to get interp_decoder_hidden, preferably in parallel
-        # b transformer_vae.model:700
-        import pdb; pdb.set_trace()
-        # this breaks when running as a batch, should try find why....
-        generation = self.model.generate(latent=interp_latent, bos_token_id=self.model.decoder_start_token_id, min_length=self.args.generate_min_len, max_length=self.args.generate_max_len)
-        # TODO return final decoder hidden states using this
+        interp_latent, interp_ratio = self.random_interpolation_inputs(outputs.latent.detach())
+        tokens = self._tokens_from_latent(interp_latent)
+        final_decoder_hidden = model(decoder_input_ids=tokens, latent=interp_latent, output_hidden_states=True).hidden_states[-1]
+        return final_decoder_hidden, interp_ratio
 
     def training_interpolation_step(self, outputs, model):
-        model.transformer.to('cpu')
-        # TODO add adviserial interpolation loss here?
+        '''
+            Only to be ran with Funnel-T5.
+        '''
+        model.transformer.funnel.to('cpu')
         interpolated_last_hidden_state, target_a = self.prepare_interpolation_data(outputs, model)
         interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
 
         # update model
-        with torch.no_grad():
-            # don't acumulate gradients on critic model
-            disc_loss_no_grad = model.critic(interpolated_last_hidden_state_d)
-            # calculate gradient manually
-            disc_loss_to_last_hidden = autograd.grad(disc_loss_no_grad, interpolated_last_hidden_state_d)
-            # acumulate gradient in VAE model (will only be the VAE-decoder)
-            interpolated_last_hidden_state.backward(disc_loss_to_last_hidden)
+        # accumulate compute graph on critic loss variable
+        critic_loss = model.critic(interpolated_last_hidden_state).mean()
+        # get gradients of the output only w.r.t the inputs and not model.critic
+        critic_loss_to_last_hidden = autograd.grad(outputs=critic_loss, inputs=interpolated_last_hidden_state, only_inputs=True, retain_graph=False)
+        # acumulate gradient in VAE model (will only be the VAE-decoder)
+        interpolated_last_hidden_state.backward(critic_loss_to_last_hidden)
 
         # update critic
         # real samples
-        import pdb; pdb.set_trace()  # TODO get final layer decoder hidden states
-        d_final_decoder_hidden_state = outputs.decoder_hidden_states[:, -1].detach()
-        adv_loss = model.critic(d_final_decoder_hidden_state, torch.zeros(d_final_decoder_hidden_state.size(0)))
+        d_final_decoder_hidden_state = outputs.decoder_hidden_states[-1].detach()
+        critic_loss = model.critic(d_final_decoder_hidden_state, torch.zeros((outputs.latent.size(0), 1), device=self.args.device)).mean()
         # interpolate samples
-        adv_loss += model.critic(interpolated_last_hidden_state_d, target_a)
-        adv_loss.backward()  # accumulate gradient on advisery
-        model.transformer.to(self.args.device)
+        interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
+        critic_loss += model.critic(interpolated_last_hidden_state_d, target_a).mean()
+        # average between the 2 losses
+        critic_loss /= 2
+        critic_loss.backward()  # accumulate gradient on critic
+
+        model.transformer.funnel.to(self.args.device)
 
     def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
         """
@@ -256,7 +265,7 @@ class VAE_Trainer(trainer_script.Trainer):
             labels = inputs.pop("labels")
         else:
             labels = None
-        outputs = model(**inputs)
+        outputs = model(**inputs, output_hidden_states=True)
 
         if model.critic:
             model.critic.to(self.args.device)
@@ -274,6 +283,8 @@ class VAE_Trainer(trainer_script.Trainer):
         if class column provided?
         - tSNE plots with class-label colouring.
         """
+        if self.state.global_step < wandb.run.history._step:
+            self.state.global_step = wandb.run.history._step
         if is_wandb_available():
             start_eval = time.time()
             with torch.no_grad():
@@ -282,8 +293,8 @@ class VAE_Trainer(trainer_script.Trainer):
             generate_time = time.time() - start_eval
         output_metrics = super().evaluate(eval_dataset=eval_dataset)
         if is_wandb_available():
-            self.log({"eval_get_test_loss_time": time.time() - start_eval + generate_time})  # type: ignore
-            self.log({"eval_generate_time": generate_time})  # type: ignore
+            wandb.log({"eval_get_test_loss_time": time.time() - start_eval + generate_time}, step=self.state.global_step)  # type: ignore
+            wandb.log({"eval_generate_time": generate_time}, step=self.state.global_step)  # type: ignore
         return output_metrics
 
     def prediction_step(

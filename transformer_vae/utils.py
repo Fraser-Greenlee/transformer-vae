@@ -29,3 +29,17 @@ def slerp(ratio: float, t1: torch.FloatTensor, t2: torch.FloatTensor):
     so = torch.sin(omega)
     res = (torch.sin((1.0 - ratio) * omega) / so).unsqueeze(1) * t1 + (torch.sin(ratio * omega) / so).unsqueeze(1) * t2
     return res
+
+
+class AttrDict(dict):
+    def __init__(self, *args, **kwargs):
+        super(AttrDict, self).__init__(*args, **kwargs)
+        self.__dict__ = self
+
+
+def fake_object(device, *attrs):
+    '''
+        Fake a Huggingface dataclass with desired attributes.
+    '''
+    empty_tensor = torch.tensor(0, dtype=torch.float, device=device)
+    return AttrDict({atr: empty_tensor for atr in attrs})

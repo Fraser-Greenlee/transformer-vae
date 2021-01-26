@@ -268,7 +268,6 @@ class VAE_Trainer(trainer_script.Trainer):
         '''
         interp_ratio, interp_latent = self.interpolation_inputs(outputs.latent)
         # TODO greedily decode interp_latent to get interp_decoder_hidden, preferably in parallel
-        import pdb; pdb.set_trace()
         generation = self.model.generate(latent=interp_latent, bos_token_id=self.model.decoder_start_token_id, min_length=self.args.generate_min_len, max_length=self.args.generate_max_len)
         # TODO return final decoder hidden states using this
 
@@ -288,7 +287,6 @@ class VAE_Trainer(trainer_script.Trainer):
 
         # update critic
         # real samples
-        import pdb; pdb.set_trace()
         d_final_decoder_hidden_state = outputs.decoder_hidden_states[:, -1].detach()
         adv_loss = self.critic(d_final_decoder_hidden_state, torch.zeros(d_final_decoder_hidden_state.size(0)))
         # interpolate samples

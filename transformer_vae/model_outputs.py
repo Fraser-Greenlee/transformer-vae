@@ -32,6 +32,8 @@ class BaseTransformerVAE_Output(ModelOutput):
     """
     Base class for a Transformer-VAE's outputs.
 
+    NOTE: `hidden_states` only holds encoder hidden states as the generate from latent process is a little hacky right now.
+
     Args:
         loss (:obj:`torch.FloatTensor` of shape :obj:`(1,)`, `optional`, returned when :obj:`labels` is provided):
             Language modeling loss.
@@ -49,6 +51,7 @@ class BaseTransformerVAE_Output(ModelOutput):
     logits: Optional[torch.FloatTensor] = None
     past_key_values: Optional[List[torch.FloatTensor]] = None
     decoder_hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     decoder_attentions: Optional[Tuple[torch.FloatTensor]] = None
     cross_attentions: Optional[Tuple[torch.FloatTensor]] = None
     encoder_last_hidden_state: Optional[torch.FloatTensor] = None

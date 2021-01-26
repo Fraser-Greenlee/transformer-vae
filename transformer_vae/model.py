@@ -403,6 +403,7 @@ class T5_VAE_Model(Transformer_VAE_Base_Model):
             logits=lm_logits,
             past_key_values=decoder_outputs.past_key_values,
             decoder_hidden_states=decoder_outputs.hidden_states,
+            hidden_states=decoder_outputs.hidden_states,
             decoder_attentions=decoder_outputs.attentions,
             cross_attentions=decoder_outputs.cross_attentions,
             encoder_last_hidden_state=encoder_outputs.last_hidden_state if encoder_outputs else None,
@@ -552,6 +553,7 @@ class Funnel_VAE_Model(Funnel_VAE_Model_Base):
             logits=prediction_logits,
             past_key_values=None,
             decoder_hidden_states=decoder_outputs.hidden_states,
+            hidden_states=decoder_outputs.hidden_states,
             decoder_attentions=decoder_outputs.attentions,
             cross_attentions=None,
             encoder_last_hidden_state=encoder_outputs.last_hidden_state if encoder_outputs else None,
@@ -579,10 +581,10 @@ class Critic(nn.Module):
         self.loss = nn.MSELoss()
 
     def forward(self, hidden_state, targets=None):
-        final_hidden = self.critic(hidden_state).last_hidden_state
-        import pdb; pdb.set_trace()
+        attention_mask = torch.ones(hidden_state.size()[:-1], device=hidden_state.device)
+        final_hidden = self.critic(hidden_state, attention_mask=attention_mask).last_hidden_state
         score = 0.5 * self.activation(self.fc(final_hidden[:, 0]))
-        if targets:
+        if targets is not None:
             return self.loss(score, targets)
         return score
 
@@ -638,6 +640,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         decoder_input_ids=None,
         latent=None,
         use_cache=None,
+        output_hidden_states=None,
         return_dict=True,
         **unused_kwargs
     ):
@@ -657,9 +660,10 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
                 encoder_outputs = self._get_encoder_outputs(
                     input_ids=input_ids,
                     attention_mask=attention_mask,
+                    output_hidden_states=output_hidden_states,
                     return_dict=True,
                 )
-        if encoder_outputs is not None and not isinstance(encoder_outputs, BaseModelOutput):
+        if encoder_outputs is not None and (isinstance(encoder_outputs, list) or isinstance(encoder_outputs, tuple)):
             encoder_outputs = BaseModelOutput(
                 last_hidden_state=encoder_outputs[0],
                 hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
@@ -667,7 +671,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             )
 
         vae_outputs = self.vae(
-            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent=latent, global_step=self.global_step
+            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs and isinstance(encoder_outputs, BaseModelOutput) else None, latent=latent, global_step=self.global_step
         )
 
         # TODO allow more options here, specifically allow an extra encoder block after upsampling
@@ -698,7 +702,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             decoder_input_ids = self._shift_right(labels) if labels is not None else None
 
         decoder_outputs = self.transformer.decoder(
-            input_ids=decoder_input_ids, encoder_hidden_states=upsampled_encoding, use_cache=use_cache, return_dict=True
+            input_ids=decoder_input_ids, encoder_hidden_states=upsampled_encoding, use_cache=use_cache, output_hidden_states=output_hidden_states, return_dict=True
         )
 
         sequence_output = decoder_outputs.last_hidden_state
@@ -734,6 +738,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             logits=lm_logits,
             past_key_values=decoder_outputs.past_key_values,
             decoder_hidden_states=decoder_outputs.hidden_states,
+            hidden_states=decoder_outputs.hidden_states,
             decoder_attentions=decoder_outputs.attentions,
             cross_attentions=decoder_outputs.cross_attentions,
             encoder_last_hidden_state=encoder_outputs.last_hidden_state if encoder_outputs else None,
@@ -863,6 +868,7 @@ class Funnel_gpt2_VAE_Model(Funnel_VAE_Model_Base):
             logits=decoder_outputs.logits,
             past_key_values=decoder_outputs.past_key_values,
             decoder_hidden_states=decoder_outputs.hidden_states,
+            hidden_states=decoder_outputs.hidden_states,
             decoder_attentions=decoder_outputs.attentions,
             cross_attentions=decoder_outputs.cross_attentions,
             encoder_last_hidden_state=encoder_outputs.last_hidden_state if encoder_outputs else None,
