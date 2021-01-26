@@ -17,8 +17,8 @@ __version__ = re.search(r'__version__ = "([.\d]+)"', contents).group(1)
 
 install_requires = [
     "datasets==1.1.3",
-    "transformers==4.1.1",
-    "wandb>=0.10.12",
+    "transformers==4.2.2",
+    "wandb>=0.10.14",
     "torch==1.7.0",
     "sklearn",  # for SVM
 ]
