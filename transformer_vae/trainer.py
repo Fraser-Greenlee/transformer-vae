@@ -53,7 +53,7 @@ class VAE_Trainer(trainer_script.Trainer):
     def _tokens_from_latent(self, latent):
         with torch.no_grad():
             return self.model.generate(
-                input_ids=self.model.decoder_start_token_id * torch.ones((latent.size(0), 1), dtype=torch.long, device=latent.device),
+                input_ids=self.model.decoder_start_token_id * torch.ones((latent.size(0), 1), dtype=torch.long, device=self.args.device),
                 latent=latent, bos_token_id=self.model.decoder_start_token_id, min_length=self.args.generate_min_len,
                 max_length=self.args.generate_max_len
             )
