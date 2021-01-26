@@ -77,6 +77,10 @@ class VAE_TrainingArguments(TrainingArguments):
         default=False,
         metadata={"help": "Test using latent codes for unsupervised classification."},
     )
+    smoothness_loss: bool = field(
+        default=False,
+        metadata={"help": "Minimise the change in logits w.r.t some interpolation ratio."},
+    )
 
 
 @dataclass

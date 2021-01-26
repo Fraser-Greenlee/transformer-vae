@@ -1,5 +1,4 @@
 import time
-from tqdm import tqdm
 import logging
 from typing import Optional, Dict, List, Tuple, Union, Any
 import torch
@@ -25,7 +24,7 @@ if is_apex_available():
 from transformer_vae.sequence_checks import SEQ_CHECKS
 from transformer_vae.trainer_callback import WandbCallbackUseModelLogs
 from transformer_vae.sklearn import train_svm
-from transformer_vae.utils import slerp, fake_object
+from transformer_vae.utils import slerp
 
 
 logger = logging.getLogger(__name__)
@@ -205,28 +204,36 @@ class VAE_Trainer(trainer_script.Trainer):
     def random_interpolation_inputs(self, latent):
         batch_size = latent.size(0)
         interpolation_ratios = torch.rand(batch_size) * 0.5
-        # TODO allow sphlerp interpolation here
+        interpolation_ratios.requires_grad = True
         shifted_indices = torch.arange(latent.size(0))[1:].tolist() + [0]
         latent_interpolated = slerp(interpolation_ratios, latent, latent[shifted_indices])
-        return latent_interpolated, interpolation_ratios.view(-1, 1)
+        return latent_interpolated, interpolation_ratios
 
     def prepare_interpolation_data(self, outputs, model):
         '''
         For optimising model interpolations directly, find interpolated latent codes with their ratio.
         Produces 1 interpolation for every 2 samples.
         '''
-        interp_latent, interp_ratio = self.random_interpolation_inputs(outputs.latent.detach())
+        original_latent = outputs.latent.detach()
+        original_latent.requires_grad = True  # TODO is this needed?
+        interp_latent, interp_ratio = self.random_interpolation_inputs(original_latent)
         tokens = self._tokens_from_latent(interp_latent)
-        final_decoder_hidden = model(decoder_input_ids=tokens, latent=interp_latent, output_hidden_states=True).hidden_states[-1]
-        return final_decoder_hidden, interp_ratio
+        interp_outputs = model(decoder_input_ids=tokens, latent=interp_latent, output_hidden_states=True)
+        return interp_outputs.logits, interp_outputs.hidden_states[-1], interp_ratio
 
     def training_interpolation_step(self, outputs, model):
         '''
             Only to be ran with Funnel-T5.
         '''
         model.transformer.funnel.to('cpu')
-        interpolated_last_hidden_state, target_a = self.prepare_interpolation_data(outputs, model)
+        interpolated_logits, interpolated_last_hidden_state, target_a = self.prepare_interpolation_data(outputs, model)
         interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
+
+        if self.args.smoothness_loss:
+            # TODO mean() or norm() for interpolated logits?
+            logits_wrt_alpha = autograd.grad(outputs=interpolated_logits.norm(), inputs=target_a, only_inputs=True, create_graph=True, retain_graph=True)[0]
+            smoothness_loss = logits_wrt_alpha.norm(2)
+            smoothness_loss.backward(retain_graph=True)
 
         # update model
         # accumulate compute graph on critic loss variable
@@ -234,7 +241,7 @@ class VAE_Trainer(trainer_script.Trainer):
         # get gradients of the output only w.r.t the inputs and not model.critic
         critic_loss_to_last_hidden = autograd.grad(outputs=critic_loss, inputs=interpolated_last_hidden_state, only_inputs=True, retain_graph=False)
         # acumulate gradient in VAE model (will only be the VAE-decoder)
-        interpolated_last_hidden_state.backward(critic_loss_to_last_hidden)
+        interpolated_last_hidden_state.backward(critic_loss_to_last_hidden, retain_graph=True)
 
         # update critic
         # real samples

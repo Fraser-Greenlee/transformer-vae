@@ -550,6 +550,7 @@ class TrainTests(TestCasePlus):
             --eval_steps 3
             --evaluation_strategy steps
             --sample_from_latent
+            --smoothness_loss
             --per_device_train_batch_size 4
             --per_device_eval_batch_size 4
             --num_train_epochs 1

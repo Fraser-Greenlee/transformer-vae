@@ -1,1 +1,2 @@
 transformer_critic_name funnel-transformer/intermediate
+smoothness_loss
