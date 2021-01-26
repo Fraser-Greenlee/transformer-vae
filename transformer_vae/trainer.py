@@ -197,15 +197,15 @@ class VAE_Trainer(trainer_script.Trainer):
         return loss
 
     def gradual_interpolation_inputs(self, latent_start, latent_end):
-        ratios = torch.arange(0, 1.1, 0.1)
+        ratios = torch.arange(0, 1.1, 0.1, device=self.args.device)
         interpolations = slerp(ratios, latent_start.repeat(11, 1), latent_end.repeat(11, 1))
         return interpolations, ratios
 
     def random_interpolation_inputs(self, latent):
         batch_size = latent.size(0)
-        interpolation_ratios = torch.rand(batch_size) * 0.5
+        interpolation_ratios = torch.rand(batch_size, device=self.args.device) * 0.5
         interpolation_ratios.requires_grad = True
-        shifted_indices = torch.arange(latent.size(0))[1:].tolist() + [0]
+        shifted_indices = torch.arange(latent.size(0), device='cpu')[1:].tolist() + [0]
         latent_interpolated = slerp(interpolation_ratios, latent, latent[shifted_indices])
         return latent_interpolated, interpolation_ratios
 
