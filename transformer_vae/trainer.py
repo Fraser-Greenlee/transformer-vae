@@ -1,9 +1,11 @@
 import time
 import logging
+import collections
 from typing import Optional, Dict, List, Tuple, Union, Any
+from tqdm import tqdm
 import torch
 from torch import nn, autograd
-from torch.utils.data.dataset import Dataset
+from torch.utils.data import Dataset
 from torch.utils.data.sampler import RandomSampler
 from torch.utils.data.dataloader import DataLoader
 from torch.cuda.amp import autocast
@@ -24,7 +26,7 @@ if is_apex_available():
 from transformer_vae.sequence_checks import SEQ_CHECKS
 from transformer_vae.trainer_callback import WandbCallbackUseModelLogs
 from transformer_vae.sklearn import train_svm
-from transformer_vae.utils import slerp
+from transformer_vae.utils import slerp, SortishSampler
 
 
 logger = logging.getLogger(__name__)
@@ -50,6 +52,39 @@ for logger_integration in NOT_ALLOWED_LOGGERS:
 
 
 class VAE_Trainer(trainer_script.Trainer):
+
+    def _get_train_sampler(self) -> Optional[torch.utils.data.sampler.Sampler]:
+        if isinstance(self.train_dataset, torch.utils.data.IterableDataset) or not isinstance(
+            self.train_dataset, collections.abc.Sized
+        ):
+            return None
+        src_lens = []
+        for row in tqdm(self.train_dataset, desc='Calculating dataset item lengths.'):
+            src_lens.append(len(row['input_ids']) - row['input_ids'].count(0))
+        return SortishSampler(src_lens)
+
+    def get_train_dataloader(self) -> DataLoader:
+        """
+        Returns the training :class:`~torch.utils.data.DataLoader`.
+
+        Will use no sampler if :obj:`self.train_dataset` does not implement :obj:`__len__`, a random sampler (adapted
+        to distributed training if necessary) otherwise.
+
+        Subclass and override this method if you want to inject some custom behavior.
+        """
+        if self.train_dataset is None:
+            raise ValueError("Trainer: training requires a train_dataset.")
+        train_sampler = self._get_train_sampler()
+
+        return DataLoader(
+            self.train_dataset,
+            batch_size=self.args.train_batch_size,
+            sampler=train_sampler,
+            collate_fn=self.data_collator,
+            drop_last=self.args.dataloader_drop_last,
+            num_workers=self.args.dataloader_num_workers,
+        )
+
     def _tokens_from_latent(self, latent):
         with torch.no_grad():
             old = self.model.config.use_extra_logs
