@@ -52,7 +52,6 @@ for logger_integration in NOT_ALLOWED_LOGGERS:
 class VAE_Trainer(trainer_script.Trainer):
     def _tokens_from_latent(self, latent):
         with torch.no_grad():
-            start = time.time()
             old = self.model.config.use_extra_logs
             self.model.config.use_extra_logs = False
             result = self.model.generate(
@@ -61,7 +60,6 @@ class VAE_Trainer(trainer_script.Trainer):
                 max_length=self.args.generate_max_len
             )
             self.model.config.use_extra_logs = old
-            self.model.latest_logs['runtime/_tokens_from_latent'] = self.model.latest_logs.get('runtime/_tokens_from_latent', 0) + time.time() - start
             return result
 
     def _text_from_latent(self, latent):
@@ -220,7 +218,6 @@ class VAE_Trainer(trainer_script.Trainer):
         For optimising model interpolations directly, find interpolated latent codes with their ratio.
         Produces 1 interpolation for every 2 samples.
         '''
-        start = time.time()
         original_latent = outputs.latent.detach()
         original_latent.requires_grad = True
         interp_latent, interp_ratio = self.random_interpolation_inputs(original_latent)
@@ -231,7 +228,6 @@ class VAE_Trainer(trainer_script.Trainer):
         interp_outputs = model(decoder_input_ids=tokens, latent=interp_latent, output_hidden_states=True)
         model.config.use_extra_logs = old
 
-        model.latest_logs['runtime/prepare_interpolation_data'] = model.latest_logs.get('runtime/prepare_interpolation_data', 0) + time.time() - start
         return interp_outputs.logits, interp_outputs.hidden_states[-1], interp_ratio
 
     def training_interpolation_step(self, outputs, model):
