@@ -287,7 +287,9 @@ class VAE_Trainer(trainer_script.Trainer):
                 target = 1.0 * torch.ones(batch_size * max_seq_size, device=self.args.device)
                 token_level_losses = torch.nn.CosineEmbeddingLoss(reduce=False)(flat_last_hidden, flat_interpolated_last_hidden, target)
                 # weigh smoothness loss by closeness to original latent
-                smoothness_loss = (token_level_losses.view(batch_size, -1).sum(dim=1) * loss_coef).mean()
+                inter_dist = (token_level_losses.view(batch_size, -1).sum(dim=1) * loss_coef).mean()
+                inter_dist_wrt_alpha = autograd.grad(outputs=inter_dist, inputs=target_a, only_inputs=True, create_graph=True, retain_graph=True)[0]
+                smoothness_loss = inter_dist_wrt_alpha.norm()
                 smoothness_loss.backward(retain_graph=True)
             elif self.args.smooth_logits:
                 # low logits gradient w.r.t interpolation coeficient
