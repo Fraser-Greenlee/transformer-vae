@@ -257,7 +257,7 @@ class VAE_Trainer(trainer_script.Trainer):
         critic_loss = model.critic(d_final_decoder_hidden_state, torch.zeros((outputs.latent.size(0), 1), device=self.args.device)).mean()
         # interpolate samples
         interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
-        critic_loss += model.critic(interpolated_last_hidden_state_d, target_a.detach().view(1, -1)).mean()
+        critic_loss += model.critic(interpolated_last_hidden_state_d, target_a.detach().view(-1, 1)).mean()
         # average between the 2 losses
         critic_loss /= 2
         critic_loss.backward(retain_graph=True)  # accumulate gradient on critic
