@@ -242,14 +242,17 @@ class VAE_Trainer(trainer_script.Trainer):
             logits_wrt_alpha = autograd.grad(outputs=interpolated_logits.norm(), inputs=target_a, only_inputs=True, create_graph=True, retain_graph=True)[0]
             smoothness_loss = logits_wrt_alpha.norm(2)
             smoothness_loss.backward(retain_graph=True)
+            model.latest_logs['smoothness_loss'] = model.latest_logs.get('smoothness_loss', 0) + smoothness_loss.item()
 
-        # update model
-        # accumulate compute graph on critic loss variable
-        critic_loss = model.critic(interpolated_last_hidden_state).mean()
-        # get gradients of the output only w.r.t the inputs and not model.critic
-        critic_loss_to_last_hidden = autograd.grad(outputs=critic_loss, inputs=interpolated_last_hidden_state, only_inputs=True, retain_graph=True)
-        # acumulate gradient in VAE model (will only be the VAE-decoder)
-        interpolated_last_hidden_state.backward(critic_loss_to_last_hidden, retain_graph=True)
+        if self.state.global_step > 1_000:
+            # update model
+            # accumulate compute graph on critic loss variable
+            critic_loss_on_model = model.critic(interpolated_last_hidden_state).mean()
+            # get gradients of the output only w.r.t the inputs and not model.critic
+            critic_loss_to_last_hidden = autograd.grad(outputs=critic_loss_on_model, inputs=interpolated_last_hidden_state, only_inputs=True, retain_graph=True)
+            # acumulate gradient in VAE model (will only be the VAE-decoder)
+            interpolated_last_hidden_state.backward(critic_loss_to_last_hidden, retain_graph=True)
+            model.latest_logs['critic_loss_on_model'] = model.latest_logs.get('critic_loss_on_model', 0) + critic_loss_on_model.item()
 
         # update critic
         # real samples
@@ -261,6 +264,7 @@ class VAE_Trainer(trainer_script.Trainer):
         # average between the 2 losses
         critic_loss /= 2
         critic_loss.backward(retain_graph=True)  # accumulate gradient on critic
+        model.latest_logs['critic_loss'] = model.latest_logs.get('critic_loss', 0) + critic_loss.item()
 
     def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
         """

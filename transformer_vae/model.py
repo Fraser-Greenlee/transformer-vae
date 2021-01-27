@@ -194,6 +194,9 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
         "skip_conn_w": 0,
         "latent_dropout": 0,
         "reg_loss": 0,
+        'smoothness_loss': 0,
+        'critic_loss_on_model': 0,
+        'critic_loss': 0,
     }
     _last_logs: Dict[str, float] = {}
 
