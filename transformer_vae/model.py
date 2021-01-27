@@ -640,6 +640,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
     def forward(
         self,
         input_ids=None,
+        inputs_embeds=None,
         labels=None,
         attention_mask=None,
         encoder_outputs=None,
@@ -653,18 +654,19 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         assert return_dict, "Need return_dict=True, using tuple's is not implimented"
         use_cache = use_cache if use_cache is not None else self.config.use_cache
 
-        if input_ids is not None:
+        if input_ids is not None or inputs_embeds is not None:
             if decoder_input_ids is not None and input_ids.equal(decoder_input_ids) is False:
                 raise ValueError(
                     "`input_ids` and `decoder_input_ids` do not match. Funnel-VAE can only reproduce its input sequence."
                 )
             if self.config.prepend_eos_token:
                 raise NotImplementedError()
-            if attention_mask is None:
+            if attention_mask is None and input_ids is not None:
                 attention_mask = input_ids.ne(self.transformer.config.pad_token_id).long()
             if encoder_outputs is None:
                 encoder_outputs = self._get_encoder_outputs(
                     input_ids=input_ids,
+                    inputs_embeds=inputs_embeds,
                     attention_mask=attention_mask,
                     output_hidden_states=output_hidden_states,
                     return_dict=True,
@@ -710,28 +712,31 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             # get decoder inputs from shifting lm labels to the right
             decoder_input_ids = self._shift_right(labels) if labels is not None else None
 
-        decoder_outputs = self.transformer.decoder(
-            input_ids=decoder_input_ids, encoder_hidden_states=upsampled_encoding, use_cache=use_cache, output_hidden_states=output_hidden_states, return_dict=True
-        )
+        decoder_ce = torch.tensor(0.0, device=upsampled_encoding.device)
+        seq_accuracy = torch.tensor(0.0, device=upsampled_encoding.device)
+        token_accuracy = torch.tensor(0.0, device=upsampled_encoding.device)
+        decoder_outputs = None
+        lm_logits = None
+        if decoder_input_ids is not None:
+            decoder_outputs = self.transformer.decoder(
+                input_ids=decoder_input_ids, encoder_hidden_states=upsampled_encoding, use_cache=use_cache, output_hidden_states=output_hidden_states, return_dict=True
+            )
 
-        sequence_output = decoder_outputs.last_hidden_state
-        # Rescale output before projecting on vocab
-        # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
-        sequence_output = sequence_output * (self.config.transformer.d_model ** -0.5)
-        lm_logits = self.transformer.lm_head(sequence_output)
+            sequence_output = decoder_outputs.last_hidden_state
+            # Rescale output before projecting on vocab
+            # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
+            sequence_output = sequence_output * (self.config.transformer.d_model ** -0.5)
+            lm_logits = self.transformer.lm_head(sequence_output)
 
-        decoder_ce = torch.tensor(0.0, device=lm_logits.device)
-        seq_accuracy = torch.tensor(0.0, device=lm_logits.device)
-        token_accuracy = torch.tensor(0.0, device=lm_logits.device)
-        if labels is not None:
-            loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
-            decoder_ce = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), labels.view(-1))
-            chosen_tokens = torch.argmax(lm_logits, 2)
-            pad_tokens = (labels == -100).int()
-            correct_tokens = (chosen_tokens == labels).int() + pad_tokens
-            seq_accuracy = (torch.min(correct_tokens, dim=1).values.sum() / labels.size(0)).detach()
-            num_pad_tokens = pad_tokens.sum()
-            token_accuracy = ((correct_tokens.sum() - num_pad_tokens) / (labels.numel() - num_pad_tokens)).detach()
+            if labels is not None:
+                loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
+                decoder_ce = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), labels.view(-1))
+                chosen_tokens = torch.argmax(lm_logits, 2)
+                pad_tokens = (labels == -100).int()
+                correct_tokens = (chosen_tokens == labels).int() + pad_tokens
+                seq_accuracy = (torch.min(correct_tokens, dim=1).values.sum() / labels.size(0)).detach()
+                num_pad_tokens = pad_tokens.sum()
+                token_accuracy = ((correct_tokens.sum() - num_pad_tokens) / (labels.numel() - num_pad_tokens)).detach()
 
         reg_loss_w = self._regulariser_loss_weight_schedule()
         loss = decoder_ce + vae_outputs.reg_loss * reg_loss_w
@@ -745,11 +750,11 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         return BaseTransformerVAE_Output(
             loss=loss,
             logits=lm_logits,
-            past_key_values=decoder_outputs.past_key_values,
-            decoder_hidden_states=decoder_outputs.hidden_states,
-            hidden_states=decoder_outputs.hidden_states,
-            decoder_attentions=decoder_outputs.attentions,
-            cross_attentions=decoder_outputs.cross_attentions,
+            past_key_values=decoder_outputs.past_key_values if decoder_outputs else None,
+            decoder_hidden_states=decoder_outputs.hidden_states if decoder_outputs else None,
+            hidden_states=decoder_outputs.hidden_states if decoder_outputs else None,
+            decoder_attentions=decoder_outputs.attentions if decoder_outputs else None,
+            cross_attentions=decoder_outputs.cross_attentions if decoder_outputs else None,
             encoder_last_hidden_state=encoder_outputs.last_hidden_state if encoder_outputs else None,
             encoder_hidden_states=encoder_outputs.hidden_states if encoder_outputs else None,
             encoder_attentions=encoder_outputs.attentions if encoder_outputs else None,

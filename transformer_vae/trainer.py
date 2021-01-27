@@ -263,13 +263,13 @@ class VAE_Trainer(trainer_script.Trainer):
         interp_outputs = model(decoder_input_ids=tokens, latent=interp_latent, output_hidden_states=True)
         model.config.use_extra_logs = old
 
-        return interp_outputs.logits, interp_outputs.hidden_states[-1], interp_ratio
+        return interp_outputs.logits, interp_latent, interp_outputs.hidden_states[-1], interp_ratio
 
     def training_interpolation_step(self, outputs, model):
         '''
             Only to be ran with Funnel-T5.
         '''
-        interpolated_logits, interpolated_last_hidden_state, target_a = self.prepare_interpolation_data(outputs, model)
+        interpolated_logits, interpolated_latent, interpolated_last_hidden_state, target_a = self.prepare_interpolation_data(outputs, model)
         interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
 
         if self.args.smoothness_loss:
@@ -304,6 +304,18 @@ class VAE_Trainer(trainer_script.Trainer):
             else:
                 raise Exception('No smooth loss selected')
             model.latest_logs['smoothness_loss'] = model.latest_logs.get('smoothness_loss', 0) + smoothness_loss.item()
+
+        if self.args.cycle_loss:
+            # minimise cosine error between latent code & re-encoded latent code `latent VS Encode(Decode(latent))`
+            target = 1.0 * torch.ones(interpolated_latent.size(0), device=self.args.device)
+            old = model.config.use_extra_logs
+            model.config.use_extra_logs = False
+            cycle_loss = torch.nn.CosineEmbeddingLoss()(
+                model(inputs_embeds=interpolated_last_hidden_state).latent, interpolated_latent, target
+            )
+            model.config.use_extra_logs = old
+            cycle_loss.backward(retain_graph=True)
+            model.latest_logs['cycle_loss'] = model.latest_logs.get('cycle_loss', 0) + cycle_loss.item()
 
         if model.critic:
             if self.state.global_step > 1_000:
@@ -344,7 +356,7 @@ class VAE_Trainer(trainer_script.Trainer):
             labels = None
         outputs = model(**inputs, output_hidden_states=True)
 
-        if model.critic or self.args.smoothness_loss:
+        if model.critic or self.args.smoothness_loss or self.args.cycle_loss:
             self.training_interpolation_step(outputs, model)
 
         return self.get_loss_grad(outputs, labels).detach()

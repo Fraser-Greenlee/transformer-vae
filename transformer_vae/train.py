@@ -93,6 +93,10 @@ class VAE_TrainingArguments(TrainingArguments):
         default=False,
         metadata={"help": "Minimise the gradient of the logits w.r.t the interpolation ratio (use mean instead of norm)."},
     )
+    cycle_loss: bool = field(
+        default=False,
+        metadata={"help": "Encourage the encoder & decoder to produce a bijective mapping. Feeds the final decoder hidden state to the encoder and compares the latent codes."},
+    )
 
 
 @dataclass
