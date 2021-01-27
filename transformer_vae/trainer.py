@@ -242,33 +242,58 @@ class VAE_Trainer(trainer_script.Trainer):
         interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
 
         if self.args.smoothness_loss:
-            # TODO mean() or norm() for interpolated logits?
-            logits_wrt_alpha = autograd.grad(outputs=interpolated_logits.norm(), inputs=target_a, only_inputs=True, create_graph=True, retain_graph=True)[0]
-            smoothness_loss = logits_wrt_alpha.norm(2)
-            smoothness_loss.backward(retain_graph=True)
+            # minimise cosine error between interpolated final decoder states
+            if self.args.smooth_cosine:
+                # small change in decoder representation
+                loss_coef = 1 - target_a * 2  # larger alpha = less strict on changes
+                max_seq_size = min(interpolated_last_hidden_state.size(1), outputs.decoder_hidden_states[-1].size(1))
+                clipped_last_hidden = outputs.decoder_hidden_states[-1][:, :max_seq_size]
+                clipped_interpolated_last_hidden = interpolated_last_hidden_state[:, :max_seq_size]
+                # cosine embedding loss only works on 2D tensors so spread token encodings across seq len then compare
+                batch_size = clipped_last_hidden.size(0)
+                flat_last_hidden = clipped_last_hidden.reshape(batch_size * max_seq_size, -1)
+                flat_interpolated_last_hidden = clipped_interpolated_last_hidden.reshape(batch_size * max_seq_size, -1)
+                target = 1.0 * torch.ones(batch_size * max_seq_size, device=self.args.device)
+                token_level_losses = torch.nn.CosineEmbeddingLoss(reduce=False)(flat_last_hidden, flat_interpolated_last_hidden, target)
+                # weigh smoothness loss by closeness to original latent
+                smoothness_loss = (token_level_losses.view(batch_size, -1).sum(dim=1) * loss_coef).mean()
+                smoothness_loss.backward(retain_graph=True)
+            elif self.args.smooth_logits:
+                # low logits gradient w.r.t interpolation coeficient
+                logits_wrt_alpha = autograd.grad(outputs=interpolated_logits.norm(), inputs=target_a, only_inputs=True, create_graph=True, retain_graph=True)[0]
+                smoothness_loss = logits_wrt_alpha.norm()
+                smoothness_loss.backward(retain_graph=True)
+            elif self.args.smooth_logits_mean:
+                # low logits gradient w.r.t interpolation coeficient
+                logits_wrt_alpha = autograd.grad(outputs=interpolated_logits.mean(), inputs=target_a, only_inputs=True, create_graph=True, retain_graph=True)[0]
+                smoothness_loss = logits_wrt_alpha.mean()
+                smoothness_loss.backward(retain_graph=True)
+            else:
+                raise Exception('No smooth loss selected')
             model.latest_logs['smoothness_loss'] = model.latest_logs.get('smoothness_loss', 0) + smoothness_loss.item()
 
-        if self.state.global_step > 1_000:
-            # update model
-            # accumulate compute graph on critic loss variable
-            critic_loss_on_model = model.critic(interpolated_last_hidden_state).mean()
-            # get gradients of the output only w.r.t the inputs and not model.critic
-            critic_loss_to_last_hidden = autograd.grad(outputs=critic_loss_on_model, inputs=interpolated_last_hidden_state, only_inputs=True, retain_graph=True)
-            # acumulate gradient in VAE model (will only be the VAE-decoder)
-            interpolated_last_hidden_state.backward(critic_loss_to_last_hidden, retain_graph=True)
-            model.latest_logs['critic_loss_on_model'] = model.latest_logs.get('critic_loss_on_model', 0) + critic_loss_on_model.item()
+        if model.critic:
+            if self.state.global_step > 1_000:
+                # update model
+                # accumulate compute graph on critic loss variable
+                critic_loss_on_model = model.critic(interpolated_last_hidden_state).mean()
+                # get gradients of the output only w.r.t the inputs and not model.critic
+                critic_loss_to_last_hidden = autograd.grad(outputs=critic_loss_on_model, inputs=interpolated_last_hidden_state, only_inputs=True, retain_graph=True)
+                # acumulate gradient in VAE model (will only be the VAE-decoder)
+                interpolated_last_hidden_state.backward(critic_loss_to_last_hidden, retain_graph=True)
+                model.latest_logs['critic_loss_on_model'] = model.latest_logs.get('critic_loss_on_model', 0) + critic_loss_on_model.item()
 
-        # update critic
-        # real samples
-        d_final_decoder_hidden_state = outputs.decoder_hidden_states[-1].detach()
-        critic_loss = model.critic(d_final_decoder_hidden_state, torch.zeros((outputs.latent.size(0), 1), device=self.args.device)).mean()
-        # interpolate samples
-        interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
-        critic_loss += model.critic(interpolated_last_hidden_state_d, target_a.detach().view(-1, 1)).mean()
-        # average between the 2 losses
-        critic_loss /= 2
-        critic_loss.backward(retain_graph=True)  # accumulate gradient on critic
-        model.latest_logs['critic_loss'] = model.latest_logs.get('critic_loss', 0) + critic_loss.item()
+            # update critic
+            # real samples
+            d_final_decoder_hidden_state = outputs.decoder_hidden_states[-1].detach()
+            critic_loss = model.critic(d_final_decoder_hidden_state, torch.zeros((outputs.latent.size(0), 1), device=self.args.device)).mean()
+            # interpolate samples
+            interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
+            critic_loss += model.critic(interpolated_last_hidden_state_d, target_a.detach().view(-1, 1)).mean()
+            # average between the 2 losses
+            critic_loss /= 2
+            critic_loss.backward(retain_graph=True)  # accumulate gradient on critic
+            model.latest_logs['critic_loss'] = model.latest_logs.get('critic_loss', 0) + critic_loss.item()
 
     def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
         """
@@ -286,7 +311,7 @@ class VAE_Trainer(trainer_script.Trainer):
             labels = None
         outputs = model(**inputs, output_hidden_states=True)
 
-        if model.critic:
+        if model.critic or self.args.smoothness_loss:
             self.training_interpolation_step(outputs, model)
 
         return self.get_loss_grad(outputs, labels).detach()

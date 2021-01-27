@@ -81,6 +81,19 @@ class VAE_TrainingArguments(TrainingArguments):
         default=False,
         metadata={"help": "Minimise the change in logits w.r.t some interpolation ratio."},
     )
+    smooth_cosine: bool = field(
+        default=False,
+        metadata={"help": "Minimise cosine error between final layer hidden states interpolated & non interpolated sequences."},
+    )
+    smooth_logits: bool = field(
+        default=False,
+        metadata={"help": "Minimise the gradient of the logits w.r.t the interpolation ratio."},
+    )
+    smooth_logits_mean: bool = field(
+        default=False,
+        metadata={"help": "Minimise the gradient of the logits w.r.t the interpolation ratio (use mean instead of norm)."},
+    )
+
 
 
 @dataclass
