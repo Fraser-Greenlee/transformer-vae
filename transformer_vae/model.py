@@ -608,6 +608,8 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
     def __init__(self, config: Funnel_T5_VAE_Config):
         super().__init__(config=config)
         transformer_model = AutoModelForSeq2SeqLM.from_config(config.transformer_decoder)
+        if config.add_encoder_block:
+            self.extra_encoder_block = transformer_model.encoder.block[0]
         self.transformer.decoder = transformer_model.decoder
         self.transformer.lm_head = transformer_model.lm_head
         self.decoder_start_token_id = self.config.transformer_decoder.decoder_start_token_id
@@ -689,6 +691,9 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             )
         else:
             upsampled_encoding = vae_outputs.reconstructed_encoding
+
+        if self.config.add_encoder_block:
+            upsampled_encoding = self.extra_encoder_block(upsampled_encoding)[0]
 
         skip_conn_w = 0
         if encoder_outputs and self.config.use_skip_connection:

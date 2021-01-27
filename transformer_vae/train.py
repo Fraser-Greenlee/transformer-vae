@@ -95,7 +95,6 @@ class VAE_TrainingArguments(TrainingArguments):
     )
 
 
-
 @dataclass
 class ModelArguments:
     """
@@ -218,6 +217,10 @@ class ModelArguments:
     latent_dropout_schedule_b: float = field(
         default=11,
         metadata={"help": "If using latent dropout, gradually increase the dropout rate until at max_latent_dropout_rate."},
+    )
+    add_encoder_block: bool = field(
+        default=False,
+        metadata={"help": "Add a single encoder block after the upsampling (only for Funnel-T5)."},
     )
 
 
@@ -419,6 +422,7 @@ def load_model_and_tokenizer(model_args):
             max_latent_dropout_rate=model_args.max_latent_dropout_rate,
             latent_dropout_schedule_k=model_args.latent_dropout_schedule_k,
             latent_dropout_schedule_b=model_args.latent_dropout_schedule_b,
+            add_encoder_block=model_args.add_encoder_block
         )
         logger.warning("You are instantiating a new config instance from scratch (still using T5 checkpoint).")
 
