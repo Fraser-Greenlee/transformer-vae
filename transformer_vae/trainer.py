@@ -238,7 +238,7 @@ class VAE_Trainer(trainer_script.Trainer):
         # accumulate compute graph on critic loss variable
         critic_loss = model.critic(interpolated_last_hidden_state).mean()
         # get gradients of the output only w.r.t the inputs and not model.critic
-        critic_loss_to_last_hidden = autograd.grad(outputs=critic_loss, inputs=interpolated_last_hidden_state, only_inputs=True, retain_graph=False)
+        critic_loss_to_last_hidden = autograd.grad(outputs=critic_loss, inputs=interpolated_last_hidden_state, only_inputs=True, retain_graph=True)
         # acumulate gradient in VAE model (will only be the VAE-decoder)
         interpolated_last_hidden_state.backward(critic_loss_to_last_hidden, retain_graph=True)
 
@@ -251,7 +251,7 @@ class VAE_Trainer(trainer_script.Trainer):
         critic_loss += model.critic(interpolated_last_hidden_state_d, target_a).mean()
         # average between the 2 losses
         critic_loss /= 2
-        critic_loss.backward()  # accumulate gradient on critic
+        critic_loss.backward(retain_graph=True)  # accumulate gradient on critic
 
     def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
         """
