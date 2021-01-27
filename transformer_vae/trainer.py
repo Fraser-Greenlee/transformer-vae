@@ -52,11 +52,15 @@ for logger_integration in NOT_ALLOWED_LOGGERS:
 class VAE_Trainer(trainer_script.Trainer):
     def _tokens_from_latent(self, latent):
         with torch.no_grad():
-            return self.model.generate(
+            old = self.model.config.use_extra_logs
+            self.model.config.use_extra_logs = False
+            result = self.model.generate(
                 input_ids=self.model.decoder_start_token_id * torch.ones((latent.size(0), 1), dtype=torch.long, device=self.args.device),
                 latent=latent, bos_token_id=self.model.decoder_start_token_id, min_length=self.args.generate_min_len,
                 max_length=self.args.generate_max_len
             )
+            self.model.config.use_extra_logs = old
+            return result
 
     def _text_from_latent(self, latent):
         return self.tokenizer.batch_decode(self._tokens_from_latent(latent), skip_special_tokens=True)
@@ -215,10 +219,15 @@ class VAE_Trainer(trainer_script.Trainer):
         Produces 1 interpolation for every 2 samples.
         '''
         original_latent = outputs.latent.detach()
-        original_latent.requires_grad = True  # TODO is this needed?
+        original_latent.requires_grad = True
         interp_latent, interp_ratio = self.random_interpolation_inputs(original_latent)
         tokens = self._tokens_from_latent(interp_latent)
+        # don't log interpolation inference
+        old = self.model.config.use_extra_logs
+        self.model.config.use_extra_logs = False
         interp_outputs = model(decoder_input_ids=tokens, latent=interp_latent, output_hidden_states=True)
+        self.model.config.use_extra_logs = old
+
         return interp_outputs.logits, interp_outputs.hidden_states[-1], interp_ratio
 
     def training_interpolation_step(self, outputs, model):

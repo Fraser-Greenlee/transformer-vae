@@ -71,8 +71,9 @@ class EncoderDecoderVAE(nn.Module):
     ):
         if input_encoding is None and latent is None:
             raise ValueError("Both `input_encoding` and `latent` sent to VAE are Null.")
+        use_reg_loss = self.use_reg_loss and latent is None  # don't regularise if given latent
         recon_encoding, latent, latent_dropout = self._model_forward(input_encoding, latent=latent, global_step=global_step)
-        if self.use_reg_loss:
+        if use_reg_loss:
             # TODO is this even valid with 90% dropout?
             reg_loss = self._regularliser_loss(latent)
             # latent[latent != 0].view(latent.size(0), -1) if self.use_latent_dropout and global_step else latent
