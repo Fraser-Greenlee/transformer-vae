@@ -300,9 +300,10 @@ class VAE_Trainer(trainer_script.Trainer):
                 # low logits gradient w.r.t interpolation coeficient
                 logits_wrt_alpha = autograd.grad(outputs=interpolated_logits.mean(), inputs=target_a, only_inputs=True, create_graph=True, retain_graph=True)[0]
                 smoothness_loss = logits_wrt_alpha.mean()
-                smoothness_loss.backward(retain_graph=True)
             else:
                 raise Exception('No smooth loss selected')
+            smoothness_loss *= self.args.advisery_weight
+            smoothness_loss.backward(retain_graph=True)
             model.latest_logs['smoothness_loss'] = model.latest_logs.get('smoothness_loss', 0) + smoothness_loss.item()
 
         if self.args.cycle_loss:
@@ -314,6 +315,7 @@ class VAE_Trainer(trainer_script.Trainer):
                 model(inputs_embeds=interpolated_last_hidden_state).latent, interpolated_latent, target
             )
             model.config.use_extra_logs = old
+            cycle_loss *= self.args.cycle_weight
             cycle_loss.backward(retain_graph=True)
             model.latest_logs['cycle_loss'] = model.latest_logs.get('cycle_loss', 0) + cycle_loss.item()
 
@@ -321,7 +323,7 @@ class VAE_Trainer(trainer_script.Trainer):
             if self.state.global_step > 1_000:
                 # update model
                 # accumulate compute graph on critic loss variable
-                critic_loss_on_model = model.critic(interpolated_last_hidden_state).mean()
+                critic_loss_on_model = model.critic(interpolated_last_hidden_state).mean() * self.args.advisery_weight
                 # get gradients of the output only w.r.t the inputs and not model.critic
                 critic_loss_to_last_hidden = autograd.grad(outputs=critic_loss_on_model, inputs=interpolated_last_hidden_state, only_inputs=True, retain_graph=True)
                 # acumulate gradient in VAE model (will only be the VAE-decoder)

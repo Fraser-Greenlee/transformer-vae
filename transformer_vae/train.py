@@ -97,6 +97,18 @@ class VAE_TrainingArguments(TrainingArguments):
         default=False,
         metadata={"help": "Encourage the encoder & decoder to produce a bijective mapping. Feeds the final decoder hidden state to the encoder and compares the latent codes."},
     )
+    advisery_weight: int = field(
+        default=10**-2,
+        metadata={"help": "Encourage the encoder & decoder to produce a bijective mapping. Feeds the final decoder hidden state to the encoder and compares the latent codes."},
+    )
+    cycle_weight: int = field(
+        default=10**-2,
+        metadata={"help": "Encourage the encoder & decoder to produce a bijective mapping. Feeds the final decoder hidden state to the encoder and compares the latent codes."},
+    )
+    smooth_weight: int = field(
+        default=10**-1,
+        metadata={"help": "Encourage the encoder & decoder to produce a bijective mapping. Feeds the final decoder hidden state to the encoder and compares the latent codes."},
+    )
 
 
 @dataclass
