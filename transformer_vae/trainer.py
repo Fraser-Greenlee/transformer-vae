@@ -251,11 +251,12 @@ class VAE_Trainer(trainer_script.Trainer):
         latent_interpolated = slerp(interpolation_ratios, latent, latent[shifted_indices])
         return latent_interpolated, interpolation_ratios
 
-    def prepare_interpolation_data(self, original_latent, model):
+    def prepare_interpolation_data(self, latent, model):
         '''
         For optimising model interpolations directly, find interpolated latent codes with their ratio.
         Produces 1 interpolation for every 2 samples.
         '''
+        original_latent = latent.detach()
         original_latent.requires_grad = True
         interp_latent, interp_ratio = self.random_interpolation_inputs(original_latent)
         tokens = self._tokens_from_latent(interp_latent)
