@@ -37,8 +37,6 @@ class Transformer_VAE_Config(PretrainedConfig):
             List of models that take the latent code and return a loss.
             Use this to condition the latent code on another model, optimising the latent space further.
         *** Training Args ***
-        n_previous_latent_codes (:obj:`int`, `optional`, defaults to 3):
-            Number of batches of previous latent codes to keep for MMD regularisation loss.
         reg_schedule_k (:obj:`float`, `optional`, defaults to 0.0025):
             Multiplied by global_step in a sigmoid, more gradually increase regulariser loss weight.
         reg_schedule_b (:obj:`float`, `optional`, defaults to 6.25):
@@ -60,7 +58,6 @@ class Transformer_VAE_Config(PretrainedConfig):
         encoded_seq_size=None,
         decoder_start_token_id=0,
         additional_latent_models=[],
-        n_previous_latent_codes=0,
         use_reg_loss=True,
         mmd_batch_size=None,
         reg_schedule_k=0.0025,
@@ -99,7 +96,6 @@ class Transformer_VAE_Config(PretrainedConfig):
             self.encoded_seq_size = 1
 
         self.additional_latent_models = additional_latent_models
-        self.n_previous_latent_codes = n_previous_latent_codes
         self.mmd_batch_size = mmd_batch_size
         self.use_reg_loss = use_reg_loss
         if not use_reg_loss:

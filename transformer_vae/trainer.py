@@ -52,6 +52,9 @@ for logger_integration in NOT_ALLOWED_LOGGERS:
 
 
 class VAE_Trainer(trainer_script.Trainer):
+    def __init__(self, model=None, args=None, **kwargs):
+        self.latent_stack = torch.zeros(args.interpolate_training_step_rate * args.train_batch_size, model.config.latent_size, dtype=torch.float, device=args.device)
+        super().__init__(model, args, **kwargs)
 
     def _get_train_sampler(self) -> Optional[torch.utils.data.sampler.Sampler]:
         if isinstance(self.train_dataset, torch.utils.data.IterableDataset) or not isinstance(
@@ -248,12 +251,11 @@ class VAE_Trainer(trainer_script.Trainer):
         latent_interpolated = slerp(interpolation_ratios, latent, latent[shifted_indices])
         return latent_interpolated, interpolation_ratios
 
-    def prepare_interpolation_data(self, outputs, model):
+    def prepare_interpolation_data(self, original_latent, model):
         '''
         For optimising model interpolations directly, find interpolated latent codes with their ratio.
         Produces 1 interpolation for every 2 samples.
         '''
-        original_latent = outputs.latent.detach()
         original_latent.requires_grad = True
         interp_latent, interp_ratio = self.random_interpolation_inputs(original_latent)
         tokens = self._tokens_from_latent(interp_latent)
@@ -265,31 +267,19 @@ class VAE_Trainer(trainer_script.Trainer):
 
         return interp_outputs.logits, interp_latent, interp_outputs.hidden_states[-1], interp_ratio
 
-    def training_interpolation_step(self, outputs, model):
+    def training_interpolation_step(self, latent, model):
         '''
             Only to be ran with Funnel-T5.
         '''
-        interpolated_logits, interpolated_latent, interpolated_last_hidden_state, target_a = self.prepare_interpolation_data(outputs, model)
+        interpolated_logits, interpolated_latent, interpolated_last_hidden_state, target_a = self.prepare_interpolation_data(latent, model)
         interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
 
         if self.args.smoothness_loss:
             # minimise cosine error between interpolated final decoder states
             if self.args.smooth_cosine:
-                # small change in decoder representation
-                loss_coef = 1 - target_a * 2  # larger alpha = less strict on changes
-                max_seq_size = min(interpolated_last_hidden_state.size(1), outputs.decoder_hidden_states[-1].size(1))
-                clipped_last_hidden = outputs.decoder_hidden_states[-1][:, :max_seq_size]
-                clipped_interpolated_last_hidden = interpolated_last_hidden_state[:, :max_seq_size]
-                # cosine embedding loss only works on 2D tensors so spread token encodings across seq len then compare
-                batch_size = clipped_last_hidden.size(0)
-                flat_last_hidden = clipped_last_hidden.reshape(batch_size * max_seq_size, -1)
-                flat_interpolated_last_hidden = clipped_interpolated_last_hidden.reshape(batch_size * max_seq_size, -1)
-                target = 1.0 * torch.ones(batch_size * max_seq_size, device=self.args.device)
-                token_level_losses = torch.nn.CosineEmbeddingLoss(reduce=False)(flat_last_hidden, flat_interpolated_last_hidden, target)
-                # weigh smoothness loss by closeness to original latent
-                inter_dist = (token_level_losses.view(batch_size, -1).sum(dim=1) * loss_coef).mean()
-                inter_dist_wrt_alpha = autograd.grad(outputs=inter_dist, inputs=target_a, only_inputs=True, create_graph=True, retain_graph=True)[0]
-                smoothness_loss = inter_dist_wrt_alpha.norm()
+                # low hidden units gradient w.r.t interpolation coeficient
+                logits_wrt_alpha = autograd.grad(outputs=interpolated_last_hidden_state, inputs=target_a, only_inputs=True, create_graph=True, retain_graph=True)[0]
+                smoothness_loss = logits_wrt_alpha.norm()
                 smoothness_loss.backward(retain_graph=True)
             elif self.args.smooth_logits:
                 # low logits gradient w.r.t interpolation coeficient
@@ -359,7 +349,10 @@ class VAE_Trainer(trainer_script.Trainer):
         outputs = model(**inputs, output_hidden_states=True)
 
         if model.critic or self.args.smoothness_loss or self.args.cycle_loss:
-            self.training_interpolation_step(outputs, model)
+            pos = self.args.train_batch_size * (self.state.global_step % self.args.interpolate_training_step_rate)
+            self.latent_stack[pos:pos + self.args.train_batch_size] = outputs.latent.detach()
+            if self.state.global_step > 0 and pos == 0:
+                self.training_interpolation_step(self.latent_stack, model)
 
         return self.get_loss_grad(outputs, labels).detach()
 

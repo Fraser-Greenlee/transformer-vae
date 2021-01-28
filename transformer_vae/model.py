@@ -28,16 +28,11 @@ class EncoderDecoderVAE(nn.Module):
 
     batch_size = None
 
-    def __init__(self, encoder, decoder, use_n_previous_latent_codes=0, smaller_mmd_batch_size=None, use_reg_loss=True, use_latent_dropout=False, latent_dropout_schedule_k=0.0009, latent_dropout_schedule_b=11, max_latent_dropout_rate=0.9):
+    def __init__(self, encoder, decoder, mmd_batch_size=None, use_reg_loss=True, use_latent_dropout=False, latent_dropout_schedule_k=0.0009, latent_dropout_schedule_b=11, max_latent_dropout_rate=0.9):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
-        self.use_n_previous_latent_codes = use_n_previous_latent_codes
-        self.smaller_mmd_batch_size = smaller_mmd_batch_size
-        if smaller_mmd_batch_size:
-            assert use_n_previous_latent_codes == 0, "Can't use smaller mmd batch size AND use previous latent codes."
-        self.prev_latents = None
-        self.prev_latents_index = 0
+        self.mmd_batch_size = mmd_batch_size
         self.use_reg_loss = use_reg_loss
         self.use_latent_dropout = use_latent_dropout
         self.latent_dropout_schedule_k = latent_dropout_schedule_k
@@ -74,9 +69,7 @@ class EncoderDecoderVAE(nn.Module):
         use_reg_loss = self.use_reg_loss and latent is None  # don't regularise if given latent
         recon_encoding, latent, latent_dropout = self._model_forward(input_encoding, latent=latent, global_step=global_step)
         if use_reg_loss:
-            # TODO is this even valid with 90% dropout?
             reg_loss = self._regularliser_loss(latent)
-            # latent[latent != 0].view(latent.size(0), -1) if self.use_latent_dropout and global_step else latent
         else:
             reg_loss = torch.tensor(0, device=latent.device)
         return BaseVAE_Output(latent=latent, reconstructed_encoding=recon_encoding, reg_loss=reg_loss, latent_dropout=latent_dropout)
@@ -98,60 +91,20 @@ class EncoderDecoderVAE(nn.Module):
         xy_kernel = self._compute_kernel(x, y)
         return torch.mean(x_kernel) + torch.mean(y_kernel) - 2 * torch.mean(xy_kernel)
 
-    def _get_combined_latents(self, latent):
-        if self.prev_latents is None:
-            # if no previous latents use this call to get the training batch size
-            assert len(latent.size()) == 2
-            self.batch_size = latent.size(0)
-            self.prev_latents = torch.zeros(
-                (self.batch_size * self.use_n_previous_latent_codes, latent.size(1)), device=latent.device
-            )
-            # start by setting all previous to the first latent
-            for i in range(self.use_n_previous_latent_codes):
-                self.prev_latents[i * self.batch_size : (i + 1) * self.batch_size] = latent.detach()
-        # update prev_latents to include new latents, overwriting the oldest ones
-        return torch.cat((latent, self.prev_latents), 0)
-
-    def _update_prev_latents(self, latent):
-        if latent.size(0) < self.batch_size:
-            logger.warn(
-                f"Latent call has inconsistant batch size, skipping update previous latents. Expected: {self.batch_size} Got: {latent.size(0)}"
-            )
-            return None
-        self.prev_latents[
-            self.prev_latents_index * self.batch_size : (self.prev_latents_index + 1) * self.batch_size
-        ] = latent.detach()
-        self.prev_latents_index += 1
-        if self.prev_latents_index >= self.use_n_previous_latent_codes:
-            self.prev_latents_index = 0
-
-    def _using_prev_latents(self):
-        return self.training and self.use_n_previous_latent_codes > 0
-
     def _regularliser_loss(self, latent):
-        if self.training and self.smaller_mmd_batch_size:
-            batch_size = latent.size(0)
-            if batch_size // self.smaller_mmd_batch_size != batch_size / self.smaller_mmd_batch_size:
-                return self._batch_of_regularliser_loss(latent)
-            all_latents = latent.view(
-                latent.size(0) // self.smaller_mmd_batch_size, self.smaller_mmd_batch_size, latent.size(1)
+        if self.training and self.mmd_batch_size:
+            n_batches = latent.size(0) // self.mmd_batch_size
+            n_samples = n_batches * self.mmd_batch_size
+            all_latents = latent[:n_samples].view(
+                -1, self.mmd_batch_size, latent.size(1)
             )
+            true_samples = torch.randn(all_latents.size(), device=latent.device)
             total = torch.tensor(0.0, device=latent.device)
-            for latent_batch in all_latents:
-                total += self._batch_of_regularliser_loss(latent_batch)
-            return total
-        return self._batch_of_regularliser_loss(latent)
-
-    def _batch_of_regularliser_loss(self, latent):
-        if self._using_prev_latents():
-            combined_latent = self._get_combined_latents(latent)
-        else:
-            combined_latent = latent
-        true_samples = torch.randn(combined_latent.size()).to(combined_latent.device)
-        result = self._compute_mmd(true_samples, combined_latent)
-        if self._using_prev_latents():
-            self._update_prev_latents(latent)
-        return result
+            for i, latent_batch in enumerate(all_latents):
+                total += self._compute_mmd(true_samples[i], latent_batch)
+            return total / n_samples
+        true_samples = torch.randn(latent.size(), device=latent.device)
+        return self._compute_mmd(true_samples, latent)
 
 
 class Transformer_VAE_Base_Model(PreTrainedModel):
@@ -213,7 +166,6 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
         self.vae = EncoderDecoderVAE(
             VAE_ENCODER_MODELS[config.encoder_model](self.config),
             VAE_DECODER_MODELS[config.decoder_model](self.config),
-            self.config.n_previous_latent_codes,
             self.config.mmd_batch_size,
             self.config.use_reg_loss,
             self.config.use_latent_dropout,

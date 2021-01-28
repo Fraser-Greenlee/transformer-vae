@@ -109,6 +109,10 @@ class VAE_TrainingArguments(TrainingArguments):
         default=10**-1,
         metadata={"help": "Encourage the encoder & decoder to produce a bijective mapping. Feeds the final decoder hidden state to the encoder and compares the latent codes."},
     )
+    interpolate_training_step_rate: int = field(
+        default=5,
+        metadata={"help": "Run a batch of iterpolation losses every N steps."},
+    )
 
 
 @dataclass
@@ -170,12 +174,6 @@ class ModelArguments:
         default=None, metadata={"help": "Name of the model that converts latent codes into hidden states."}
     )
     # Arguments used during training
-    n_previous_latent_codes: int = field(
-        default=0,
-        metadata={
-            "help": "Use N previous batches of latent codes when calculating MMD loss, required when using small batches."
-        },
-    )
     mmd_batch_size: int = field(
         default=None,
         metadata={
@@ -424,7 +422,6 @@ def load_model_and_tokenizer(model_args):
             decoder_model=model_args.decoder_model,
             set_seq_size=model_args.set_seq_size,
             encoded_seq_size=model_args.encoded_seq_size,
-            n_previous_latent_codes=model_args.n_previous_latent_codes,
             mmd_batch_size=model_args.mmd_batch_size,
             use_reg_loss=(not model_args.dont_use_reg_loss),
             reg_schedule_k=model_args.reg_schedule_k,
