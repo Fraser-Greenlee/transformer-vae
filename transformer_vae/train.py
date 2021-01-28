@@ -110,7 +110,7 @@ class VAE_TrainingArguments(TrainingArguments):
         metadata={"help": "Encourage the encoder & decoder to produce a bijective mapping. Feeds the final decoder hidden state to the encoder and compares the latent codes."},
     )
     interpolate_training_step_rate: int = field(
-        default=5,
+        default=1,
         metadata={"help": "Run a batch of iterpolation losses every N steps."},
     )
 
