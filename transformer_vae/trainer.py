@@ -54,6 +54,7 @@ for logger_integration in NOT_ALLOWED_LOGGERS:
 class VAE_Trainer(trainer_script.Trainer):
     def __init__(self, model=None, args=None, **kwargs):
         self.latent_stack = torch.zeros(args.interpolate_training_step_rate * args.train_batch_size, model.config.latent_size, dtype=torch.float, device=args.device)
+        self.final_decoder_hidden_state_list = []
         super().__init__(model, args, **kwargs)
 
     def _get_train_sampler(self) -> Optional[torch.utils.data.sampler.Sampler]:
@@ -268,7 +269,7 @@ class VAE_Trainer(trainer_script.Trainer):
 
         return interp_outputs.logits, interp_latent, interp_outputs.hidden_states[-1], interp_ratio
 
-    def training_interpolation_step(self, latent, model):
+    def training_interpolation_step(self, final_decoder_hidden_states, latent, model):
         '''
             Only to be ran with Funnel-T5.
         '''
@@ -323,8 +324,7 @@ class VAE_Trainer(trainer_script.Trainer):
 
             # update critic
             # real samples
-            d_final_decoder_hidden_state = outputs.decoder_hidden_states[-1].detach()
-            critic_loss = model.critic(d_final_decoder_hidden_state, torch.zeros((outputs.latent.size(0), 1), device=self.args.device)).mean()
+            critic_loss = model.critic(final_decoder_hidden_states, torch.zeros((latent.size(0), 1), device=self.args.device)).mean()
             # interpolate samples
             interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
             critic_loss += model.critic(interpolated_last_hidden_state_d, target_a.detach().view(-1, 1)).mean()
@@ -352,8 +352,12 @@ class VAE_Trainer(trainer_script.Trainer):
         if model.critic or self.args.smoothness_loss or self.args.cycle_loss:
             pos = self.args.train_batch_size * (self.state.global_step % self.args.interpolate_training_step_rate)
             self.latent_stack[pos:pos + self.args.train_batch_size] = outputs.latent.detach()
+            self.final_decoder_hidden_state_list.append(outputs.decoder_hidden_states[-1].detach())
             if self.state.global_step > 0 and pos == 0:
-                self.training_interpolation_step(self.latent_stack, model)
+                self.training_interpolation_step(torch.cat(self.final_decoder_hidden_state_list), self.latent_stack, model)
+                self.final_decoder_hidden_state_list = []
+            elif self.state.global_step == 0:
+                self.final_decoder_hidden_state_list = []
 
         return self.get_loss_grad(outputs, labels).detach()
 

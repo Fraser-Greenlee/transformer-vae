@@ -394,7 +394,6 @@ class TrainTests(TestCasePlus):
             result = main()
             self.assertAlmostEqual(result["epoch"], 1.0)
 
-
     def test_train_funnel_t5_critic(self):
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
