@@ -191,7 +191,7 @@ class VAE_Trainer(trainer_script.Trainer):
         eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
         if self.args.sample_from_latent:
             self._interpolate_samples(eval_dataset)
-            self._random_samples()
+            # self._random_samples()  Not using
         if self.args.test_classification:
             latents_with_class = self._latent_with_class(eval_dataset)
             self._svm_classification(latents_with_class)
