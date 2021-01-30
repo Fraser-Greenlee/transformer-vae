@@ -194,43 +194,11 @@ class ModelArguments:
         default=6.25,
         metadata={"help": "Added to global step in sigmoid, further delays increase in regulariser loss weight."},
     )
-    skip_schedule_k: float = field(
-        default=0.0006,
-        metadata={"help": "If using a skip connection, gradually zero the connection."},
-    )
-    skip_schedule_b: float = field(
-        default=11,
-        metadata={"help": "If using a skip connection, gradually zero the connection."},
-    )
     n_latent_tokens: int = field(
         default=None,
         metadata={
             "help": "Number of latent tokens to use for full sequence VAE (set to sequence length if its shorter), used with `encoder_model n-tokens`."
         },
-    )
-    use_skip_connection: bool = field(
-        default=False,
-        metadata={
-            "help": "Add the encoders last full-length layer to the upsampled one. Only used with `Funnel encoder`."
-        },
-    )
-    use_latent_dropout: bool = field(
-        default=False,
-        metadata={
-            "help": "Start training by using all encoding tokens as latent, gradually dropout hidden units till only a small latent code is left."
-        },
-    )
-    max_latent_dropout_rate: float = field(
-        default=0.8,
-        metadata={"help": "If using latent dropout, max dropout rate during training."},
-    )
-    latent_dropout_schedule_k: float = field(
-        default=0.0009,
-        metadata={"help": "If using latent dropout, gradually increase the dropout rate until at max_latent_dropout_rate."},
-    )
-    latent_dropout_schedule_b: float = field(
-        default=11,
-        metadata={"help": "If using latent dropout, gradually increase the dropout rate until at max_latent_dropout_rate."},
     )
     add_encoder_block: bool = field(
         default=False,
@@ -426,15 +394,8 @@ def load_model_and_tokenizer(model_args):
             use_reg_loss=(not model_args.dont_use_reg_loss),
             reg_schedule_k=model_args.reg_schedule_k,
             reg_schedule_b=model_args.reg_schedule_b,
-            skip_schedule_k=model_args.skip_schedule_k,
-            skip_schedule_b=model_args.skip_schedule_b,
             n_latent_tokens=model_args.n_latent_tokens,
             use_extra_logs=is_wandb_available(),
-            use_skip_connection=model_args.use_skip_connection,
-            use_latent_dropout=model_args.use_latent_dropout,
-            max_latent_dropout_rate=model_args.max_latent_dropout_rate,
-            latent_dropout_schedule_k=model_args.latent_dropout_schedule_k,
-            latent_dropout_schedule_b=model_args.latent_dropout_schedule_b,
             add_encoder_block=model_args.add_encoder_block
         )
         logger.warning("You are instantiating a new config instance from scratch (still using T5 checkpoint).")

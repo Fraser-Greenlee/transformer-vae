@@ -28,35 +28,17 @@ class EncoderDecoderVAE(nn.Module):
 
     batch_size = None
 
-    def __init__(self, encoder, decoder, mmd_batch_size=None, use_reg_loss=True, use_latent_dropout=False, latent_dropout_schedule_k=0.0009, latent_dropout_schedule_b=11, max_latent_dropout_rate=0.9):
+    def __init__(self, encoder, decoder, mmd_batch_size=None, use_reg_loss=True):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
         self.mmd_batch_size = mmd_batch_size
         self.use_reg_loss = use_reg_loss
-        self.use_latent_dropout = use_latent_dropout
-        self.latent_dropout_schedule_k = latent_dropout_schedule_k
-        self.latent_dropout_schedule_b = latent_dropout_schedule_b
-        assert max_latent_dropout_rate < 1, "Must not dropout all latent tokens."
-        self.max_latent_dropout_rate = max_latent_dropout_rate
 
     def _model_forward(self, encoding, latent=None, global_step=None):
-        latent_dropout = 0
         if latent is None:
             latent = self.encoder(encoding)
-        if self.use_latent_dropout and global_step:
-            # TODO may switch this to dropout consistently across batch for MMD reg loss
-            latent_dropout = self._latent_dropout_schedule(global_step)
-            latent = nn.Dropout(p=latent_dropout)(latent)
-        return self.decoder(latent), latent, latent_dropout
-
-    def _latent_dropout_schedule(self, global_step):
-        if global_step is None:
-            return 0
-        # edit using https://www.desmos.com/calculator/mqzxhecfxz
-        return self.max_latent_dropout_rate * torch.sigmoid(
-            torch.tensor(global_step * self.latent_dropout_schedule_k - self.latent_dropout_schedule_b)
-        ).item()
+        return self.decoder(latent), latent
 
     def forward(
         self,
@@ -67,12 +49,12 @@ class EncoderDecoderVAE(nn.Module):
         if input_encoding is None and latent is None:
             raise ValueError("Both `input_encoding` and `latent` sent to VAE are Null.")
         use_reg_loss = self.use_reg_loss and latent is None  # don't regularise if given latent
-        recon_encoding, latent, latent_dropout = self._model_forward(input_encoding, latent=latent, global_step=global_step)
+        recon_encoding, latent = self._model_forward(input_encoding, latent=latent, global_step=global_step)
         if use_reg_loss:
             reg_loss = self._regularliser_loss(latent)
         else:
             reg_loss = torch.tensor(0, device=latent.device)
-        return BaseVAE_Output(latent=latent, reconstructed_encoding=recon_encoding, reg_loss=reg_loss, latent_dropout=latent_dropout)
+        return BaseVAE_Output(latent=latent, reconstructed_encoding=recon_encoding, reg_loss=reg_loss)
 
     @staticmethod
     def _compute_kernel(x, y):
@@ -144,8 +126,6 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
         "seq_accuracy": 0,
         "token_accuracy": 0,
         "reg_loss_w": 0,
-        "skip_conn_w": 0,
-        "latent_dropout": 0,
         "reg_loss": 0,
         'smoothness_loss': 0,
         'critic_loss_on_model': 0,
@@ -168,10 +148,6 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
             VAE_DECODER_MODELS[config.decoder_model](self.config),
             self.config.mmd_batch_size,
             self.config.use_reg_loss,
-            self.config.use_latent_dropout,
-            self.config.latent_dropout_schedule_k,
-            self.config.latent_dropout_schedule_b,
-            self.config.max_latent_dropout_rate,
         )
 
     def get_input_embeddings(self):
@@ -193,14 +169,6 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
         # edit using https://www.desmos.com/calculator/mqzxhecfxz
         return torch.sigmoid(
             torch.tensor(self.global_step * self.config.reg_schedule_k - self.config.reg_schedule_b)
-        ).item()
-
-    def _skip_conn_schedule(self):
-        if self.global_step is None:
-            return 0
-        # edit using https://www.desmos.com/calculator/wfzduw7ioa
-        return 1 - torch.sigmoid(
-            torch.tensor(self.global_step * self.config.skip_schedule_k - self.config.skip_schedule_b)
         ).item()
 
     def _update_logs(self, **logs):
@@ -649,15 +617,6 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         if self.config.add_encoder_block:
             upsampled_encoding = self.extra_encoder_block(upsampled_encoding)[0]
 
-        skip_conn_w = 0
-        if encoder_outputs and self.config.use_skip_connection:
-            skip_conn_w = self._skip_conn_schedule()
-            upsampled_encoding += skip_conn_w * encoder_outputs.hidden_states[
-                self.config.transformer.block_sizes[0]
-            ][
-                :, :upsampled_encoding.size(1)
-            ]
-
         # Now using T5 decoder
 
         if labels is not None and decoder_input_ids is None:
@@ -695,8 +654,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
 
         if self.training and self.config.use_extra_logs:
             self._update_logs(
-                decoder_ce=decoder_ce.item(), seq_accuracy=seq_accuracy, token_accuracy=token_accuracy, reg_loss=vae_outputs.reg_loss.item(),
-                reg_loss_w=reg_loss_w, skip_conn_w=skip_conn_w, latent_dropout=vae_outputs.latent_dropout
+                decoder_ce=decoder_ce.item(), seq_accuracy=seq_accuracy, token_accuracy=token_accuracy, reg_loss=vae_outputs.reg_loss.item(), reg_loss_w=reg_loss_w
             )
 
         return BaseTransformerVAE_Output(
@@ -794,9 +752,6 @@ class Funnel_gpt2_VAE_Model(Funnel_VAE_Model_Base):
                 separate_cls=self.config.transformer.separate_cls,
                 truncate_seq=self.config.transformer.truncate_seq,
             )
-            if self.config.use_skip_connections:
-                # TODO use skip connections like in the O.G. Funnel model
-                raise NotImplementedError()
         else:
             upsampled_encoding = vae_outputs.reconstructed_encoding
 

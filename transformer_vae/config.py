@@ -62,12 +62,6 @@ class Transformer_VAE_Config(PretrainedConfig):
         mmd_batch_size=None,
         reg_schedule_k=0.0025,
         reg_schedule_b=6.25,
-        skip_schedule_k=0.0006,
-        skip_schedule_b=11,
-        use_latent_dropout=False,
-        max_latent_dropout_rate=0.9,
-        latent_dropout_schedule_k=0.0009,
-        latent_dropout_schedule_b=11,
         use_extra_logs=False,
         cache_dir=None,
         n_latent_tokens=None,
@@ -102,12 +96,6 @@ class Transformer_VAE_Config(PretrainedConfig):
             logger.warn("Regularisation loss is turned off, you are training an Autoencoder (not a VAE).")
         self.reg_schedule_k = reg_schedule_k
         self.reg_schedule_b = reg_schedule_b
-        self.skip_schedule_k = skip_schedule_k
-        self.skip_schedule_b = skip_schedule_b
-        self.use_latent_dropout = use_latent_dropout
-        self.max_latent_dropout_rate = max_latent_dropout_rate
-        self.latent_dropout_schedule_k = latent_dropout_schedule_k
-        self.latent_dropout_schedule_b = latent_dropout_schedule_b
         self.use_extra_logs = use_extra_logs
         self.use_cache = getattr(self.transformer, "use_cache", False)
 
@@ -169,7 +157,6 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
         transformer_critic_name=None,
         decoder_start_token_id=0,
         cache_dir=None,
-        use_skip_connection=False,
         add_encoder_block=False,
         **kwargs,
     ):
@@ -206,9 +193,6 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
                 self.transformer_critic.d_model,
                 "Funnel & T5 transformers have different dimensions."
             )
-        self.use_skip_connection = use_skip_connection
-        if self.use_skip_connection:
-            assert 'funnel' in transformer_name, 'No use for skip connection with non-funnel model.'
         self.add_encoder_block = add_encoder_block
 
     def to_dict(self):
