@@ -1,4 +1,3 @@
 dataset_name=Fraser/python-lines
 seq_check=python
-n_random_samples=25
 max_validation_size=100

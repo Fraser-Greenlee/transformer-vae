@@ -148,10 +148,11 @@ class VAE_Trainer(trainer_script.Trainer):
             )
 
     def _random_samples(self):
+        # TODO This should be random samples from the models prior but in an MMD-VAE the prior doesn't actually match a gaussian so this needs to change.
         table = wandb.Table(columns=["Text", "Valid"])
         seq_check_results = 0
         seq_check = SEQ_CHECKS[self.args.seq_check]
-        latent_points = torch.randn(self.args.n_random_samples, self.model.config.latent_size, device=self.model.device)
+        latent_points = torch.randn(25, self.model.config.latent_size, device=self.model.device)
         texts = self._text_from_latent(latent_points)
         for txt in texts:
             valid = seq_check(txt)

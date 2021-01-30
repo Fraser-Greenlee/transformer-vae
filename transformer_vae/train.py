@@ -44,10 +44,6 @@ class VAE_TrainingArguments(TrainingArguments):
         default=20,
         metadata={"help": "The maximum length of sequences to be generated from latent points during evaluation."},
     )
-    n_random_samples: int = field(
-        default=10,
-        metadata={"help": "Number of random latent codes to sample from during evaluation."},
-    )
     seq_check: str = field(
         default=None,
         metadata={"help": f"Run check on sequences from random latent codes. Options: {', '.join([str(k) for k in SEQ_CHECKS.keys()])}"},
