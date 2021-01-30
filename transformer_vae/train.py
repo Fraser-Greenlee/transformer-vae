@@ -22,21 +22,12 @@ from transformers.trainer_utils import is_main_process
 from transformer_vae.trainer import VAE_Trainer
 from transformer_vae.data_collator import DataCollatorForLanguageAutoencoding
 from transformer_vae.trainer_callback import TellModelGlobalStep
-from transformer_vae.model import T5_VAE_Model, Funnel_VAE_Model, Funnel_T5_VAE_Model, Funnel_gpt2_VAE_Model
+from transformer_vae.model import Funnel_T5_VAE_Model
 from transformer_vae.sequence_checks import SEQ_CHECKS
-from transformer_vae.config import T5_VAE_Config, Funnel_VAE_Config, Funnel_T5_VAE_Config, Funnel_gpt2_VAE_Config
+from transformer_vae.config import Funnel_T5_VAE_Config
 
 
 logger = logging.getLogger(__name__)
-
-
-CONFIG = {"t5": T5_VAE_Config, "funnel": Funnel_VAE_Config, "funnel-t5": Funnel_T5_VAE_Config, 'funnel-gpt2': Funnel_gpt2_VAE_Config}
-MODEL = {"t5": T5_VAE_Model, "funnel": Funnel_VAE_Model, "funnel-t5": Funnel_T5_VAE_Model, 'funnel-gpt2': Funnel_gpt2_VAE_Model}
-DEFAULT_TRANSFORMER_NAME = {
-    "t5": "t5-base",
-    "funnel": "funnel-transformer/intermediate",
-    "funnel-t5": "funnel-transformer/intermediate",
-}
 
 
 @dataclass
@@ -77,10 +68,6 @@ class VAE_TrainingArguments(TrainingArguments):
         default=False,
         metadata={"help": "Test using latent codes for unsupervised classification."},
     )
-    smoothness_loss: bool = field(
-        default=False,
-        metadata={"help": "Minimise the change in logits w.r.t some interpolation ratio."},
-    )
     smooth_cosine: bool = field(
         default=False,
         metadata={"help": "Minimise cosine error between final layer hidden states interpolated & non interpolated sequences."},
@@ -98,20 +85,24 @@ class VAE_TrainingArguments(TrainingArguments):
         metadata={"help": "Encourage the encoder & decoder to produce a bijective mapping. Feeds the final decoder hidden state to the encoder and compares the latent codes."},
     )
     advisery_weight: int = field(
-        default=10**-2,
+        default=1,
         metadata={"help": "Encourage the encoder & decoder to produce a bijective mapping. Feeds the final decoder hidden state to the encoder and compares the latent codes."},
     )
     cycle_weight: int = field(
-        default=10**-2,
+        default=1,
         metadata={"help": "Encourage the encoder & decoder to produce a bijective mapping. Feeds the final decoder hidden state to the encoder and compares the latent codes."},
     )
     smooth_weight: int = field(
-        default=10**-1,
+        default=1,
         metadata={"help": "Encourage the encoder & decoder to produce a bijective mapping. Feeds the final decoder hidden state to the encoder and compares the latent codes."},
     )
     interpolate_training_step_rate: int = field(
         default=1,
         metadata={"help": "Run a batch of iterpolation losses every N steps."},
+    )
+    min_critic_steps: int = field(
+        default=1_000,
+        metadata={"help": "Start updating the model with the critic loss after N steps."},
     )
 
 
@@ -121,10 +112,6 @@ class ModelArguments:
     Arguments pertaining to which model/config/tokenizer we are going to fine-tune, or train from scratch.
     """
 
-    transformer_type: Optional[str] = field(
-        default="t5",
-        metadata={"help": f"The transfromer type to base the VAE on. Only {', '.join(CONFIG.keys())} supported."},
-    )
     model_path: Optional[str] = field(
         default=None,
         metadata={
@@ -132,9 +119,9 @@ class ModelArguments:
         },
     )
     transformer_name: Optional[str] = field(
-        default=None,
+        default='funnel-transformer/intermediate',
         metadata={
-            "help": "Name of the transformer model being using for encoding & decoding (only `t5` & `funnel` transfromer type supported)."
+            "help": "Name of the transformer model being using for encoding & decoding (must be a variant on the funnel transformer)."
         },
     )
     transformer_decoder_name: Optional[str] = field(
@@ -195,14 +182,10 @@ class ModelArguments:
         metadata={"help": "Added to global step in sigmoid, further delays increase in regulariser loss weight."},
     )
     n_latent_tokens: int = field(
-        default=None,
+        default=5,
         metadata={
-            "help": "Number of latent tokens to use for full sequence VAE (set to sequence length if its shorter), used with `encoder_model n-tokens`."
+            "help": "Number of tokens to use when making a sequence latent code."
         },
-    )
-    add_encoder_block: bool = field(
-        default=False,
-        metadata={"help": "Add a single encoder block after the upsampling (only for Funnel-T5)."},
     )
 
 
@@ -303,12 +286,6 @@ def get_args():
         else training_args.per_device_eval_batch_size
     )
 
-    if model_args.transformer_name is None:
-        model_args.transformer_name = DEFAULT_TRANSFORMER_NAME[model_args.transformer_type]
-
-    if model_args.encoded_seq_size is None and "funnel" not in model_args.transformer_type:
-        model_args.encoded_seq_size = model_args.set_seq_size
-
     if (
         os.path.exists(training_args.output_dir)
         and os.listdir(training_args.output_dir)
@@ -372,22 +349,24 @@ def load_model_and_tokenizer(model_args):
     # Distributed training:
     # The `.from_pretrained` methods guarantee that only one local process can concurrently
     # download model & vocab.
+    if model_args.set_seq_size and model_args.set_seq_size <= 4:
+        logger.warn('`set_seq_size` is to small to work with the Funnel transformer. now using set_seq_size=5')
+        model_args.set_seq_size = 5
+
     if model_args.config_path:
-        config = CONFIG[model_args.transformer_type].from_pretrained(
+        config = Funnel_T5_VAE_Config.from_pretrained(
             model_args.config_path, cache_dir=model_args.cache_dir
         )
     elif model_args.model_path:
-        config = CONFIG[model_args.transformer_type].from_pretrained(
+        config = Funnel_T5_VAE_Config.from_pretrained(
             model_args.model_path, cache_dir=model_args.cache_dir
         )
     else:
-        config = CONFIG[model_args.transformer_type](
+        config = Funnel_T5_VAE_Config(
             latent_size=model_args.latent_size,
             transformer_name=model_args.transformer_name,
             transformer_decoder_name=model_args.transformer_decoder_name,
             transformer_critic_name=model_args.transformer_critic_name,
-            encoder_model=model_args.encoder_model,
-            decoder_model=model_args.decoder_model,
             set_seq_size=model_args.set_seq_size,
             encoded_seq_size=model_args.encoded_seq_size,
             mmd_batch_size=model_args.mmd_batch_size,
@@ -396,7 +375,6 @@ def load_model_and_tokenizer(model_args):
             reg_schedule_b=model_args.reg_schedule_b,
             n_latent_tokens=model_args.n_latent_tokens,
             use_extra_logs=is_wandb_available(),
-            add_encoder_block=model_args.add_encoder_block
         )
         logger.warning("You are instantiating a new config instance from scratch (still using T5 checkpoint).")
 
@@ -421,7 +399,7 @@ def load_model_and_tokenizer(model_args):
         )
 
     if model_args.model_path:
-        model = MODEL[model_args.transformer_type].from_pretrained(
+        model = Funnel_T5_VAE_Model.from_pretrained(
             model_args.model_path,
             from_tf=bool(".ckpt" in model_args.model_path),
             config=config,
@@ -429,7 +407,7 @@ def load_model_and_tokenizer(model_args):
         )
     else:
         logger.info("Training new model from scratch")
-        model = MODEL[model_args.transformer_type](config)
+        model = Funnel_T5_VAE_Model(config)
 
     model.resize_token_embeddings(len(tokenizer))
     if model_args.set_seq_size:

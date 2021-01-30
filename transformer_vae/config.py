@@ -64,7 +64,7 @@ class Transformer_VAE_Config(PretrainedConfig):
         reg_schedule_b=6.25,
         use_extra_logs=False,
         cache_dir=None,
-        n_latent_tokens=None,
+        n_latent_tokens=5,
         **kwargs,
     ):
         assertIn(encoder_model, VAE_ENCODER_MODELS.keys(), "Unexpected VAE encoder.")
@@ -75,19 +75,17 @@ class Transformer_VAE_Config(PretrainedConfig):
         self.transformer.decoder_start_token_id = decoder_start_token_id
         self.encoder_model = encoder_model
         self.decoder_model = decoder_model
+        if set_seq_size < n_latent_tokens:
+            logger.warn(f'set_seq_size size is smaller than n_latent_tokens, now using n_latent_tokens={set_seq_size} from {n_latent_tokens}')
+            n_latent_tokens = set_seq_size
         self.latent_token_dim = math.ceil(latent_size / n_latent_tokens)
         self.n_latent_tokens = n_latent_tokens
         self.latent_size = self.latent_token_dim * n_latent_tokens
         if self.latent_size != latent_size:
             logger.warn(f'model dimension, latent_size & n_latent_tokens don\'t match. Now using latent_size={self.latent_size} from latent_size={latent_size}')
 
-        self.padding_input = encoder_model != "1st-token"
-        self.prepend_eos_token = False  # TODO manually check if adding a set 1st token improves performance
-        if self.padding_input:
-            self.transformer.n_positions = set_seq_size
-            self.encoded_seq_size = set_seq_size if encoded_seq_size is None else encoded_seq_size
-        else:
-            self.encoded_seq_size = 1
+        self.transformer.n_positions = set_seq_size
+        self.encoded_seq_size = set_seq_size if encoded_seq_size is None else encoded_seq_size
 
         self.additional_latent_models = additional_latent_models
         self.mmd_batch_size = mmd_batch_size
@@ -112,31 +110,6 @@ class Transformer_VAE_Config(PretrainedConfig):
         return output
 
 
-class T5_VAE_Config(Transformer_VAE_Config):
-    def __init__(self, transformer_name="t5-base", **kwargs):
-        super().__init__(transformer_name=transformer_name, **kwargs)
-        assertEqual(self.transformer.model_type, "t5", "Need t5 model type.")
-
-
-class Funnel_VAE_Config(Transformer_VAE_Config):
-    r"""
-    Arguments:
-        encoded_seq_size (:obj:`int`, `optional`, defaults to 15):
-            Size of the encoding sequence after all Funnel encoder blocks.
-            Usually 1/4 of your input size.
-    """
-
-    def __init__(self, transformer_name="funnel-transformer/large", encoded_seq_size=None, **kwargs):
-        super().__init__(transformer_name=transformer_name, encoded_seq_size=encoded_seq_size, **kwargs)
-        if self.padding_input:
-            pooling_division = 2 ** (len(self.transformer.block_sizes) - 1)
-            calc_encoded_seq_size = math.ceil(self.transformer.n_positions / pooling_division)
-            if encoded_seq_size is None:
-                encoded_seq_size = calc_encoded_seq_size
-            else:
-                assert encoded_seq_size == calc_encoded_seq_size
-
-
 class Funnel_T5_VAE_Config(Transformer_VAE_Config):
     r"""
     Arguments:
@@ -155,9 +128,9 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
         encoded_seq_size=None,
         transformer_decoder_name="t5-base",
         transformer_critic_name=None,
+        critic_type=None,
         decoder_start_token_id=0,
         cache_dir=None,
-        add_encoder_block=False,
         **kwargs,
     ):
         super().__init__(
@@ -167,18 +140,17 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
             cache_dir=cache_dir,
             **kwargs,
         )
-        if self.padding_input:
-            pooling_division = 2 ** (len(self.transformer.block_sizes) - 1)
-            calc_encoded_seq_size = math.ceil(self.transformer.n_positions / pooling_division)
-            if encoded_seq_size is None:
-                self.encoded_seq_size = calc_encoded_seq_size
-            else:
-                self.encoded_seq_size = encoded_seq_size
-                assert self.encoded_seq_size == calc_encoded_seq_size
+        pooling_division = 2 ** (len(self.transformer.block_sizes) - 1)
+        calc_encoded_seq_size = math.ceil(self.transformer.n_positions / pooling_division)
+        if encoded_seq_size is None:
+            self.encoded_seq_size = calc_encoded_seq_size
+        else:
+            self.encoded_seq_size = encoded_seq_size
+            assert self.encoded_seq_size == calc_encoded_seq_size
+
         self.transformer_decoder = AutoConfig.from_pretrained(transformer_decoder_name, cache_dir=cache_dir)
         self.transformer_decoder.decoder_start_token_id = decoder_start_token_id
-        if self.padding_input:
-            self.transformer_decoder.n_positions = self.transformer.n_positions
+        self.transformer_decoder.n_positions = self.transformer.n_positions
         assertEqual(self.transformer_decoder.model_type, "t5", "Need t5 model type for transformer_decoder.")
         assertEqual(
             self.transformer.d_model,
@@ -187,13 +159,13 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
         )
         self.transformer_critic = None
         if transformer_critic_name:
+            self.critic_type = critic_type
             self.transformer_critic = AutoConfig.from_pretrained(transformer_critic_name, cache_dir=cache_dir)
             assertEqual(
                 self.transformer_decoder.d_model,
                 self.transformer_critic.d_model,
                 "Funnel & T5 transformers have different dimensions."
             )
-        self.add_encoder_block = add_encoder_block
 
     def to_dict(self):
         """
@@ -206,63 +178,4 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
         output['transformer_decoder'] = self.transformer_decoder.to_dict()
         if self.transformer_critic:
             output['transformer_critic'] = self.transformer_critic.to_dict()
-        return output
-
-
-class Funnel_gpt2_VAE_Config(Transformer_VAE_Config):
-    r"""
-    Arguments:
-        encoded_seq_size (:obj:`int`):
-            Size of the encoding sequence after all Funnel encoder blocks.
-            Usually 1/4 of your input size.
-        transformer_decoder_name (:obj:`str`, `optional`, defaults to distilgpt2):
-            Name of the Transformer model to use as encoder & decoder.
-    """
-
-    def __init__(
-        self,
-        transformer_name="funnel-transformer/large",
-        encoded_seq_size=None,
-        transformer_decoder_name="distilgpt2",
-        decoder_start_token_id=0,
-        cache_dir=None,
-        **kwargs,
-    ):
-        super().__init__(
-            transformer_name=transformer_name,
-            encoded_seq_size=encoded_seq_size,
-            transformer_decoder_name=transformer_decoder_name,
-            decoder_start_token_id=decoder_start_token_id,
-            cache_dir=cache_dir,
-            **kwargs,
-        )
-        if self.padding_input:
-            pooling_division = 2 ** (len(self.transformer.block_sizes) - 1)
-            calc_encoded_seq_size = math.ceil(self.transformer.n_positions / pooling_division)
-            if encoded_seq_size is None:
-                self.encoded_seq_size = calc_encoded_seq_size
-            else:
-                self.encoded_seq_size = encoded_seq_size
-                assert self.encoded_seq_size == calc_encoded_seq_size
-        self.transformer_decoder = AutoConfig.from_pretrained(transformer_decoder_name, cache_dir=cache_dir)
-        self.transformer_decoder.add_cross_attention = True
-        self.transformer_decoder.decoder_start_token_id = decoder_start_token_id
-        if self.padding_input:
-            self.transformer_decoder.n_positions = self.transformer.n_positions
-        assertEqual(self.transformer_decoder.model_type, "gpt2", "Need gpt2 model type for transformer_decoder.")
-        assertEqual(
-            self.transformer.d_model,
-            self.transformer_decoder.n_embd,
-            "Funnel & gpt2 transformers have different dimensions.",
-        )
-
-    def to_dict(self):
-        """
-        Serializes this instance to a Python dictionary. Override the default `to_dict()` from `PretrainedConfig`.
-
-        Returns:
-            :obj:`Dict[str, any]`: Dictionary of all the attributes that make up this configuration instance,
-        """
-        output = super().to_dict()
-        output['transformer_decoder'] = self.transformer_decoder.to_dict()
         return output

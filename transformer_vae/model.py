@@ -6,7 +6,7 @@ import torch
 from torch import nn
 from typing import Dict, Any
 from transformers.modeling_utils import PreTrainedModel
-from transformers import AutoModelForSeq2SeqLM, AutoModelForMaskedLM, AutoModelForCausalLM
+from transformers import AutoModelForSeq2SeqLM, AutoModelForMaskedLM
 from transformers.modeling_outputs import BaseModelOutput
 from transformers.models.funnel.modeling_funnel import upsample
 
@@ -14,7 +14,7 @@ from transformer_vae.autoencoders import VAE_ENCODER_MODELS, VAE_DECODER_MODELS
 from transformer_vae.model_outputs import BaseVAE_Output, BaseTransformerVAE_Output
 from transformer_vae.config import Transformer_VAE_Config
 
-from transformer_vae.config import T5_VAE_Config, Funnel_VAE_Config, Funnel_T5_VAE_Config, Funnel_gpt2_VAE_Config
+from transformer_vae.config import Funnel_T5_VAE_Config
 
 
 logger = logging.getLogger(__name__)
@@ -82,6 +82,7 @@ class EncoderDecoderVAE(nn.Module):
             )
             true_samples = torch.randn(all_latents.size(), device=latent.device)
             total = torch.tensor(0.0, device=latent.device)
+            # TODO compute this in parallel
             for i, latent_batch in enumerate(all_latents):
                 total += self._compute_mmd(true_samples[i], latent_batch)
             return total / n_samples
@@ -222,124 +223,6 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
         raise NotImplementedError()
 
 
-class T5_VAE_Model(Transformer_VAE_Base_Model):
-    r"""
-    The T5-VAE model was proposed in `Transformers as Variational Autoencoders
-    <https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html>`__ by Fraser Greenlee.
-    It is a modified T5 model that uses an MMD-VAE on sequence encodings to learn smooth latent spaces of discrete squences.
-
-    T5-VAE only compresses its encodings after the encoder with a few fully connected layers making it less effective at modelling long sequences.
-    Its decoder is autoregressive making it natually effective at generating sequences.
-    """
-    config_class = T5_VAE_Config
-
-    def get_input_embeddings(self):
-        return self.transformer.shared
-
-    def _shift_input_right(self, input_ids):
-        start_token_id = self.transformer.config.eos_token_id
-        pad_token_id = self.config.transformer_decoder.pad_token_id
-
-        assert (
-            start_token_id is not None
-        ), "self.model.config.decoder_start_token_id has to be defined. In T5 it is usually set to the pad_token_id. See T5 docs for more information"
-        assert start_token_id != pad_token_id, "Trying to prepend the padding token to the sequence."
-
-        # shift inputs to the right
-        shifted_input_ids = input_ids.new_zeros(input_ids.shape)
-        shifted_input_ids[..., 1:] = input_ids[..., :-1].clone()
-        shifted_input_ids[..., 0] = start_token_id
-
-        assert pad_token_id is not None, "self.model.config.pad_token_id has to be defined."
-        # replace possible -100 values in labels by `pad_token_id`
-        shifted_input_ids.masked_fill_(shifted_input_ids == -100, pad_token_id)
-
-        assert torch.all(shifted_input_ids >= 0).item(), "Verify that `shifted_input_ids` has only positive values"
-
-        return shifted_input_ids
-
-    def forward(
-        self,
-        input_ids=None,
-        labels=None,
-        attention_mask=None,
-        encoder_outputs=None,
-        decoder_input_ids=None,
-        latent=None,
-        use_cache=None,
-        return_dict=True,
-        **unused_kwargs
-    ):
-        assert return_dict, "Need return_dict=True, using tuple's is not implimented"
-        use_cache = use_cache if use_cache is not None else self.config.use_cache
-
-        if input_ids is not None:
-            if self.config.prepend_eos_token:
-                input_ids = self._shift_input_right(input_ids)
-            if attention_mask is None:
-                attention_mask = input_ids.ne(self.transformer.config.pad_token_id).long()
-            if encoder_outputs is None:
-                encoder_outputs = self.transformer.encoder(
-                    input_ids=input_ids, attention_mask=attention_mask, return_dict=True
-                )
-        if encoder_outputs is not None and not isinstance(encoder_outputs, BaseModelOutput):
-            encoder_outputs = BaseModelOutput(
-                last_hidden_state=encoder_outputs[0],
-                hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
-                attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
-            )
-
-        vae_outputs = self.vae(
-            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent=latent, global_step=self.global_step
-        )
-
-        if labels is not None and decoder_input_ids is None:
-            # get decoder inputs from shifting lm labels to the right
-            decoder_input_ids = self.transformer._shift_right(labels) if labels is not None else None
-
-        decoder_outputs = self.transformer.decoder(
-            input_ids=decoder_input_ids,
-            encoder_hidden_states=vae_outputs.reconstructed_encoding,
-            use_cache=use_cache,
-            return_dict=True,
-        )
-
-        sequence_output = decoder_outputs.last_hidden_state
-        # Rescale output before projecting on vocab
-        # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
-        sequence_output = sequence_output * (self.config.transformer.d_model ** -0.5)
-        lm_logits = self.transformer.lm_head(sequence_output)
-
-        decoder_ce = torch.tensor(0.0, device=lm_logits.device)
-        if labels is not None:
-            loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
-            decoder_ce = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), labels.view(-1))
-            # TODO(thom): Add z_loss https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L666
-
-        reg_loss_w = self._regulariser_loss_weight_schedule()
-        loss = decoder_ce + vae_outputs.reg_loss * reg_loss_w
-
-        if self.training and self.config.use_extra_logs:
-            self._update_logs(decoder_ce=decoder_ce.item(), reg_loss=vae_outputs.reg_loss.item(), reg_loss_w=reg_loss_w)
-
-        return BaseTransformerVAE_Output(
-            loss=loss,
-            logits=lm_logits,
-            past_key_values=decoder_outputs.past_key_values,
-            decoder_hidden_states=decoder_outputs.hidden_states,
-            hidden_states=decoder_outputs.hidden_states,
-            decoder_attentions=decoder_outputs.attentions,
-            cross_attentions=decoder_outputs.cross_attentions,
-            encoder_last_hidden_state=encoder_outputs.last_hidden_state if encoder_outputs else None,
-            encoder_hidden_states=encoder_outputs.hidden_states if encoder_outputs else None,
-            encoder_attentions=encoder_outputs.attentions if encoder_outputs else None,
-            latent=vae_outputs.latent,
-            reg_loss=vae_outputs.reg_loss,
-            decoder_ce=decoder_ce,
-            accuracy=None,
-        )
-
-
 class Funnel_VAE_Model_Base(Transformer_VAE_Base_Model):
     def get_input_embeddings(self):
         return self.transformer.funnel.embeddings.word_embeddings
@@ -353,6 +236,7 @@ class Funnel_VAE_Model_Base(Transformer_VAE_Base_Model):
         output_attentions=None,
         output_hidden_states=None,
         return_dict=True,
+        # unused args
         class_label=None,
         label=None,
     ):
@@ -380,7 +264,6 @@ class Funnel_VAE_Model_Base(Transformer_VAE_Base_Model):
         if token_type_ids is None:
             token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=device)
 
-        # TODO: deal with head_mask
         if inputs_embeds is None:
             inputs_embeds = funnel.embeddings(input_ids)
 
@@ -391,101 +274,6 @@ class Funnel_VAE_Model_Base(Transformer_VAE_Base_Model):
             output_attentions=output_attentions,
             output_hidden_states=True,
             return_dict=return_dict,
-        )
-
-
-class Funnel_VAE_Model(Funnel_VAE_Model_Base):
-    r"""
-    The Funnel-VAE-T5 model was proposed in `Transformers as Variational Autoencoders
-    <https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html>`__ by Fraser Greenlee.
-    It is a modified Funnel-Transformer model that uses an MMD-VAE on its sequence encodings and a T5 decoder.
-
-    Funnel-VAE has its input sequence compressed & then upsampled by Funnel-Transformer.
-    This makes it better able to model long sequences.
-    Its decoder is autoregressive making it natually effective at generating sequences.
-    """
-    config_class = Funnel_VAE_Config
-
-    def forward(
-        self,
-        input_ids=None,
-        labels=None,
-        attention_mask=None,
-        encoder_outputs=None,
-        decoder_input_ids=None,
-        latent=None,
-        return_dict=True,
-        **unused_kwargs
-    ):
-        assert return_dict, "Need return_dict=True, using tuple's is not implimented"
-
-        if input_ids is not None:
-            if decoder_input_ids is not None and input_ids.equal(decoder_input_ids) is False:
-                raise ValueError(
-                    "`input_ids` and `decoder_input_ids` do not match. Funnel-VAE can only reproduce its input sequence."
-                )
-            if self.config.prepend_eos_token:
-                raise NotImplementedError()
-            if attention_mask is None:
-                attention_mask = input_ids.ne(self.transformer.config.pad_token_id).long()
-            if encoder_outputs is None:
-                encoder_outputs = self._get_encoder_outputs(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
-                    return_dict=True,
-                )
-        if encoder_outputs is not None and not isinstance(encoder_outputs, BaseModelOutput):
-            encoder_outputs = BaseModelOutput(
-                last_hidden_state=encoder_outputs[0],
-                hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
-                attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
-            )
-
-        vae_outputs = self.vae(
-            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent=latent, global_step=self.global_step
-        )
-
-        initial_encoding_size = (
-            vae_outputs.reconstructed_encoding.size(0),
-            self.config.transformer.n_positions,
-            self.config.transformer.d_model,
-        )
-
-        decoder_outputs = self.transformer.funnel.decoder(
-            final_hidden=vae_outputs.reconstructed_encoding,
-            # Don't allow for residual connections, instead just send an empty tensor.
-            first_block_hidden=torch.zeros(initial_encoding_size, device=vae_outputs.reconstructed_encoding.device),
-            return_dict=True,
-        )
-
-        last_hidden_state = decoder_outputs.last_hidden_state
-        prediction_logits = self.transformer.lm_head(last_hidden_state)
-
-        decoder_ce = torch.tensor(0.0, device=prediction_logits.device)
-        if labels is not None:
-            loss_fct = nn.CrossEntropyLoss()  # -100 index = padding token
-            decoder_ce = loss_fct(prediction_logits.view(-1, self.config.transformer.vocab_size), labels.view(-1))
-
-        reg_loss_w = self._regulariser_loss_weight_schedule()
-        loss = decoder_ce + vae_outputs.reg_loss * reg_loss_w
-
-        if self.training and self.config.use_extra_logs:
-            self._update_logs(decoder_ce=decoder_ce.item(), reg_loss=vae_outputs.reg_loss.item(), reg_loss_w=reg_loss_w)
-
-        return BaseTransformerVAE_Output(
-            loss=loss,
-            logits=prediction_logits,
-            past_key_values=None,
-            decoder_hidden_states=decoder_outputs.hidden_states,
-            hidden_states=decoder_outputs.hidden_states,
-            decoder_attentions=decoder_outputs.attentions,
-            cross_attentions=None,
-            encoder_last_hidden_state=encoder_outputs.last_hidden_state if encoder_outputs else None,
-            encoder_hidden_states=encoder_outputs.hidden_states if encoder_outputs else None,
-            encoder_attentions=encoder_outputs.attentions if encoder_outputs else None,
-            latent=vae_outputs.latent,
-            reg_loss=vae_outputs.reg_loss,
-            decoder_ce=decoder_ce,
         )
 
 
@@ -513,6 +301,19 @@ class Critic(nn.Module):
         return score
 
 
+class CriticMean(Critic):
+    """
+    Takes the mean of each tokens score instead of encouraging a seq level score.
+    """
+    def forward(self, hidden_state, targets=None):
+        attention_mask = torch.ones(hidden_state.size()[:-1], device=hidden_state.device)
+        final_hidden = self.critic(hidden_state, attention_mask=attention_mask).last_hidden_state
+        score = 0.5 * self.activation(self.fc(final_hidden)).mean(dim=1)
+        if targets is not None:
+            return self.loss(score, targets)
+        return score
+
+
 class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
     r"""
     The Funnel-VAE model was proposed in `Transformers as Variational Autoencoders
@@ -528,8 +329,6 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
     def __init__(self, config: Funnel_T5_VAE_Config):
         super().__init__(config=config)
         transformer_model = AutoModelForSeq2SeqLM.from_config(config.transformer_decoder)
-        if config.add_encoder_block:
-            self.extra_encoder_block = transformer_model.encoder.block[0]
         self.transformer.decoder = transformer_model.decoder
         self.transformer.lm_head = transformer_model.lm_head
         self.decoder_start_token_id = self.config.transformer_decoder.decoder_start_token_id
@@ -538,7 +337,12 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         ), "`self.config.transformer_decoder.decoder_start_token_id` has to be defined. In T5 it is usually set to the pad_token_id. See T5 docs for more information"
         self.critic = None
         if config.transformer_critic:
-            self.critic = Critic(config.transformer_critic)
+            if config.critic_type is None:
+                self.critic = Critic(config.transformer_critic)
+            elif config.critic_type == 'mean':
+                self.critic = CriticMean(config.transformer_critic)
+            else:
+                raise NotImplementedError(f'Unknown critic type: {config.critic_type}')
 
     def _shift_right(self, input_ids):
         decoder_start_token_id = self.config.transformer_decoder.decoder_start_token_id
@@ -577,10 +381,8 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         if input_ids is not None or inputs_embeds is not None:
             if decoder_input_ids is not None and input_ids.equal(decoder_input_ids) is False:
                 raise ValueError(
-                    "`input_ids` and `decoder_input_ids` do not match. Funnel-VAE can only reproduce its input sequence."
+                    "`input_ids` and `decoder_input_ids` do not match. Funnel-T5-VAE can only reproduce its input sequence."
                 )
-            if self.config.prepend_eos_token:
-                raise NotImplementedError()
             if attention_mask is None and input_ids is not None:
                 attention_mask = input_ids.ne(self.transformer.config.pad_token_id).long()
             if encoder_outputs is None:
@@ -603,20 +405,14 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         )
 
         # TODO allow more options here, specifically allow an extra encoder block after upsampling
-        if self.config.padding_input:
-            upsampled_encoding = upsample(
-                vae_outputs.reconstructed_encoding,
-                stride=2 ** (len(self.config.transformer.block_sizes) - 1),
-                target_len=self.config.transformer_decoder.n_positions,
-                separate_cls=self.config.transformer.separate_cls,
-                truncate_seq=self.config.transformer.truncate_seq,
-            )
-        else:
-            upsampled_encoding = vae_outputs.reconstructed_encoding
-
-        if self.config.add_encoder_block:
-            upsampled_encoding = self.extra_encoder_block(upsampled_encoding)[0]
-
+        upsampled_encoding = upsample(
+            vae_outputs.reconstructed_encoding,
+            stride=2 ** (len(self.config.transformer.block_sizes) - 1),
+            target_len=self.config.transformer_decoder.n_positions,
+            separate_cls=self.config.transformer.separate_cls,
+            truncate_seq=self.config.transformer.truncate_seq,
+        )
+    
         # Now using T5 decoder
 
         if labels is not None and decoder_input_ids is None:
@@ -673,129 +469,4 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             decoder_ce=decoder_ce,
             seq_accuracy=seq_accuracy,
             token_accuracy=token_accuracy
-        )
-
-
-class Funnel_gpt2_VAE_Model(Funnel_VAE_Model_Base):
-    r"""
-    The Funnel-VAE model was proposed in `Transformers as Variational Autoencoders
-    <https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html>`__ by Fraser Greenlee.
-    It is a modified Funnel-Transformer model that uses an MMD-VAE on sequence encodings to learn smooth latent spaces of discrete squences.
-
-    Funnel-VAE has its input sequence compressed & then upsampled by Funnel-Transformer.
-    This makes it better able to model long sequences.
-    Funnel-Transformer's decoder is non auto-regressive meaning it generates all tokens in parallel, this is likely worse for generation.
-    """
-    config_class = Funnel_gpt2_VAE_Config
-
-    def __init__(self, config: Funnel_gpt2_VAE_Config):
-        super().__init__(config=config)
-        self.decoder = AutoModelForCausalLM.from_config(config.transformer_decoder)
-        self.decoder_start_token_id = self.config.transformer_decoder.bos_token_id
-        assert (
-            self.decoder_start_token_id is not None
-        ), "`self.config.transformer_decoder.bos_token_id` has to be defined."
-
-    def _shift_right(self, input_ids):
-        shifted_input_ids = input_ids.new_zeros(input_ids.shape)
-        shifted_input_ids[..., 1:] = input_ids[..., :-1].clone()
-        shifted_input_ids[..., 0] = self.decoder_start_token_id
-        return shifted_input_ids
-
-    def forward(
-        self,
-        input_ids=None,
-        labels=None,
-        attention_mask=None,
-        encoder_outputs=None,
-        decoder_input_ids=None,
-        latent=None,
-        use_cache=None,
-        return_dict=True,
-        **unused_kwargs
-    ):
-        assert return_dict, "Need return_dict=True, using tuple's is not implimented"
-        use_cache = use_cache if use_cache is not None else self.config.use_cache
-
-        if input_ids is not None:
-            if decoder_input_ids is not None and input_ids.equal(decoder_input_ids) is False:
-                raise ValueError(
-                    "`input_ids` and `decoder_input_ids` do not match. Funnel-VAE can only reproduce its input sequence."
-                )
-            if self.config.prepend_eos_token:
-                raise NotImplementedError()
-            if attention_mask is None:
-                attention_mask = input_ids.ne(self.transformer.config.pad_token_id).long()
-            if encoder_outputs is None:
-                encoder_outputs = self._get_encoder_outputs(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
-                    return_dict=True,
-                )
-        if encoder_outputs is not None and not isinstance(encoder_outputs, BaseModelOutput):
-            encoder_outputs = BaseModelOutput(
-                last_hidden_state=encoder_outputs[0],
-                hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
-                attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
-            )
-
-        vae_outputs = self.vae(
-            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs else None, latent=latent, global_step=self.global_step
-        )
-
-        # TODO allow more options here
-        if self.config.padding_input:
-            upsampled_encoding = upsample(
-                vae_outputs.reconstructed_encoding,
-                stride=2 ** (len(self.config.transformer.block_sizes) - 1),
-                target_len=self.config.transformer_decoder.n_positions,
-                separate_cls=self.config.transformer.separate_cls,
-                truncate_seq=self.config.transformer.truncate_seq,
-            )
-        else:
-            upsampled_encoding = vae_outputs.reconstructed_encoding
-
-        # Now using gpt2 decoder
-
-        if labels is not None and decoder_input_ids is None:
-            # get decoder inputs from shifting labels to the right
-            decoder_input_ids = self._shift_right(input_ids)
-            # use old attention mask shifted right
-            attention_mask = torch.cat(
-                (
-                    torch.ones(attention_mask.size(0), 1, device=attention_mask.device),
-                    attention_mask
-                ),
-                1
-            )[:, :attention_mask.size(1) - 1]
-
-        # TODO is this letting the model cheat by just looking at its labels?
-        decoder_outputs = self.decoder(
-            input_ids=decoder_input_ids,
-            encoder_hidden_states=upsampled_encoding,
-            attention_mask=attention_mask,
-            labels=labels,
-            return_dict=True
-        )
-
-        reg_loss_w = self._regulariser_loss_weight_schedule()
-        loss = decoder_outputs.loss + vae_outputs.reg_loss * reg_loss_w
-
-        if self.training and self.config.use_extra_logs:
-            self._update_logs(decoder_ce=decoder_outputs.loss.item(), reg_loss=vae_outputs.reg_loss.item(), reg_loss_w=reg_loss_w)
-
-        return BaseTransformerVAE_Output(
-            loss=loss,
-            logits=decoder_outputs.logits,
-            past_key_values=decoder_outputs.past_key_values,
-            decoder_hidden_states=decoder_outputs.hidden_states,
-            hidden_states=decoder_outputs.hidden_states,
-            decoder_attentions=decoder_outputs.attentions,
-            cross_attentions=decoder_outputs.cross_attentions,
-            encoder_last_hidden_state=encoder_outputs.last_hidden_state if encoder_outputs else None,
-            encoder_hidden_states=encoder_outputs.hidden_states if encoder_outputs else None,
-            encoder_attentions=encoder_outputs.attentions if encoder_outputs else None,
-            latent=vae_outputs.latent,
-            reg_loss=vae_outputs.reg_loss,
-            decoder_ce=decoder_outputs.loss,
         )

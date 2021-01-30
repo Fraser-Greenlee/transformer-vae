@@ -53,8 +53,14 @@ for logger_integration in NOT_ALLOWED_LOGGERS:
 
 class VAE_Trainer(trainer_script.Trainer):
     def __init__(self, model=None, args=None, **kwargs):
-        self.latent_stack = torch.zeros(args.interpolate_training_step_rate * args.train_batch_size, model.config.latent_size, dtype=torch.float, device=args.device)
-        self.final_decoder_hidden_state_list = []
+        self.latent_stack = torch.zeros(
+            args.interpolate_training_step_rate * args.train_batch_size, model.config.latent_size,
+            dtype=torch.float, device=args.device
+        )
+        self.final_decoder_hidden_state_stack = torch.zeros(
+            args.interpolate_training_step_rate * args.train_batch_size, model.config.transformer.n_positions, model.config.transformer.d_model,
+            dtype=torch.float, device=args.device
+        )
         super().__init__(model, args, **kwargs)
 
     def _get_train_sampler(self) -> Optional[torch.utils.data.sampler.Sampler]:
@@ -276,7 +282,7 @@ class VAE_Trainer(trainer_script.Trainer):
         interpolated_logits, interpolated_latent, interpolated_last_hidden_state, target_a = self.prepare_interpolation_data(latent, model)
         interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
 
-        if self.args.smoothness_loss:
+        if self.args.smooth_cosine or self.args.smooth_logits or self.args.smooth_logits_mean:
             # minimise cosine error between interpolated final decoder states
             if self.args.smooth_cosine:
                 # low hidden units gradient w.r.t interpolation coeficient
@@ -312,7 +318,7 @@ class VAE_Trainer(trainer_script.Trainer):
             model.latest_logs['cycle_loss'] = model.latest_logs.get('cycle_loss', 0) + cycle_loss.item()
 
         if model.critic:
-            if self.state.global_step > 1_000:
+            if self.state.global_step > self.args.min_critic_steps:
                 # update model
                 # accumulate compute graph on critic loss variable
                 critic_loss_on_model = model.critic(interpolated_last_hidden_state).mean() * self.args.advisery_weight
@@ -324,6 +330,7 @@ class VAE_Trainer(trainer_script.Trainer):
 
             # update critic
             # real samples
+            final_decoder_hidden_states.size(), latent.size()
             critic_loss = model.critic(final_decoder_hidden_states, torch.zeros((latent.size(0), 1), device=self.args.device)).mean()
             # interpolate samples
             interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
@@ -352,12 +359,9 @@ class VAE_Trainer(trainer_script.Trainer):
         if model.critic or self.args.smoothness_loss or self.args.cycle_loss:
             pos = self.args.train_batch_size * (self.state.global_step % self.args.interpolate_training_step_rate)
             self.latent_stack[pos:pos + self.args.train_batch_size] = outputs.latent.detach()
-            self.final_decoder_hidden_state_list.append(outputs.decoder_hidden_states[-1].detach())
+            self.final_decoder_hidden_state_stack[pos:pos + self.args.train_batch_size] = outputs.decoder_hidden_states[-1].detach()
             if self.state.global_step > 0 and pos == 0:
-                self.training_interpolation_step(torch.cat(self.final_decoder_hidden_state_list), self.latent_stack, model)
-                self.final_decoder_hidden_state_list = []
-            elif self.state.global_step == 0:
-                self.final_decoder_hidden_state_list = []
+                self.training_interpolation_step(self.final_decoder_hidden_state_stack, self.latent_stack, model)
 
         return self.get_loss_grad(outputs, labels).detach()
 
