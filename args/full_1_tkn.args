@@ -1,4 +1,2 @@
-encoder_model n-tokens
-decoder_model n-tokens
 n_latent_tokens 1
 latent_size 768
