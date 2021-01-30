@@ -374,6 +374,8 @@ def load_model_and_tokenizer(model_args):
             reg_schedule_k=model_args.reg_schedule_k,
             reg_schedule_b=model_args.reg_schedule_b,
             n_latent_tokens=model_args.n_latent_tokens,
+            encoder_model=model_args.encoder_model,
+            decoder_model=model_args.decoder_model,
             use_extra_logs=is_wandb_available(),
         )
         logger.warning("You are instantiating a new config instance from scratch (still using T5 checkpoint).")
@@ -382,8 +384,6 @@ def load_model_and_tokenizer(model_args):
         tokenizer = AutoTokenizer.from_pretrained(
             model_args.tokenizer_name, cache_dir=model_args.cache_dir, use_fast=model_args.use_fast_tokenizer
         )
-        if 'gpt' in model_args.tokenizer_name:
-            tokenizer.pad_token = tokenizer.eos_token
     elif model_args.model_path:
         tokenizer = AutoTokenizer.from_pretrained(
             model_args.model_path, cache_dir=model_args.cache_dir, use_fast=model_args.use_fast_tokenizer

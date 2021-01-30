@@ -356,7 +356,7 @@ class VAE_Trainer(trainer_script.Trainer):
             labels = None
         outputs = model(**inputs, output_hidden_states=True)
 
-        if model.critic or self.args.smoothness_loss or self.args.cycle_loss:
+        if model.critic or (self.args.smooth_cosine or self.args.smooth_logits or self.args.smooth_logits_mean) or self.args.cycle_loss:
             pos = self.args.train_batch_size * (self.state.global_step % self.args.interpolate_training_step_rate)
             self.latent_stack[pos:pos + self.args.train_batch_size] = outputs.latent.detach()
             self.final_decoder_hidden_state_stack[pos:pos + self.args.train_batch_size] = outputs.decoder_hidden_states[-1].detach()

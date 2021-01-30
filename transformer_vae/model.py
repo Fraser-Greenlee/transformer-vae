@@ -412,7 +412,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             separate_cls=self.config.transformer.separate_cls,
             truncate_seq=self.config.transformer.truncate_seq,
         )
-    
+
         # Now using T5 decoder
 
         if labels is not None and decoder_input_ids is None:

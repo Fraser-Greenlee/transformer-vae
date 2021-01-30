@@ -39,11 +39,11 @@ class LatentDecoderNTokens(nn.Module):
 
 class LatentDecoderT5Norm(LatentDecoderNTokens):
     '''
-        Convert multiple token encodings into a single latent.
+        Use T5 norm.
     '''
     def __init__(self, config):
-        super().__init__()
-        t_config = config.transformer
+        super().__init__(config)
+        t_config = config.transformer_decoder
         dropout_rate = t_config.dropout_rate
         t_config.dropout_rate = 0
         self.norm = T5LayerFF(t_config)
@@ -55,10 +55,10 @@ class LatentDecoderT5Norm(LatentDecoderNTokens):
 
 class LatentDecoderFunnelNorm(LatentDecoderNTokens):
     '''
-        Convert multiple token encodings into a single latent.
+        Use Funnel norm.
     '''
     def __init__(self, config):
-        super().__init__()
+        super().__init__(config)
         t_config = config.transformer
         self.norm = nn.LayerNorm(t_config.d_model, t_config.layer_norm_eps)
 
