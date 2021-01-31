@@ -274,13 +274,13 @@ class VAE_Trainer(trainer_script.Trainer):
         interp_outputs = model(decoder_input_ids=tokens, latent=interp_latent, output_hidden_states=True)
         model.config.use_extra_logs = old
 
-        return interp_outputs.logits, interp_latent, interp_outputs.hidden_states[-1], interp_ratio
+        return interp_outputs.logits, interp_latent, interp_outputs.reconstructed_encoding, interp_outputs.hidden_states[-1], interp_ratio
 
     def training_interpolation_step(self, final_decoder_hidden_states, latent, model):
         '''
             Only to be ran with Funnel-T5.
         '''
-        interpolated_logits, interpolated_latent, interpolated_last_hidden_state, target_a = self.prepare_interpolation_data(latent, model)
+        interpolated_logits, interpolated_latent, reconstructed_encoding, interpolated_last_hidden_state, target_a = self.prepare_interpolation_data(latent, model)
         interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
 
         if self.args.smooth_cosine or self.args.smooth_logits or self.args.smooth_logits_mean:
@@ -315,17 +315,28 @@ class VAE_Trainer(trainer_script.Trainer):
             )
             model.config.use_extra_logs = old
             cycle_loss *= self.args.cycle_weight
+            cycle_loss /= interpolated_latent.size(0)
             cycle_loss.backward(retain_graph=True)
             model.latest_logs['cycle_loss'] = model.latest_logs.get('cycle_loss', 0) + cycle_loss.item()
         elif self.args.vae_cycle_loss:
             # TODO try cycle with just the VAE part
-            import pdb; pdb.set_trace()
+            target = 1.0 * torch.ones(interpolated_latent.size(0), device=self.args.device)
+            old = model.config.use_extra_logs
+            model.config.use_extra_logs = False
+            cycle_loss = torch.nn.CosineEmbeddingLoss()(
+                model.vae(reconstructed_encoding, skip_reg_loss=True).latent, interpolated_latent, target
+            )
+            model.config.use_extra_logs = old
+            cycle_loss *= self.args.cycle_weight
+            cycle_loss /= interpolated_latent.size(0)
+            cycle_loss.backward(retain_graph=True)
+            model.latest_logs['cycle_loss'] = model.latest_logs.get('cycle_loss', 0) + cycle_loss.item()
 
         if model.critic:
             if self.state.global_step > self.args.min_critic_steps:
                 # update model
                 # accumulate compute graph on critic loss variable
-                critic_loss_on_model = model.critic(interpolated_last_hidden_state).mean() * self.args.advisery_weight
+                critic_loss_on_model = model.critic(interpolated_last_hidden_state).mean() * self.args.advisery_weight / interpolated_last_hidden_state.size(0)
                 # get gradients of the output only w.r.t the inputs and not model.critic
                 critic_loss_to_last_hidden = autograd.grad(outputs=critic_loss_on_model, inputs=interpolated_last_hidden_state, only_inputs=True, retain_graph=True)
                 # acumulate gradient in VAE model (will only be the VAE-decoder)
@@ -340,7 +351,7 @@ class VAE_Trainer(trainer_script.Trainer):
             interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
             critic_loss += model.critic(interpolated_last_hidden_state_d, target_a.detach().view(-1, 1)).mean()
             # average between the 2 losses
-            critic_loss /= 2
+            critic_loss /= 2 * latent.size(0)
             critic_loss.backward(retain_graph=True)  # accumulate gradient on critic
             model.latest_logs['critic_loss'] = model.latest_logs.get('critic_loss', 0) + critic_loss.item()
 

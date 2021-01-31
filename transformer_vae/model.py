@@ -35,7 +35,7 @@ class EncoderDecoderVAE(nn.Module):
         self.mmd_batch_size = mmd_batch_size
         self.use_reg_loss = use_reg_loss
 
-    def _model_forward(self, encoding, latent=None, global_step=None):
+    def _model_forward(self, encoding, latent=None):
         if latent is None:
             latent = self.encoder(encoding)
         return self.decoder(latent), latent
@@ -44,12 +44,12 @@ class EncoderDecoderVAE(nn.Module):
         self,
         input_encoding=None,
         latent=None,
-        global_step=None
+        skip_reg_loss=False,
     ):
         if input_encoding is None and latent is None:
             raise ValueError("Both `input_encoding` and `latent` sent to VAE are Null.")
-        use_reg_loss = self.use_reg_loss and latent is None  # don't regularise if given latent
-        recon_encoding, latent = self._model_forward(input_encoding, latent=latent, global_step=global_step)
+        use_reg_loss = self.use_reg_loss and latent is None and skip_reg_loss is False  # don't regularise if given latent
+        recon_encoding, latent = self._model_forward(input_encoding, latent=latent)
         if use_reg_loss:
             # TODO divide by batch size, or some custom val, sqrt batch?
             reg_loss = self._regularliser_loss(latent) / latent.size(0)
@@ -402,10 +402,9 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             )
 
         vae_outputs = self.vae(
-            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs and isinstance(encoder_outputs, BaseModelOutput) else None, latent=latent, global_step=self.global_step
+            input_encoding=encoder_outputs.last_hidden_state if encoder_outputs and isinstance(encoder_outputs, BaseModelOutput) else None, latent=latent
         )
 
-        # TODO allow more options here, specifically allow an extra encoder block after upsampling
         upsampled_encoding = upsample(
             vae_outputs.reconstructed_encoding,
             stride=2 ** (len(self.config.transformer.block_sizes) - 1),
@@ -462,6 +461,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
             hidden_states=decoder_outputs.hidden_states if decoder_outputs else None,
             decoder_attentions=decoder_outputs.attentions if decoder_outputs else None,
             cross_attentions=decoder_outputs.cross_attentions if decoder_outputs else None,
+            reconstructed_encoding=vae_outputs.reconstructed_encoding,
             encoder_last_hidden_state=encoder_outputs.last_hidden_state if encoder_outputs else None,
             encoder_hidden_states=encoder_outputs.hidden_states if encoder_outputs else None,
             encoder_attentions=encoder_outputs.attentions if encoder_outputs else None,
