@@ -51,7 +51,8 @@ class EncoderDecoderVAE(nn.Module):
         use_reg_loss = self.use_reg_loss and latent is None  # don't regularise if given latent
         recon_encoding, latent = self._model_forward(input_encoding, latent=latent, global_step=global_step)
         if use_reg_loss:
-            reg_loss = self._regularliser_loss(latent)
+            # TODO divide by batch size, or some custom val, sqrt batch?
+            reg_loss = self._regularliser_loss(latent) / latent.size(0)
         else:
             reg_loss = torch.tensor(0, device=latent.device)
         return BaseVAE_Output(latent=latent, reconstructed_encoding=recon_encoding, reg_loss=reg_loss)

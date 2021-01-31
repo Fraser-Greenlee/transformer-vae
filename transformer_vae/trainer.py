@@ -317,6 +317,9 @@ class VAE_Trainer(trainer_script.Trainer):
             cycle_loss *= self.args.cycle_weight
             cycle_loss.backward(retain_graph=True)
             model.latest_logs['cycle_loss'] = model.latest_logs.get('cycle_loss', 0) + cycle_loss.item()
+        elif self.args.vae_cycle_loss:
+            # TODO try cycle with just the VAE part
+            import pdb; pdb.set_trace()
 
         if model.critic:
             if self.state.global_step > self.args.min_critic_steps:
