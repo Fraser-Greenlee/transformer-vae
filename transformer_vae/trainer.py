@@ -11,9 +11,11 @@ from torch.utils.data.dataloader import DataLoader
 from torch.cuda.amp import autocast
 
 from transformers import trainer as trainer_script
+from transformers.optimization import AdamW, get_scheduler
 from transformers.integrations import (
     WandbCallback,
     is_wandb_available,
+    is_fairscale_available,
     TensorBoardCallback,
     CometCallback,
     AzureMLCallback,
@@ -23,6 +25,12 @@ from transformers.file_utils import is_apex_available
 if is_apex_available():
     from apex import amp
 
+if is_fairscale_available():
+    from fairscale.nn.data_parallel import ShardedDataParallel as ShardedDDP
+    from fairscale.optim import OSS
+    from fairscale.optim.grad_scaler import ShardedGradScaler
+
+from transformer_vae.optimizers import FixedAdafactor
 from transformer_vae.sequence_checks import SEQ_CHECKS
 from transformer_vae.trainer_callback import WandbCallbackUseModelLogs
 from transformer_vae.sklearn import train_svm
@@ -62,6 +70,54 @@ class VAE_Trainer(trainer_script.Trainer):
             dtype=torch.float, device=args.device
         )
         super().__init__(model, args, **kwargs)
+
+    def create_optimizer_and_scheduler(self, num_training_steps: int):
+        """
+        Edited to use fixed Adafactor.
+
+        Setup the optimizer and the learning rate scheduler.
+
+        We provide a reasonable default that works well. If you want to use something else, you can pass a tuple in the
+        Trainer's init through :obj:`optimizers`, or subclass and override this method in a subclass.
+        """
+        if self.optimizer is None:
+            no_decay = ["bias", "LayerNorm.weight"]
+            optimizer_grouped_parameters = [
+                {
+                    "params": [p for n, p in self.model.named_parameters() if not any(nd in n for nd in no_decay)],
+                    "weight_decay": self.args.weight_decay,
+                },
+                {
+                    "params": [p for n, p in self.model.named_parameters() if any(nd in n for nd in no_decay)],
+                    "weight_decay": 0.0,
+                },
+            ]
+            optimizer_cls = FixedAdafactor if self.args.adafactor else AdamW
+            if self.args.adafactor:
+                optimizer_kwargs = {"scale_parameter": False, "relative_step": False}
+            else:
+                optimizer_cls = AdamW
+                optimizer_kwargs = {
+                    "betas": (self.args.adam_beta1, self.args.adam_beta2),
+                    "eps": self.args.adam_epsilon,
+                }
+            optimizer_kwargs["lr"] = self.args.learning_rate
+            if self.sharded_dpp:
+                self.optimizer = OSS(
+                    params=optimizer_grouped_parameters,
+                    optim=optimizer_cls,
+                    **optimizer_kwargs,
+                )
+            else:
+                self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
+
+        if self.lr_scheduler is None:
+            self.lr_scheduler = get_scheduler(
+                self.args.lr_scheduler_type,
+                self.optimizer,
+                num_warmup_steps=self.args.warmup_steps,
+                num_training_steps=num_training_steps,
+            )
 
     def _get_train_sampler(self) -> Optional[torch.utils.data.sampler.Sampler]:
         if isinstance(self.train_dataset, torch.utils.data.IterableDataset) or not isinstance(
@@ -277,13 +333,13 @@ class VAE_Trainer(trainer_script.Trainer):
         interp_outputs = model(decoder_input_ids=tokens, latent=interp_latent, output_hidden_states=True)
         model.config.use_extra_logs = old
 
-        return interp_outputs.logits, interp_latent, interp_outputs.reconstructed_encoding, interp_outputs.hidden_states[-1], interp_ratio
+        return interp_latent, interp_outputs.reconstructed_encoding, interp_outputs.hidden_states[-1], interp_ratio
 
     def training_interpolation_step(self, final_decoder_hidden_states, latent, model):
         '''
             Only to be ran with Funnel-T5.
         '''
-        interpolated_logits, interpolated_latent, reconstructed_encoding, interpolated_last_hidden_state, target_a = self.prepare_interpolation_data(latent, model)
+        interpolated_latent, reconstructed_encoding, interpolated_last_hidden_state, target_a = self.prepare_interpolation_data(latent, model)
         interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
 
         if self.args.cycle_loss:
