@@ -334,42 +334,6 @@ class TrainTests(TestCasePlus):
             result = main()
             self.assertAlmostEqual(result["epoch"], 1.0)
 
-    def test_train_smooth(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
-        tmp_dir = self.get_auto_remove_tmp_dir()
-        testargs = f"""
-            train.py
-            --train_file ./tests/fixtures/line_by_line_max_len_3.txt
-            --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
-            --do_train
-            --do_eval
-            --eval_steps 3
-            --evaluation_strategy steps
-            --sample_from_latent
-            --per_device_train_batch_size 4
-            --per_device_eval_batch_size 4
-            --num_train_epochs 1
-            --set_seq_size 8
-            --n_latent_tokens 1
-            --latent_size 2
-            --smooth_cosine
-            --output_dir {tmp_dir}
-            --overwrite_output_dir
-            """.split()
-
-        if torch.cuda.device_count() > 1:
-            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
-            return
-
-        if torch_device != "cuda":
-            testargs.append("--no_cuda")
-
-        with patch.object(sys, "argv", testargs):
-            result = main()
-            self.assertAlmostEqual(result["epoch"], 1.0)
-
     def test_train_cycle_loss(self):
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)

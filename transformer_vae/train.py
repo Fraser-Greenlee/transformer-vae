@@ -64,18 +64,6 @@ class VAE_TrainingArguments(TrainingArguments):
         default=False,
         metadata={"help": "Test using latent codes for unsupervised classification."},
     )
-    smooth_cosine: bool = field(
-        default=False,
-        metadata={"help": "Minimise cosine error between final layer hidden states interpolated & non interpolated sequences."},
-    )
-    smooth_logits: bool = field(
-        default=False,
-        metadata={"help": "Minimise the gradient of the logits w.r.t the interpolation ratio."},
-    )
-    smooth_logits_mean: bool = field(
-        default=False,
-        metadata={"help": "Minimise the gradient of the logits w.r.t the interpolation ratio (use mean instead of norm)."},
-    )
     cycle_loss: bool = field(
         default=False,
         metadata={"help": "Encourage the encoder & decoder to produce a bijective mapping. Feeds the final decoder hidden state to the encoder and compares the latent codes."},
@@ -89,10 +77,6 @@ class VAE_TrainingArguments(TrainingArguments):
         metadata={"help": "Encourage the encoder & decoder to produce a bijective mapping. Feeds the final decoder hidden state to the encoder and compares the latent codes."},
     )
     cycle_weight: int = field(
-        default=1,
-        metadata={"help": "Encourage the encoder & decoder to produce a bijective mapping. Feeds the final decoder hidden state to the encoder and compares the latent codes."},
-    )
-    smooth_weight: int = field(
         default=1,
         metadata={"help": "Encourage the encoder & decoder to produce a bijective mapping. Feeds the final decoder hidden state to the encoder and compares the latent codes."},
     )

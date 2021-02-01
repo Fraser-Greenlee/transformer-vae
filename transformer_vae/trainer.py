@@ -283,28 +283,6 @@ class VAE_Trainer(trainer_script.Trainer):
         interpolated_logits, interpolated_latent, reconstructed_encoding, interpolated_last_hidden_state, target_a = self.prepare_interpolation_data(latent, model)
         interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
 
-        if self.args.smooth_cosine or self.args.smooth_logits or self.args.smooth_logits_mean:
-            # minimise cosine error between interpolated final decoder states
-            if self.args.smooth_cosine:
-                # low hidden units gradient w.r.t interpolation coeficient
-                logits_wrt_alpha = autograd.grad(outputs=interpolated_last_hidden_state, inputs=target_a, only_inputs=True, create_graph=True, retain_graph=True)[0]
-                smoothness_loss = logits_wrt_alpha.norm()
-                smoothness_loss.backward(retain_graph=True)
-            elif self.args.smooth_logits:
-                # low logits gradient w.r.t interpolation coeficient
-                logits_wrt_alpha = autograd.grad(outputs=interpolated_logits.norm(), inputs=target_a, only_inputs=True, create_graph=True, retain_graph=True)[0]
-                smoothness_loss = logits_wrt_alpha.norm()
-                smoothness_loss.backward(retain_graph=True)
-            elif self.args.smooth_logits_mean:
-                # low logits gradient w.r.t interpolation coeficient
-                logits_wrt_alpha = autograd.grad(outputs=interpolated_logits.mean(), inputs=target_a, only_inputs=True, create_graph=True, retain_graph=True)[0]
-                smoothness_loss = logits_wrt_alpha.mean()
-            else:
-                raise Exception('No smooth loss selected')
-            smoothness_loss *= self.args.advisery_weight
-            smoothness_loss.backward(retain_graph=True)
-            model.latest_logs['smoothness_loss'] = model.latest_logs.get('smoothness_loss', 0) + smoothness_loss.item()
-
         if self.args.cycle_loss:
             # minimise cosine error between latent code & re-encoded latent code `latent VS Encode(Decode(latent))`
             target = 1.0 * torch.ones(interpolated_latent.size(0), device=self.args.device)
@@ -371,7 +349,7 @@ class VAE_Trainer(trainer_script.Trainer):
             labels = None
         outputs = model(**inputs, output_hidden_states=True)
 
-        if model.critic or (self.args.smooth_cosine or self.args.smooth_logits or self.args.smooth_logits_mean) or self.args.cycle_loss:
+        if model.critic or self.args.cycle_loss:
             pos = self.args.train_batch_size * (self.state.global_step % self.args.interpolate_training_step_rate)
             self.latent_stack[pos:pos + self.args.train_batch_size] = outputs.latent.detach()
             self.final_decoder_hidden_state_stack[pos:pos + self.args.train_batch_size] = outputs.decoder_hidden_states[-1].detach()
