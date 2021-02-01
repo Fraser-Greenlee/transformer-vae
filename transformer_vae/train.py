@@ -52,10 +52,6 @@ class VAE_TrainingArguments(TrainingArguments):
         default=None,
         metadata={"help": "Limit the eval dataset size, defaults to not limiting it, must be < validation size."},
     )
-    use_adafactor: bool = field(
-        default=False,
-        metadata={"help": "Whether to use one the Adafactor optimizer."},
-    )
     sample_from_latent: bool = field(
         default=False,
         metadata={"help": "Whether to sample from the latent space during evaluation."},
@@ -461,26 +457,6 @@ def preprocess_datasets(training_args, data_args, model_args, tokenizer, dataset
     return data_collator, tokenized_datasets
 
 
-def get_optimizers(training_args, model):
-    optimizers = [None, None]
-    if training_args.use_adafactor:
-        no_decay = ["bias", "LayerNorm.weight"]
-        optimizer_grouped_parameters = [
-            {
-                "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-                "weight_decay": training_args.weight_decay,
-            },
-            {
-                "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
-                "weight_decay": 0.0,
-            },
-        ]
-        optimizers[0] = Adafactor(
-            optimizer_grouped_parameters, lr=training_args.learning_rate, scale_parameter=False, relative_step=False
-        )
-    return tuple(optimizers)
-
-
 def main():
     model_args, data_args, training_args = get_args()
 
@@ -504,7 +480,6 @@ def main():
         tokenizer=tokenizer,
         data_collator=data_collator,
         callbacks=[TellModelGlobalStep],
-        optimizers=get_optimizers(training_args, model),
     )
     trainer.log({})
 
