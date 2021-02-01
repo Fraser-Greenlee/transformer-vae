@@ -20,9 +20,9 @@ install_requires = [
     "transformers==4.2.2",
     "wandb>=0.10.14",
     "torch==1.7.0",
-    "mpi4py==3.0.3",
     "sklearn",  # for SVM
 ]
+# "mpi4py==3.0.3",
 
 tests_require = ["pytest", "flake8", "flake8-mypy", "black", "twine"]
 
