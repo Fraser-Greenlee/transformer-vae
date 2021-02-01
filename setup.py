@@ -20,7 +20,6 @@ install_requires = [
     "transformers==4.2.2",
     "wandb>=0.10.14",
     "torch==1.7.0",
-    "deepspeed==0.3.10",
     "mpi4py==3.0.3",
     "sklearn",  # for SVM
 ]
