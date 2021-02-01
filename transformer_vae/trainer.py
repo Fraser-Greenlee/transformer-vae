@@ -148,6 +148,7 @@ class VAE_Trainer(trainer_script.Trainer):
             )
 
     def _random_samples(self):
+        raise NotImplementedError('Not sampling from true prioir here.')
         # TODO This should be random samples from the models prior but in an MMD-VAE the prior doesn't actually match a gaussian so this needs to change.
         table = wandb.Table(columns=["Text", "Valid"])
         seq_check_results = 0
@@ -241,10 +242,12 @@ class VAE_Trainer(trainer_script.Trainer):
         elif self.use_apex:
             with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                 scaled_loss.backward()
+        elif self.deepspeed:
+            self.deepspeed.backward(loss)
         else:
             loss.backward()
 
-        return loss
+        return loss.detach()
 
     def gradual_interpolation_inputs(self, latent_start, latent_end):
         ratios = torch.arange(0, 1.1, 0.1, device=self.args.device)
@@ -356,7 +359,7 @@ class VAE_Trainer(trainer_script.Trainer):
             if self.state.global_step > 0 and pos == 0:
                 self.training_interpolation_step(self.final_decoder_hidden_state_stack, self.latent_stack, model)
 
-        return self.get_loss_grad(outputs, labels).detach()
+        return self.get_loss_grad(outputs, labels)
 
     def evaluate(self, eval_dataset: Optional[Dataset] = None) -> Dict[str, float]:
         """
