@@ -1,1 +1,1 @@
-deepspeed=deepspeed/ds_config.json
+deepspeed=deepspeed/cpu_off.json
