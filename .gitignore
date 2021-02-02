@@ -21,6 +21,7 @@ __pycache__/
 
 !tests/fixtures/*
 !deepspeed/*.json
+!tokenizers/*.json
 
 .DS_Store
 
