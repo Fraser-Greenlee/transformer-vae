@@ -1,0 +1,2 @@
+transformer_name funnel-transformer/large
+transformer_decoder_name t5-large
