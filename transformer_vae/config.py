@@ -130,6 +130,7 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
         transformer_critic_name=None,
         critic_type=None,
         decoder_start_token_id=0,
+        tye_embeddings=False,
         cache_dir=None,
         **kwargs,
     ):
@@ -166,6 +167,7 @@ class Funnel_T5_VAE_Config(Transformer_VAE_Config):
                 self.transformer_critic.d_model,
                 "Funnel & T5 transformers have different dimensions."
             )
+        self.tye_embeddings = tye_embeddings
 
     def to_dict(self):
         """

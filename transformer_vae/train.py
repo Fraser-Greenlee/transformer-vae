@@ -173,6 +173,12 @@ class ModelArguments:
             "help": "Number of tokens to use when making a sequence latent code."
         },
     )
+    tye_embeddings: bool = field(
+        default=False,
+        metadata={
+            "help": "Have the Encoder embedding use the same weights as the decoder embedding."
+        },
+    )
 
 
 @dataclass
@@ -361,6 +367,7 @@ def load_model_and_tokenizer(model_args):
             reg_schedule_k=model_args.reg_schedule_k,
             reg_schedule_b=model_args.reg_schedule_b,
             n_latent_tokens=model_args.n_latent_tokens,
+            tye_embeddings=model_args.tye_embeddings,
             encoder_model=model_args.encoder_model,
             decoder_model=model_args.decoder_model,
             use_extra_logs=is_wandb_available(),

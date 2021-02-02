@@ -156,7 +156,6 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
 
     def resize_token_embeddings(self, *args, **kwargs):
         super().resize_token_embeddings(*args, **kwargs)
-        self.transformer.resize_token_embeddings(*args, **kwargs)
 
     def set_input_embeddings(self, new_embeddings):
         return self.transformer.set_input_embeddings(new_embeddings)
@@ -331,6 +330,8 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         transformer_model = AutoModelForSeq2SeqLM.from_config(config.transformer_decoder)
         self.transformer.decoder = transformer_model.decoder
         self.transformer.lm_head = transformer_model.lm_head
+        if config.tye_embeddings:
+            self.transformer.funnel.embeddings.word_embeddings = self.transformer.decoder.embed_tokens
         self.decoder_start_token_id = self.config.transformer_decoder.decoder_start_token_id
         assert (
             self.decoder_start_token_id is not None
