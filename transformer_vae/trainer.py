@@ -312,7 +312,7 @@ class VAE_Trainer(trainer_script.Trainer):
 
     def random_interpolation_inputs(self, latent):
         batch_size = latent.size(0)
-        interpolation_ratios = torch.rand(batch_size, device=self.args.device) * 0.5
+        interpolation_ratios = torch.rand(batch_size, device=self.args.device) * 0.25 + 0.25
         interpolation_ratios.requires_grad = True
         shifted_indices = torch.arange(latent.size(0), device='cpu')[1:].tolist() + [0]
         latent_interpolated = slerp(interpolation_ratios, latent, latent[shifted_indices])
