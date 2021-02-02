@@ -331,7 +331,7 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         self.transformer.decoder = transformer_model.decoder
         self.transformer.lm_head = transformer_model.lm_head
         if config.tye_embeddings:
-            self.transformer.funnel.embeddings.word_embeddings = self.transformer.decoder.embed_tokens
+            self.transformer.decoder.embed_tokens = self.transformer.funnel.embeddings
         self.decoder_start_token_id = self.config.transformer_decoder.decoder_start_token_id
         assert (
             self.decoder_start_token_id is not None
