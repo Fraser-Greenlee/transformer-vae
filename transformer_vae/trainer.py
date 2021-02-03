@@ -46,7 +46,7 @@ if WandbCallback in trainer_script.DEFAULT_CALLBACKS:
     trainer_script.DEFAULT_CALLBACKS.append(WandbCallbackUseModelLogs)  # type: ignore
     import wandb
 else:
-    logger.warn("Not using Weights and Biasis, this will give you incomplete logs.")
+    logger.warning("Not using Weights and Biasis, this will give you incomplete logs.")
 
 
 NOT_ALLOWED_LOGGERS = [TensorBoardCallback, CometCallback, AzureMLCallback, MLflowCallback]
@@ -66,7 +66,7 @@ class VAE_Trainer(trainer_script.Trainer):
             dtype=torch.float, device=args.device
         )
         self.final_decoder_hidden_state_stack = torch.zeros(
-            args.interpolate_training_step_rate * args.train_batch_size, model.config.transformer.n_positions, model.config.transformer.d_model,
+            args.interpolate_training_step_rate * args.train_batch_size, model.config.t5.n_positions, model.config.t5.d_model,
             dtype=torch.float, device=args.device
         )
         super().__init__(model, args, **kwargs)

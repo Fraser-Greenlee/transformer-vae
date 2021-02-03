@@ -2,10 +2,11 @@
     Train Transformer-VAEs using the Huggingface Trainer with Weights and Biasis.
 """
 import logging
+import inspect
 import os
 import sys
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass, field, make_dataclass
+from typing import Optional, Any
 
 from datasets import load_dataset
 import transformers
@@ -85,98 +86,46 @@ class VAE_TrainingArguments(TrainingArguments):
     )
 
 
-@dataclass
-class ModelArguments:
-    """
+"""
     Arguments pertaining to which model/config/tokenizer we are going to fine-tune, or train from scratch.
-    """
-    set_seq_size: int = field(metadata={"help": "Set sequence size, must be set."})
-    model_path: Optional[str] = field(
-        default=None,
-        metadata={
-            "help": "The model checkpoint for weights initialization. Leave None if you want to train a model from scratch."
-        },
+
+    ModelArguments take args from Funnel_T5_VAE_Config,
+"""
+fields = [
+    (
+        'model_path', Optional[str], field(
+            default=None, metadata={"help": "The model checkpoint for weights initialization. Leave None if you want to train a model from scratch."}
+        )
+    ),
+    (
+        'config_path', Optional[str], field(
+            default=None, metadata={"help": "Pretrained config path if not the same as model_name"}
+        )
+    ),
+    (
+        'tokenizer_name', Optional[str], field(
+            default='t5-base', metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
+        )
+    ),
+    (
+        'use_fast_tokenizer', bool, field(
+            default=True,
+            metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
+        )
     )
-    transformer_name: Optional[str] = field(
-        default='funnel-transformer/intermediate',
-        metadata={
-            "help": "Name of the transformer model being using for encoding & decoding (must be a variant on the funnel transformer)."
-        },
+] + [
+    (
+        name, type(info.default) if info.default is not None else Any, field(
+            default=info.default, metadata={"help": f"Has default {info.default}, see Funnel_T5_VAE_Config docstring for more info."}
+        )
     )
-    transformer_decoder_name: Optional[str] = field(
-        default="t5-base",
-        metadata={
-            "help": "Name of the transformer model being using for decoding the funnel transformer (only `t5` type transformers supported)."
-        },
-    )
-    transformer_critic_name: Optional[str] = field(
-        default=None,
-        metadata={
-            "help": "Name of the transformer model being using to critique interpolated hidden states, works with T5 & Funnel transformers."
-        },
-    )
-    critic_type: Optional[str] = field(
-        default=None,
-        metadata={
-            "help": "Kind of critic model to use."
-        },
-    )
-    config_path: Optional[str] = field(
-        default=None, metadata={"help": "Pretrained config path if not the same as model_name"}
-    )
-    tokenizer_name: Optional[str] = field(
-        default='t5-base', metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
-    )
-    cache_dir: Optional[str] = field(
-        default=None, metadata={"help": "Where do you want to store the pretrained models downloaded from s3"}
-    )
-    use_fast_tokenizer: bool = field(
-        default=True,
-        metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
-    )
-    latent_size: int = field(default=1_000, metadata={"help": "The size of the VAE's latent space."})
-    encoded_seq_size: int = field(
-        default=None, metadata={"help": "Sequence size of encoded sequence, needed for Funnel-VAE."}
-    )
-    encoder_model: Optional[str] = field(
-        default=None, metadata={"help": "Name of the model that converts hidden states into latent codes."}
-    )
-    decoder_model: Optional[str] = field(
-        default=None, metadata={"help": "Name of the model that converts latent codes into hidden states."}
-    )
-    # Arguments used during training
-    mmd_batch_size: int = field(
-        default=None,
-        metadata={
-            "help": "Run multuple, smaller batches for MMD-VAE regularisation loss (training batch size must be divisible by the MMD batch size)."
-        },
-    )
-    dont_use_reg_loss: bool = field(
-        default=False,
-        metadata={
-            "help": "Toggle regularisation loss, without regularisation your training an autoencoder rather than a VAE."
-        },
-    )
-    reg_schedule_k: float = field(
-        default=0.0025,
-        metadata={"help": "Multiplied by global_step in a sigmoid, more gradually increase regulariser loss weight."},
-    )
-    reg_schedule_b: float = field(
-        default=6.25,
-        metadata={"help": "Added to global step in sigmoid, further delays increase in regulariser loss weight."},
-    )
-    n_latent_tokens: int = field(
-        default=5,
-        metadata={
-            "help": "Number of tokens to use when making a sequence latent code."
-        },
-    )
-    tye_embeddings: bool = field(
-        default=False,
-        metadata={
-            "help": "Have the Encoder embedding use the same weights as the decoder embedding."
-        },
-    )
+    # get relevent model arguments with defaults
+    for name, info in inspect.signature(Funnel_T5_VAE_Config.__init__).parameters.items() if name not in ['self', 'kwargs', 'use_extra_logs']
+]
+# ensure starting with non-default args
+start_f = list(filter(lambda field: field[2].default is None, fields))
+end_f = list(filter(lambda field: field[2].default is not None, fields))
+ModelArguments = make_dataclass('ModelArguments', start_f + end_f)
 
 
 @dataclass
@@ -310,7 +259,7 @@ def load_model_and_tokenizer(model_args):
     # The `.from_pretrained` methods guarantee that only one local process can concurrently
     # download model & vocab.
     if model_args.set_seq_size and model_args.set_seq_size <= 4:
-        logger.warn('`set_seq_size` is to small to work with the Funnel transformer. now using set_seq_size=5')
+        logger.warning('`set_seq_size` is to small to work with the Funnel transformer. now using set_seq_size=5')
         model_args.set_seq_size = 5
 
     if model_args.config_path:
@@ -322,43 +271,12 @@ def load_model_and_tokenizer(model_args):
             model_args.model_path, cache_dir=model_args.cache_dir
         )
     else:
-        config = Funnel_T5_VAE_Config(
-            latent_size=model_args.latent_size,
-            transformer_name=model_args.transformer_name,
-            transformer_decoder_name=model_args.transformer_decoder_name,
-            transformer_critic_name=model_args.transformer_critic_name,
-            critic_type=model_args.critic_type,
-            set_seq_size=model_args.set_seq_size,
-            encoded_seq_size=model_args.encoded_seq_size,
-            mmd_batch_size=model_args.mmd_batch_size,
-            use_reg_loss=(not model_args.dont_use_reg_loss),
-            reg_schedule_k=model_args.reg_schedule_k,
-            reg_schedule_b=model_args.reg_schedule_b,
-            n_latent_tokens=model_args.n_latent_tokens,
-            tye_embeddings=model_args.tye_embeddings,
-            encoder_model=model_args.encoder_model,
-            decoder_model=model_args.decoder_model,
-            use_extra_logs=is_wandb_available(),
-        )
+        config = Funnel_T5_VAE_Config(use_extra_logs=is_wandb_available(), **model_args.__dict__)
         logger.warning("You are instantiating a new config instance from scratch (still using T5 checkpoint).")
 
-    if model_args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_args.tokenizer_name, cache_dir=model_args.cache_dir, use_fast=model_args.use_fast_tokenizer
-        )
-    elif model_args.model_path:
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_args.model_path, cache_dir=model_args.cache_dir, use_fast=model_args.use_fast_tokenizer
-        )
-    elif model_args.transformer_name:
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_args.transformer_name, cache_dir=model_args.cache_dir, use_fast=model_args.use_fast_tokenizer
-        )
-    else:
-        raise ValueError(
-            "You are instantiating a new tokenizer from scratch. This is not supported by this script."
-            "You can do it from another script, save it, and load it from here, using --tokenizer_name."
-        )
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_args.tokenizer_name, cache_dir=model_args.cache_dir, use_fast=model_args.use_fast_tokenizer
+    )
 
     if model_args.model_path:
         model = Funnel_T5_VAE_Model.from_pretrained(
@@ -407,8 +325,12 @@ def preprocess_datasets(training_args, data_args, tokenizer, datasets):
     if text_column_name != "text":
         logger.info(f'Using column "{text_column_name}" as text column.')
 
-    def tokenize_function(examples):
-        return tokenizer(examples[text_column_name], padding="max_length", truncation=True)
+    if tokenizer.pad_token_id is None:
+        def tokenize_function(examples):
+            return tokenizer(examples[text_column_name], truncation=True)
+    else:
+        def tokenize_function(examples):
+            return tokenizer(examples[text_column_name], padding="max_length", truncation=True)
 
     tokenized_datasets = datasets.map(
         tokenize_function,

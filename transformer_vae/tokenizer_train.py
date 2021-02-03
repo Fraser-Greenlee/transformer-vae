@@ -69,10 +69,12 @@ def main():
         min_frequency=args.min_frequency,
         special_tokens=args.special_tokens.split()
     )
-    os.remove(TMP_FILE)
 
     name = args.name if args.name else f'tkn_{args.dataset.split("/")[::-1][0]}_{args.type}'
-    tokenizer.save(f'tokenizers/{name}.json')
+    tkn_dir = f'tokenizers/{name}'
+    if not os.path.exists(tkn_dir):
+        os.mkdir(tkn_dir)
+    tokenizer.save_model(tkn_dir)
 
     print('### Show performance')
     for i, r in enumerate(dataset[args.dataset_seg]):

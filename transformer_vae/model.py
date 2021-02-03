@@ -2,6 +2,7 @@
     Base transformer-VAE model.
 """
 import logging
+import numpy as np
 import torch
 from torch import nn
 from typing import Dict, Any
@@ -10,92 +11,24 @@ from transformers import AutoModelForSeq2SeqLM, AutoModelForMaskedLM
 from transformers.modeling_outputs import BaseModelOutput
 from transformers.models.funnel.modeling_funnel import upsample
 
-from transformer_vae.autoencoders import VAE_ENCODER_MODELS, VAE_DECODER_MODELS
-from transformer_vae.model_outputs import BaseVAE_Output, BaseTransformerVAE_Output
-from transformer_vae.config import Transformer_VAE_Config
-
+from transformer_vae.autoencoders import VAE_ENCODER_MODELS, VAE_DECODER_MODELS, EncoderDecoderVAE
+from transformer_vae.critic import Critic, CriticMean
+from transformer_vae.model_outputs import BaseTransformerVAE_Output
 from transformer_vae.config import Funnel_T5_VAE_Config
 
 
 logger = logging.getLogger(__name__)
 
 
-class EncoderDecoderVAE(nn.Module):
-    """
-    An MMD-VAE used with encoder-decoder models.
-    Encodes all token encodings into a single latent & spits them back out.
-    """
-
-    batch_size = None
-
-    def __init__(self, encoder, decoder, mmd_batch_size=None, use_reg_loss=True):
-        super().__init__()
-        self.encoder = encoder
-        self.decoder = decoder
-        self.mmd_batch_size = mmd_batch_size
-        self.use_reg_loss = use_reg_loss
-
-    def _model_forward(self, encoding, latent=None):
-        if latent is None:
-            latent = self.encoder(encoding)
-        return self.decoder(latent), latent
-
-    def forward(
-        self,
-        input_encoding=None,
-        latent=None,
-        skip_reg_loss=False,
-    ):
-        if input_encoding is None and latent is None:
-            raise ValueError("Both `input_encoding` and `latent` sent to VAE are Null.")
-        use_reg_loss = self.use_reg_loss and latent is None and skip_reg_loss is False  # don't regularise if given latent
-        recon_encoding, latent = self._model_forward(input_encoding, latent=latent)
-        if use_reg_loss:
-            # TODO divide by batch size, or some custom val, sqrt batch?
-            reg_loss = self._regularliser_loss(latent) / latent.size(0)
-        else:
-            reg_loss = torch.tensor(0, device=latent.device)
-        return BaseVAE_Output(latent=latent, reconstructed_encoding=recon_encoding, reg_loss=reg_loss)
-
-    @staticmethod
-    def _compute_kernel(x, y):
-        x_size = x.shape[0]
-        y_size = y.shape[0]
-        dim = x.shape[1]
-
-        tiled_x = x.view(x_size, 1, dim).repeat(1, y_size, 1)
-        tiled_y = y.view(1, y_size, dim).repeat(x_size, 1, 1)
-
-        return torch.exp(-torch.mean((tiled_x - tiled_y) ** 2, dim=2) / dim * 1.0)
-
-    def _compute_mmd(self, x, y):
-        x_kernel = self._compute_kernel(x, x)
-        y_kernel = self._compute_kernel(y, y)
-        xy_kernel = self._compute_kernel(x, y)
-        return torch.mean(x_kernel) + torch.mean(y_kernel) - 2 * torch.mean(xy_kernel)
-
-    def _regularliser_loss(self, latent):
-        if self.training and self.mmd_batch_size:
-            n_batches = latent.size(0) // self.mmd_batch_size
-            n_samples = n_batches * self.mmd_batch_size
-            all_latents = latent[:n_samples].view(
-                -1, self.mmd_batch_size, latent.size(1)
-            )
-            true_samples = torch.randn(all_latents.size(), device=latent.device)
-            total = torch.tensor(0.0, device=latent.device)
-            # TODO compute this in parallel
-            for i, latent_batch in enumerate(all_latents):
-                total += self._compute_mmd(true_samples[i], latent_batch)
-            return total / n_samples
-        true_samples = torch.randn(latent.size(), device=latent.device)
-        return self._compute_mmd(true_samples, latent)
-
-
-class Transformer_VAE_Base_Model(PreTrainedModel):
+class Funnel_T5_VAE_Model(PreTrainedModel):
     r"""
-    This is the base for Transformer-VAE's.
-    Each Transformer-VAE takes an encoder-decoder transformer and converts the encoder's encoding into a latent code & back into an encoding again.
-    These latent codes can then be modified to produce new encodings and so new sequences.
+    The Funnel-VAE model was proposed in `Transformers as Variational Autoencoders
+    <https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html>`__ by Fraser Greenlee.
+    It is a modified Funnel-Transformer model that uses an MMD-VAE on sequence encodings to learn smooth latent spaces of discrete squences.
+
+    Funnel-VAE has its input sequence compressed & then upsampled by Funnel-Transformer.
+    This makes it better able to model long sequences.
+    Funnel-Transformer's decoder is non auto-regressive meaning it generates all tokens in parallel, this is likely worse for generation.
 
     NOTE: To work nicely with `huggingface.Trainer` this model handles some of its training logic here.
     - Must be trained with the `transformer_vae.TellModelGlobalStep` for MMD regularising loss scheduling & log normalizing.
@@ -114,13 +47,13 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
     general usage and behavior.
 
     Parameters:
-        config (:class:`~transformer_vae.Transformer_VAE_Config`): Model configuration class with all the parameters of the model.
+        config (:class:`~transformer_vae.Funnel_T5_VAE_Config`): Model configuration class with all the parameters of the model.
             Initializing with a config file does not load the weights associated with the model, only the
             configuration. Check out the :meth:`~transformers.PreTrainedModel.from_pretrained` method to load the model
             weights.
     """
+    config_class = Funnel_T5_VAE_Config
     base_model_prefix = "transformer"
-    # config_class # impliment this!
     global_step = None
     _calls_since_last_log = 0
     latest_logs = {
@@ -134,34 +67,108 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
     }
     _last_logs: Dict[str, float] = {}
 
-    def __init__(self, config: Transformer_VAE_Config):
+    def __init__(self, config: Funnel_T5_VAE_Config):
         super().__init__(config=config)
+        funnel_transformer = AutoModelForMaskedLM.from_config(config.funnel)
+        t5_transformer = AutoModelForSeq2SeqLM.from_config(config.t5)
 
-        if config.transformer.model_type == "t5":
-            self.transformer = AutoModelForSeq2SeqLM.from_config(config.transformer)
-        elif config.transformer.model_type == "funnel":
-            self.transformer = AutoModelForMaskedLM.from_config(config.transformer)
-        else:
-            raise ValueError(f'Unrecognised model type: "{config.transformer.model_type }"')
+        self.encoder = funnel_transformer.funnel.encoder
+        self.decoder = t5_transformer.decoder
+        self.lm_head = t5_transformer.lm_head
+        self.shared_embedding = t5_transformer.shared
+        self.decoder_start_token_id = self.config.t5.decoder_start_token_id
+        assert (
+            self.decoder_start_token_id is not None
+        ), "`self.config.t5.decoder_start_token_id` has to be defined. In T5 it is usually set to the pad_token_id. See T5 docs for more information"
 
         self.vae = EncoderDecoderVAE(
-            VAE_ENCODER_MODELS[config.encoder_model](self.config),
-            VAE_DECODER_MODELS[config.decoder_model](self.config),
+            VAE_ENCODER_MODELS[config.vae_encoder_model](self.config),
+            VAE_DECODER_MODELS[config.vae_decoder_model](self.config),
             self.config.mmd_batch_size,
             self.config.use_reg_loss,
         )
 
-    def get_input_embeddings(self):
-        raise NotImplementedError()
+        self.critic = None
+        if config.critic:
+            if config.critic_type is None:
+                self.critic = Critic(config.critic)
+            elif config.critic_type == 'mean':
+                self.critic = CriticMean(config.critic)
+            else:
+                raise NotImplementedError(f'Unknown critic type: {config.critic_type}')
 
-    def resize_token_embeddings(self, *args, **kwargs):
-        super().resize_token_embeddings(*args, **kwargs)
+    def get_input_embeddings(self):
+        return self.shared_embedding
 
     def set_input_embeddings(self, new_embeddings):
-        return self.transformer.set_input_embeddings(new_embeddings)
+        self.shared_embedding = new_embeddings
 
     def _init_weights(self, module):
-        return self.transformer._init_weights(module)
+        classname = module.__class__.__name__
+
+        # Funnel init
+        config = self.config.funnel
+        if classname.find("Linear") != -1:
+            if getattr(module, "weight", None) is not None:
+                if config.initializer_std is None:
+                    fan_out, fan_in = module.weight.shape
+                    std = np.sqrt(1.0 / float(fan_in + fan_out))
+                else:
+                    std = config.initializer_std
+                nn.init.normal_(module.weight, std=std)
+            if getattr(module, "bias", None) is not None:
+                nn.init.constant_(module.bias, 0.0)
+        elif classname == "FunnelRelMultiheadAttention":
+            nn.init.uniform_(module.r_w_bias, b=config.initializer_range)
+            nn.init.uniform_(module.r_r_bias, b=config.initializer_range)
+            nn.init.uniform_(module.r_kernel, b=config.initializer_range)
+            nn.init.uniform_(module.r_s_bias, b=config.initializer_range)
+            nn.init.uniform_(module.seg_embed, b=config.initializer_range)
+        elif classname == "FunnelEmbeddings":
+            std = 1.0 if config.initializer_std is None else config.initializer_std
+            nn.init.normal_(module.word_embeddings.weight, std=std)
+
+        # T5 init
+        config = self.config.t5
+        factor = config.initializer_factor  # Used for testing weights initialization
+        if classname == 'T5LayerNorm':
+            module.weight.data.fill_(factor * 1.0)
+        elif classname in ['T5Model', 'T5ForConditionalGeneration', 'T5EncoderModel']:
+            # Mesh TensorFlow embeddings initialization
+            # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L1624
+            module.shared.weight.data.normal_(mean=0.0, std=factor * 1.0)
+        elif classname == 'T5DenseReluDense':
+            # Mesh TensorFlow FF initialization
+            # See https://github.com/tensorflow/mesh/blob/master/mesh_tensorflow/transformer/transformer_layers.py#L56
+            # and https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L89
+            module.wi.weight.data.normal_(mean=0.0, std=factor * ((config.d_model) ** -0.5))
+            if hasattr(module.wi, "bias") and module.wi.bias is not None:
+                module.wi.bias.data.zero_()
+            module.wo.weight.data.normal_(mean=0.0, std=factor * ((config.d_ff) ** -0.5))
+            if hasattr(module.wo, "bias") and module.wo.bias is not None:
+                module.wo.bias.data.zero_()
+        elif classname == 'T5DenseGatedGeluDense':
+            module.wi_0.weight.data.normal_(mean=0.0, std=factor * ((config.d_model) ** -0.5))
+            if hasattr(module.wi_0, "bias") and module.wi_0.bias is not None:
+                module.wi_0.bias.data.zero_()
+            module.wi_1.weight.data.normal_(mean=0.0, std=factor * ((config.d_model) ** -0.5))
+            if hasattr(module.wi_1, "bias") and module.wi_1.bias is not None:
+                module.wi_1.bias.data.zero_()
+            module.wo.weight.data.normal_(mean=0.0, std=factor * ((config.d_ff) ** -0.5))
+            if hasattr(module.wo, "bias") and module.wo.bias is not None:
+                module.wo.bias.data.zero_()
+        elif classname == 'T5Attention':
+            # Mesh TensorFlow attention initialization to avoid scaling before softmax
+            # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/attention.py#L136
+            d_model = config.d_model
+            key_value_proj_dim = config.d_kv
+            n_heads = config.num_heads
+            module.q.weight.data.normal_(mean=0.0, std=factor * ((d_model * key_value_proj_dim) ** -0.5))
+            module.k.weight.data.normal_(mean=0.0, std=factor * (d_model ** -0.5))
+            module.v.weight.data.normal_(mean=0.0, std=factor * (d_model ** -0.5))
+            module.o.weight.data.normal_(mean=0.0, std=factor * ((n_heads * key_value_proj_dim) ** -0.5))
+            if module.has_relative_attention_bias:
+                module.relative_attention_bias.weight.data.normal_(mean=0.0, std=factor * ((d_model) ** -0.5))
 
     def _regulariser_loss_weight_schedule(self):
         if self.global_step is None or not self.config.use_reg_loss:
@@ -208,45 +215,17 @@ class Transformer_VAE_Base_Model(PreTrainedModel):
                 del kwargs[rm_key]
         return {"decoder_input_ids": input_ids, "latent": latent, **kwargs}
 
-    def forward(
-        self,
-        input_ids=None,
-        labels=None,
-        attention_mask=None,
-        encoder_outputs=None,
-        decoder_input_ids=None,
-        latent=None,
-        return_dict=True,
-        **unused_kwargs
-    ):
-        raise NotImplementedError()
-
-
-class Funnel_VAE_Model_Base(Transformer_VAE_Base_Model):
-    def get_input_embeddings(self):
-        return self.transformer.funnel.embeddings.word_embeddings
-
     def _get_encoder_outputs(
         self,
         input_ids=None,
         attention_mask=None,
         token_type_ids=None,
         inputs_embeds=None,
-        output_attentions=None,
-        output_hidden_states=None,
         return_dict=True,
         # unused args
         class_label=None,
         label=None,
     ):
-        funnel = self.transformer.funnel
-
-        output_attentions = output_attentions if output_attentions is not None else funnel.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else funnel.config.output_hidden_states
-        )
-        return_dict = return_dict if return_dict is not None else funnel.config.use_return_dict
-
         if input_ids is not None and inputs_embeds is not None:
             raise ValueError("You cannot specify both `input_ids` and `inputs_embeds` at the same time.")
         elif input_ids is not None:
@@ -264,90 +243,19 @@ class Funnel_VAE_Model_Base(Transformer_VAE_Base_Model):
             token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=device)
 
         if inputs_embeds is None:
-            inputs_embeds = funnel.embeddings(input_ids)
+            inputs_embeds = self.shared_embedding(input_ids)
 
-        return funnel.encoder(
+        return self.encoder(
             inputs_embeds,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
-            output_attentions=output_attentions,
             output_hidden_states=True,
             return_dict=return_dict,
         )
 
-
-class Critic(nn.Module):
-    """
-    Model uses an transformer encoder to judge if decoder hidden states are from real VS interpolated latent points.
-    """
-    def __init__(self, config):
-        super().__init__()
-        try:
-            self.critic = AutoModelForSeq2SeqLM.from_config(config).encoder
-        except ValueError:
-            # handle funnel critic model
-            self.critic = AutoModelForMaskedLM.from_config(config).funnel.encoder
-        self.fc = nn.Linear(config.d_model, 1)
-        self.activation = nn.Sigmoid()
-        self.loss = nn.MSELoss()
-
-    def forward(self, hidden_state, targets=None):
-        attention_mask = torch.ones(hidden_state.size()[:-1], device=hidden_state.device)
-        final_hidden = self.critic(hidden_state, attention_mask=attention_mask).last_hidden_state
-        score = 0.5 * self.activation(self.fc(final_hidden[:, 0]))
-        if targets is not None:
-            return self.loss(score, targets)
-        return score
-
-
-class CriticMean(Critic):
-    """
-    Takes the mean of each tokens score instead of encouraging a seq level score.
-    """
-    def forward(self, hidden_state, targets=None):
-        attention_mask = torch.ones(hidden_state.size()[:-1], device=hidden_state.device)
-        final_hidden = self.critic(hidden_state, attention_mask=attention_mask).last_hidden_state
-        score = 0.5 * self.activation(self.fc(final_hidden)).mean(dim=1)
-        if targets is not None:
-            return self.loss(score, targets)
-        return score
-
-
-class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
-    r"""
-    The Funnel-VAE model was proposed in `Transformers as Variational Autoencoders
-    <https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html>`__ by Fraser Greenlee.
-    It is a modified Funnel-Transformer model that uses an MMD-VAE on sequence encodings to learn smooth latent spaces of discrete squences.
-
-    Funnel-VAE has its input sequence compressed & then upsampled by Funnel-Transformer.
-    This makes it better able to model long sequences.
-    Funnel-Transformer's decoder is non auto-regressive meaning it generates all tokens in parallel, this is likely worse for generation.
-    """
-    config_class = Funnel_T5_VAE_Config
-
-    def __init__(self, config: Funnel_T5_VAE_Config):
-        super().__init__(config=config)
-        transformer_model = AutoModelForSeq2SeqLM.from_config(config.transformer_decoder)
-        self.transformer.decoder = transformer_model.decoder
-        self.transformer.lm_head = transformer_model.lm_head
-        if config.tye_embeddings:
-            self.transformer.funnel.embeddings.word_embeddings = self.transformer.decoder.embed_tokens
-        self.decoder_start_token_id = self.config.transformer_decoder.decoder_start_token_id
-        assert (
-            self.decoder_start_token_id is not None
-        ), "`self.config.transformer_decoder.decoder_start_token_id` has to be defined. In T5 it is usually set to the pad_token_id. See T5 docs for more information"
-        self.critic = None
-        if config.transformer_critic:
-            if config.critic_type is None:
-                self.critic = Critic(config.transformer_critic)
-            elif config.critic_type == 'mean':
-                self.critic = CriticMean(config.transformer_critic)
-            else:
-                raise NotImplementedError(f'Unknown critic type: {config.critic_type}')
-
     def _shift_right(self, input_ids):
-        decoder_start_token_id = self.config.transformer_decoder.decoder_start_token_id
-        pad_token_id = self.config.transformer_decoder.pad_token_id
+        decoder_start_token_id = self.config.t5.decoder_start_token_id
+        pad_token_id = self.config.t5.pad_token_id
 
         # shift inputs to the right
         shifted_input_ids = input_ids.new_zeros(input_ids.shape)
@@ -385,13 +293,12 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
                     "`input_ids` and `decoder_input_ids` do not match. Funnel-T5-VAE can only reproduce its input sequence."
                 )
             if attention_mask is None and input_ids is not None:
-                attention_mask = input_ids.ne(self.transformer.config.pad_token_id).long()
+                attention_mask = input_ids.ne(self.config.t5.pad_token_id).long()
             if encoder_outputs is None:
                 encoder_outputs = self._get_encoder_outputs(
                     input_ids=input_ids,
                     inputs_embeds=inputs_embeds,
                     attention_mask=attention_mask,
-                    output_hidden_states=output_hidden_states,
                     return_dict=True,
                 )
         if encoder_outputs is not None and (isinstance(encoder_outputs, list) or isinstance(encoder_outputs, tuple)):
@@ -407,10 +314,10 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
 
         upsampled_encoding = upsample(
             vae_outputs.reconstructed_encoding,
-            stride=2 ** (len(self.config.transformer.block_sizes) - 1),
-            target_len=self.config.transformer_decoder.n_positions,
-            separate_cls=self.config.transformer.separate_cls,
-            truncate_seq=self.config.transformer.truncate_seq,
+            stride=2 ** (len(self.config.funnel.block_sizes) - 1),
+            target_len=self.config.t5.n_positions,
+            separate_cls=self.config.funnel.separate_cls,
+            truncate_seq=self.config.funnel.truncate_seq,
         )
 
         # Now using T5 decoder
@@ -425,15 +332,15 @@ class Funnel_T5_VAE_Model(Funnel_VAE_Model_Base):
         decoder_outputs = None
         lm_logits = None
         if decoder_input_ids is not None:
-            decoder_outputs = self.transformer.decoder(
+            decoder_outputs = self.decoder(
                 input_ids=decoder_input_ids, encoder_hidden_states=upsampled_encoding, use_cache=use_cache, output_hidden_states=output_hidden_states, return_dict=True
             )
 
             sequence_output = decoder_outputs.last_hidden_state
             # Rescale output before projecting on vocab
             # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
-            sequence_output = sequence_output * (self.config.transformer.d_model ** -0.5)
-            lm_logits = self.transformer.lm_head(sequence_output)
+            sequence_output = sequence_output * (self.config.funnel.d_model ** -0.5)
+            lm_logits = self.lm_head(sequence_output)
 
             if labels is not None:
                 loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
