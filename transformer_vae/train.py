@@ -13,7 +13,6 @@ from transformers import (
     AutoTokenizer,
     HfArgumentParser,
     TrainingArguments,
-    Adafactor,
     set_seed,
 )
 from transformers.integrations import is_wandb_available
@@ -91,7 +90,7 @@ class ModelArguments:
     """
     Arguments pertaining to which model/config/tokenizer we are going to fine-tune, or train from scratch.
     """
-
+    set_seq_size: int = field(metadata={"help": "Set sequence size, must be set."})
     model_path: Optional[str] = field(
         default=None,
         metadata={
@@ -136,7 +135,6 @@ class ModelArguments:
         metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
     )
     latent_size: int = field(default=1_000, metadata={"help": "The size of the VAE's latent space."})
-    set_seq_size: int = field(default=None, metadata={"help": "Set sequence size, must be set for some autoencoders."})
     encoded_seq_size: int = field(
         default=None, metadata={"help": "Sequence size of encoded sequence, needed for Funnel-VAE."}
     )
@@ -230,36 +228,6 @@ class DataTrainingArguments:
             if self.validation_file is not None:
                 extension = self.validation_file.split(".")[-1]
                 assert extension in ["csv", "json", "txt"], "`validation_file` should be a csv, a json or a txt file."
-
-
-def check_seq_size(tokenizer, text_column_name, data_args, datasets, set_seq_size):
-    def tokenize_function(examples):
-        return tokenizer(examples[text_column_name], padding="longest", truncation=True)
-
-    tokenized_datasets = datasets.map(
-        tokenize_function,
-        batched=True,
-        batch_size=1_000,
-        num_proc=data_args.preprocessing_num_workers,
-        remove_columns=[text_column_name],
-        load_from_cache_file=not data_args.overwrite_cache,
-    )
-
-    max_seq_size = max(
-        max([len(row) for row in tokenized_datasets["train"]["input_ids"][::1_000]]),
-        max([len(row) for row in tokenized_datasets[data_args.validation_name]["input_ids"][::1_000]]),
-    )
-
-    if max_seq_size > set_seq_size:
-        logger.warn(
-            "Model has too short a sequence size for dataset, run with truncating & joining examples.\n"
-            f"Dataset max text column size: {max_seq_size} Model max sequence size: {set_seq_size}"
-        )
-    elif set_seq_size > max_seq_size:
-        logger.info(
-            "Model can handle larger sequence size than present in the dataset.\n"
-            f"Dataset max text column size: {max_seq_size} Model max sequence size: {set_seq_size}"
-        )
 
 
 def get_args():
@@ -411,7 +379,7 @@ def load_model_and_tokenizer(model_args):
     return model, tokenizer
 
 
-def preprocess_datasets(training_args, data_args, model_args, tokenizer, datasets):
+def preprocess_datasets(training_args, data_args, tokenizer, datasets):
     # Add class_label if needed
     if training_args.test_classification:
         if data_args.classification_column != "class_label":
@@ -439,16 +407,13 @@ def preprocess_datasets(training_args, data_args, model_args, tokenizer, dataset
     if text_column_name != "text":
         logger.info(f'Using column "{text_column_name}" as text column.')
 
-    if model_args.set_seq_size:
-        check_seq_size(tokenizer, text_column_name, data_args, datasets, model_args.set_seq_size)
-
     def tokenize_function(examples):
         return tokenizer(examples[text_column_name], padding="max_length", truncation=True)
 
     tokenized_datasets = datasets.map(
         tokenize_function,
         batched=True,
-        batch_size=None,  # apply tokenize_function to whole dataset at once (ensures longest length is global)
+        batch_size=training_args.per_device_train_batch_size,
         num_proc=data_args.preprocessing_num_workers,
         remove_columns=[text_column_name],
         load_from_cache_file=not data_args.overwrite_cache,
@@ -476,7 +441,7 @@ def main():
 
     model, tokenizer = load_model_and_tokenizer(model_args)
 
-    data_collator, tokenized_datasets = preprocess_datasets(training_args, data_args, model_args, tokenizer, datasets)
+    data_collator, tokenized_datasets = preprocess_datasets(training_args, data_args, tokenizer, datasets)
 
     # Initialize our Trainer
     trainer = VAE_Trainer(

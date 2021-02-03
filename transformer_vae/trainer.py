@@ -339,6 +339,8 @@ class VAE_Trainer(trainer_script.Trainer):
         '''
             Only to be ran with Funnel-T5.
         '''
+        # TODO try using many more interpolation samples here
+        # TODO Also filter out ones where autoencoder is not an exact match?
         interpolated_latent, reconstructed_encoding, interpolated_last_hidden_state, target_a = self.prepare_interpolation_data(latent, model)
         interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
 
@@ -356,7 +358,6 @@ class VAE_Trainer(trainer_script.Trainer):
             cycle_loss.backward(retain_graph=True)
             model.latest_logs['cycle_loss'] = model.latest_logs.get('cycle_loss', 0) + cycle_loss.item()
         elif self.args.vae_cycle_loss:
-            # TODO try cycle with just the VAE part
             target = 1.0 * torch.ones(interpolated_latent.size(0), device=self.args.device)
             old = model.config.use_extra_logs
             model.config.use_extra_logs = False
