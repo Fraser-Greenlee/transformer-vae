@@ -1,0 +1,6 @@
+{
+  "eos_token_id": 0,
+  "model_type": "gpt2",
+  "n_positions": 225,
+  "vocab_size": 342
+}

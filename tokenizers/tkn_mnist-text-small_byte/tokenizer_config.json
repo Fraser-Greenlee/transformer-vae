@@ -1,0 +1,1 @@
+{"unk_token": "<unk>", "eos_token": "</s>", "add_prefix_space": false, "model_max_length": 225, "name_or_path": "gpt2"}
