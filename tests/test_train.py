@@ -640,18 +640,18 @@ class TrainTests(TestCasePlus):
             result = main()
             self.assertAlmostEqual(result["epoch"], 2.0)
 
-    def test_train_gpt2_tokenizer(self):
+    def test_train_local_gpt2_tokenizer(self):
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
 
         tmp_dir = self.get_auto_remove_tmp_dir()
         testargs = f"""
             train.py
-            --tokenizer_name gpt2
             --train_file ./tests/fixtures/all_len_16.txt
             --validation_file ./tests/fixtures/all_len_16.txt
             --do_train
             --do_eval
+            --tokenizer_name tokenizers/tkn_mnist-text-small_byte
             --per_device_train_batch_size 4
             --per_device_eval_batch_size 4
             --num_train_epochs 2
@@ -685,6 +685,7 @@ class TrainTests(TestCasePlus):
             --validation_name test
             --do_train
             --do_eval
+            --tokenizer_name gpt2
             --sample_from_latent
             --render_text_image
             --per_device_train_batch_size 2
