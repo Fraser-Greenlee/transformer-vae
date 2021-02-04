@@ -648,14 +648,14 @@ class TrainTests(TestCasePlus):
         testargs = f"""
             train.py
             --tokenizer_name gpt2
-            --train_file ./tests/fixtures/line_by_line_max_len_3.txt
-            --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --train_file ./tests/fixtures/all_len_16.txt
+            --validation_file ./tests/fixtures/all_len_16.txt
             --do_train
             --do_eval
             --per_device_train_batch_size 4
             --per_device_eval_batch_size 4
             --num_train_epochs 2
-            --set_seq_size 5
+            --set_seq_size 16
             --latent_size 2
             --output_dir {tmp_dir}
             --overwrite_output_dir
@@ -685,6 +685,7 @@ class TrainTests(TestCasePlus):
             --validation_name test
             --do_train
             --do_eval
+            --sample_from_latent
             --render_text_image
             --per_device_train_batch_size 2
             --per_device_eval_batch_size 2
