@@ -65,6 +65,7 @@ class VAE_Trainer(trainer_script.Trainer):
             args.interpolate_training_step_rate * args.train_batch_size, model.config.t5.n_positions, model.config.t5.d_model,
             dtype=torch.float, device=args.device
         )
+        self.clean_tkn_spaces = not args.dont_clean_up_tokenization_spaces
         if args.render_text_image:
             assert 'custom_text_to_array' in custom_methods
             self.text_to_array = custom_methods['custom_text_to_array']
@@ -131,13 +132,12 @@ class VAE_Trainer(trainer_script.Trainer):
             return result
 
     def _text_from_latent(self, latent):
-        return self.tokenizer.batch_decode(self._tokens_from_latent(latent), skip_special_tokens=True)
+        return self.tokenizer.batch_decode(self._tokens_from_latent(latent), skip_special_tokens=True, clean_up_tokenization_spaces=self.clean_tkn_spaces)
 
     def _log_image(self, texts):
         '''
             Parse texts as images and log a single, long image to Weights and Biasis.
         '''
-        import pdb; pdb.set_trace()
         single_image_array = np.concatenate((self.text_to_array(txt) for txt in texts), axis=1)
         wandb.log({"image_interpolation": [wandb.Image(single_image_array)]})
 
@@ -165,14 +165,14 @@ class VAE_Trainer(trainer_script.Trainer):
             seq_check_results = 0
             seq_check = SEQ_CHECKS[self.args.seq_check]
             table = wandb.Table(columns=["Interpolation Ratio", "Text", "Valid"])
-            table.add_data(-10, self.tokenizer.decode(samples["input_ids"][0]), True)
+            table.add_data(-10, self.tokenizer.decode(samples["input_ids"][0]), True, clean_up_tokenization_spaces=self.clean_tkn_spaces)
 
             for i in range(11):
                 valid = seq_check(texts[i])
                 table.add_data(interp_ratio[i].item(), texts[i], valid)
                 if i > 0 and i < 10:
                     seq_check_results += int(valid)
-            table.add_data(10, self.tokenizer.decode(samples["input_ids"][1]), True)
+            table.add_data(10, self.tokenizer.decode(samples["input_ids"][1]), True, clean_up_tokenization_spaces=self.clean_tkn_spaces)
 
             wandb.log({"interpolate points": table}, step=self.state.global_step)
             if self.args.seq_check:

@@ -90,6 +90,10 @@ class VAE_TrainingArguments(TrainingArguments):
                             Must be using a dataset with array_to_text & text_to_array methods.
                             This will override seq_check & just see if the text is a valid image."""},
     )
+    dont_clean_up_tokenization_spaces: bool = field(
+        default=False,
+        metadata={"help": "Don't clean up token spaces, turn off for non NLP tasks."},
+    )
 
 
 """

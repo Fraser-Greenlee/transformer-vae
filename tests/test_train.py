@@ -680,18 +680,18 @@ class TrainTests(TestCasePlus):
         testargs = f"""
             train.py
             --dataset_name=Fraser/mnist-text-small
-            --set_seq_size 237
             --eval_steps 2
             --validation_name test
             --do_train
             --do_eval
-            --tokenizer_name gpt2
+            --tokenizer_name tokenizers/tkn_mnist-text-small_byte
             --sample_from_latent
             --render_text_image
+            --dont_clean_up_tokenization_spaces
             --per_device_train_batch_size 2
             --per_device_eval_batch_size 2
             --num_train_epochs 2
-            --set_seq_size 5
+            --set_seq_size 237
             --latent_size 2
             --output_dir {tmp_dir}
             --overwrite_output_dir

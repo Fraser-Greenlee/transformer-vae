@@ -3,3 +3,4 @@ set_seq_size=237
 validation_name=test
 render_text_image
 tokenizer_name=gpt2
+dont_clean_up_tokenization_spaces
