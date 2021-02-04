@@ -671,3 +671,37 @@ class TrainTests(TestCasePlus):
         with patch.object(sys, "argv", testargs):
             result = main()
             self.assertAlmostEqual(result["epoch"], 2.0)
+
+    def test_train_render_text_image(self):
+        stream_handler = logging.StreamHandler(sys.stdout)
+        logger.addHandler(stream_handler)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        testargs = f"""
+            train.py
+            --dataset_name=Fraser/mnist-text-small
+            --set_seq_size 225
+            --eval_steps 2
+            --validation_name test
+            --do_train
+            --do_eval
+            --render_text_image
+            --per_device_train_batch_size 2
+            --per_device_eval_batch_size 2
+            --num_train_epochs 2
+            --set_seq_size 5
+            --latent_size 2
+            --output_dir {tmp_dir}
+            --overwrite_output_dir
+            """.split()
+
+        if torch.cuda.device_count() > 1:
+            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
+            return
+
+        if torch_device != "cuda":
+            testargs.append("--no_cuda")
+
+        with patch.object(sys, "argv", testargs):
+            result = main()
+            self.assertAlmostEqual(result["epoch"], 2.0)

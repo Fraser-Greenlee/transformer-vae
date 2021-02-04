@@ -1,6 +1,7 @@
 import time
 import logging
 from typing import Optional, Dict, List, Tuple, Union, Any
+import numpy as np
 import torch
 from torch import nn, autograd
 from torch.utils.data import Dataset
@@ -35,7 +36,6 @@ from transformer_vae.utils import slerp
 
 logger = logging.getLogger(__name__)
 
-
 if WandbCallback in trainer_script.DEFAULT_CALLBACKS:
     # Allow tracking extra training losses via the model's `get_latest_logs` method
     trainer_script.DEFAULT_CALLBACKS.remove(WandbCallback)  # type: ignore
@@ -56,7 +56,7 @@ for logger_integration in NOT_ALLOWED_LOGGERS:
 
 
 class VAE_Trainer(trainer_script.Trainer):
-    def __init__(self, model=None, args=None, **kwargs):
+    def __init__(self, model=None, args=None, custom_methods={}, **kwargs):
         self.latent_stack = torch.zeros(
             args.interpolate_training_step_rate * args.train_batch_size, model.config.latent_size,
             dtype=torch.float, device=args.device
@@ -65,6 +65,9 @@ class VAE_Trainer(trainer_script.Trainer):
             args.interpolate_training_step_rate * args.train_batch_size, model.config.t5.n_positions, model.config.t5.d_model,
             dtype=torch.float, device=args.device
         )
+        if args.render_text_image:
+            assert 'custom_text_to_array' in custom_methods
+            self.text_to_array = custom_methods['custom_text_to_array']
         super().__init__(model, args, **kwargs)
 
     def create_optimizer_and_scheduler(self, num_training_steps: int):
@@ -130,6 +133,14 @@ class VAE_Trainer(trainer_script.Trainer):
     def _text_from_latent(self, latent):
         return self.tokenizer.batch_decode(self._tokens_from_latent(latent), skip_special_tokens=True)
 
+    def _log_image(self, texts):
+        '''
+            Parse texts as images and log a single, long image to Weights and Biasis.
+        '''
+        import pdb; pdb.set_trace()
+        single_image_array = np.concatenate((self.text_to_array(txt) for txt in texts), axis=1)
+        wandb.log({"image_interpolation": [wandb.Image(single_image_array)]})
+
     def _interpolate_samples(self, eval_dataset):
         '''
             Interpolates between 2 latent encodings of real points.
@@ -146,12 +157,15 @@ class VAE_Trainer(trainer_script.Trainer):
         samples = self._prepare_inputs(next(mini_eval_dataloader_iter))
         latents = self.model(**samples).latent
         interp_latent, interp_ratio = self.gradual_interpolation_inputs(latents[0], latents[1])
+        texts = self._text_from_latent(interp_latent)
+
+        if self.args.render_text_image:
+            self._log_image(texts)
 
         seq_check_results = 0
         seq_check = SEQ_CHECKS[self.args.seq_check]
         table = wandb.Table(columns=["Interpolation Ratio", "Text", "Valid"])
         table.add_data(-10, self.tokenizer.decode(samples["input_ids"][0]), True)
-        texts = self._text_from_latent(interp_latent)
 
         for i in range(11):
             valid = seq_check(texts[i])

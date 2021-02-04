@@ -84,9 +84,17 @@ class VAE_TrainingArguments(TrainingArguments):
         default=1_000,
         metadata={"help": "Start updating the model with the critic loss after N steps."},
     )
+    render_text_image: bool = field(
+        default=False,
+        metadata={"help": """Render sequence as an image and log it to Weights & Biasis during interpolations.
+                            Must be using a dataset with array_to_text & text_to_array methods.
+                            This will override seq_check & just see if the text is a valid image."""},
+    )
 
 
 """
+    # ModelArguments
+
     Arguments pertaining to which model/config/tokenizer we are going to fine-tune, or train from scratch.
 
     ModelArguments take args from Funnel_T5_VAE_Config,
@@ -371,6 +379,7 @@ def main():
         args=training_args,
         train_dataset=tokenized_datasets["train"] if training_args.do_train else None,
         eval_dataset=tokenized_datasets[data_args.validation_name] if training_args.do_eval else None,
+        custom_methods={name: getattr(datasets, name) for name in filter(lambda x: x.startswith('custom_'), dir(datasets))},
         tokenizer=tokenizer,
         data_collator=data_collator,
         callbacks=[TellModelGlobalStep],
