@@ -139,7 +139,7 @@ class VAE_Trainer(trainer_script.Trainer):
             Parse texts as images and log a single, long image to Weights and Biasis.
         '''
         single_image_array = np.concatenate([self.text_to_array(txt) for txt in texts], axis=1)
-        wandb.log({"image_interpolation": [wandb.Image(single_image_array)]})
+        wandb.log({"image_interpolation": [wandb.Image(single_image_array)]}, step=self.state.global_step)
 
     def _interpolate_samples(self, eval_dataset):
         '''
@@ -157,22 +157,24 @@ class VAE_Trainer(trainer_script.Trainer):
         samples = self._prepare_inputs(next(mini_eval_dataloader_iter))
         latents = self.model(**samples).latent
         interp_latent, interp_ratio = self.gradual_interpolation_inputs(latents[0], latents[1])
+        start_txt = self.tokenizer.decode(samples["input_ids"][0], clean_up_tokenization_spaces=self.clean_tkn_spaces)
+        end_txt = self.tokenizer.decode(samples["input_ids"][1], clean_up_tokenization_spaces=self.clean_tkn_spaces)
         texts = self._text_from_latent(interp_latent)
 
         if self.args.render_text_image:
-            self._log_image(texts)
+            self._log_image([start_txt] + texts + [end_txt])
         else:
             seq_check_results = 0
             seq_check = SEQ_CHECKS[self.args.seq_check]
             table = wandb.Table(columns=["Interpolation Ratio", "Text", "Valid"])
-            table.add_data(-10, self.tokenizer.decode(samples["input_ids"][0], clean_up_tokenization_spaces=self.clean_tkn_spaces), True)
+            table.add_data(-10, start_txt, True)
 
             for i in range(11):
                 valid = seq_check(texts[i])
                 table.add_data(interp_ratio[i].item(), texts[i], valid)
                 if i > 0 and i < 10:
                     seq_check_results += int(valid)
-            table.add_data(10, self.tokenizer.decode(samples["input_ids"][1], clean_up_tokenization_spaces=self.clean_tkn_spaces), True)
+            table.add_data(10, end_txt, True)
 
             wandb.log({"interpolate points": table}, step=self.state.global_step)
             if self.args.seq_check:
