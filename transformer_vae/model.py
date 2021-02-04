@@ -12,7 +12,7 @@ from transformers.modeling_outputs import BaseModelOutput
 from transformers.models.funnel.modeling_funnel import upsample
 
 from transformer_vae.autoencoders import VAE_ENCODER_MODELS, VAE_DECODER_MODELS, EncoderDecoderVAE
-from transformer_vae.critic import Critic, CriticMean
+from transformer_vae.critic import CRITIC
 from transformer_vae.model_outputs import BaseTransformerVAE_Output
 from transformer_vae.config import Funnel_T5_VAE_Config
 
@@ -90,12 +90,7 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
 
         self.critic = None
         if config.critic:
-            if config.critic_type is None:
-                self.critic = Critic(config.critic)
-            elif config.critic_type == 'mean':
-                self.critic = CriticMean(config.critic)
-            else:
-                raise NotImplementedError(f'Unknown critic type: {config.critic_type}')
+            self.critic = CRITIC[config.critic_type](config.critic)
 
     def get_input_embeddings(self):
         return self.shared_embedding

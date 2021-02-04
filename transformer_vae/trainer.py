@@ -1,8 +1,6 @@
 import time
 import logging
-import collections
 from typing import Optional, Dict, List, Tuple, Union, Any
-from tqdm import tqdm
 import torch
 from torch import nn, autograd
 from torch.utils.data import Dataset
@@ -26,15 +24,13 @@ if is_apex_available():
     from apex import amp
 
 if is_fairscale_available():
-    from fairscale.nn.data_parallel import ShardedDataParallel as ShardedDDP
     from fairscale.optim import OSS
-    from fairscale.optim.grad_scaler import ShardedGradScaler
 
 from transformer_vae.optimizers import FixedAdafactor
 from transformer_vae.sequence_checks import SEQ_CHECKS
 from transformer_vae.trainer_callback import WandbCallbackUseModelLogs
 from transformer_vae.sklearn import train_svm
-from transformer_vae.utils import slerp, SortishSampler
+from transformer_vae.utils import slerp
 
 
 logger = logging.getLogger(__name__)
@@ -280,10 +276,8 @@ class VAE_Trainer(trainer_script.Trainer):
 
     def random_interpolation_inputs(self, latent):
         batch_size = latent.size(0)
-        interpolation_ratios = torch.rand(batch_size, device=self.args.device) * 0.25 + 0.25
-        interpolation_ratios.requires_grad = True
-        shifted_indices = torch.arange(latent.size(0), device='cpu')[1:].tolist() + [0]
-        latent_interpolated = slerp(interpolation_ratios, latent, latent[shifted_indices])
+        interpolation_ratios = 0.5 - (torch.rand(batch_size, device=self.args.device) - 0.5).abs()
+        latent_interpolated = slerp(interpolation_ratios, latent, latent[::-1])
         return latent_interpolated, interpolation_ratios
 
     def prepare_interpolation_data(self, latent, model):
