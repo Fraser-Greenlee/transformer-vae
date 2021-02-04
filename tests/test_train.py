@@ -682,7 +682,6 @@ class TrainTests(TestCasePlus):
             --dataset_name=Fraser/mnist-text-small
             --eval_steps 2
             --validation_name test
-            --do_train
             --do_eval
             --tokenizer_name tokenizers/tkn_mnist-text-small_byte
             --sample_from_latent
@@ -692,6 +691,7 @@ class TrainTests(TestCasePlus):
             --per_device_eval_batch_size 2
             --num_train_epochs 2
             --set_seq_size 237
+            --generate_max_len 2
             --latent_size 2
             --output_dir {tmp_dir}
             --overwrite_output_dir

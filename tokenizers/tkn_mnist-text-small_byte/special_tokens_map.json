@@ -1,1 +1,1 @@
-{"eos_token": "</s>", "unk_token": "<unk>", "mask_token": "<unk>"}
+{"eos_token": "<|endoftext|>", "unk_token": "<unk>", "mask_token": "<unk>"}

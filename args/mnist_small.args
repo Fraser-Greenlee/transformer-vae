@@ -1,6 +1,7 @@
 dataset_name=Fraser/mnist-text-small
 set_seq_size=237
+generate_max_len=237
 validation_name=test
 render_text_image
-tokenizer_name=gpt2
+tokenizer_name=tokenizers/tkn_mnist-text-small_byte
 dont_clean_up_tokenization_spaces
