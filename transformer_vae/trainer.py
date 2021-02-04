@@ -138,7 +138,7 @@ class VAE_Trainer(trainer_script.Trainer):
         '''
             Parse texts as images and log a single, long image to Weights and Biasis.
         '''
-        single_image_array = np.concatenate((self.text_to_array(txt) for txt in texts), axis=1)
+        single_image_array = np.concatenate((self.text_to_array(txt) for txt in texts), axis=0)
         wandb.log({"image_interpolation": [wandb.Image(single_image_array)]})
 
     def _interpolate_samples(self, eval_dataset):
