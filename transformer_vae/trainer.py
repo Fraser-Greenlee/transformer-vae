@@ -165,14 +165,14 @@ class VAE_Trainer(trainer_script.Trainer):
             seq_check_results = 0
             seq_check = SEQ_CHECKS[self.args.seq_check]
             table = wandb.Table(columns=["Interpolation Ratio", "Text", "Valid"])
-            table.add_data(-10, self.tokenizer.decode(samples["input_ids"][0]), True, clean_up_tokenization_spaces=self.clean_tkn_spaces)
+            table.add_data(-10, self.tokenizer.decode(samples["input_ids"][0], clean_up_tokenization_spaces=self.clean_tkn_spaces), True)
 
             for i in range(11):
                 valid = seq_check(texts[i])
                 table.add_data(interp_ratio[i].item(), texts[i], valid)
                 if i > 0 and i < 10:
                     seq_check_results += int(valid)
-            table.add_data(10, self.tokenizer.decode(samples["input_ids"][1]), True, clean_up_tokenization_spaces=self.clean_tkn_spaces)
+            table.add_data(10, self.tokenizer.decode(samples["input_ids"][1], clean_up_tokenization_spaces=self.clean_tkn_spaces), True)
 
             wandb.log({"interpolate points": table}, step=self.state.global_step)
             if self.args.seq_check:
