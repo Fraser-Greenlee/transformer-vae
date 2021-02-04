@@ -680,7 +680,7 @@ class TrainTests(TestCasePlus):
         testargs = f"""
             train.py
             --dataset_name=Fraser/mnist-text-small
-            --set_seq_size 225
+            --set_seq_size 237
             --eval_steps 2
             --validation_name test
             --do_train
