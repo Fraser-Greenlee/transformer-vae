@@ -14,7 +14,7 @@ def check_mnist(s, text_to_array):
         Checks if s is a valid image string.
     '''
     arr = text_to_array(s)
-    return arr.sum() != 0
+    return bool(arr.sum() != 0)
 
 
 SEQ_CHECKS = {
