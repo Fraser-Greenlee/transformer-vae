@@ -654,6 +654,7 @@ class TrainTests(TestCasePlus):
             --tokenizer_name tokenizers/tkn_mnist-text-small_byte
             --sample_from_latent
             --render_text_image
+            --seq_check python
             --dont_clean_up_tokenization_spaces
             --per_device_train_batch_size 2
             --per_device_eval_batch_size 2

@@ -1,7 +1,7 @@
 import ast
 
 
-def check_python(s, *unused_args):
+def check_python(s, unused_args):
     try:
         ast.parse(s)
         return True
@@ -20,5 +20,5 @@ def check_mnist(s, text_to_array):
 SEQ_CHECKS = {
     "python": check_python,
     "mnist": check_mnist,
-    None: lambda x: False
+    None: lambda x, y: False
 }
