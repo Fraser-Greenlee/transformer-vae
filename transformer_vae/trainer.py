@@ -157,8 +157,8 @@ class VAE_Trainer(trainer_script.Trainer):
         samples = self._prepare_inputs(next(mini_eval_dataloader_iter))
         latents = self.model(**samples).latent
         interp_latent, interp_ratio = self.gradual_interpolation_inputs(latents[0], latents[1])
-        start_txt = self.tokenizer.decode(samples["input_ids"][0], clean_up_tokenization_spaces=self.clean_tkn_spaces)
-        end_txt = self.tokenizer.decode(samples["input_ids"][1], clean_up_tokenization_spaces=self.clean_tkn_spaces)
+        start_txt = self.tokenizer.decode(samples["labels"][0], clean_up_tokenization_spaces=self.clean_tkn_spaces)
+        end_txt = self.tokenizer.decode(samples["labels"][1], clean_up_tokenization_spaces=self.clean_tkn_spaces)
         texts = self._text_from_latent(interp_latent)
 
         if self.args.render_text_image:
