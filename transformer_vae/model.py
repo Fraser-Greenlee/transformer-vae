@@ -307,8 +307,6 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
             input_encoding=encoder_outputs.last_hidden_state if encoder_outputs and isinstance(encoder_outputs, BaseModelOutput) else None, latent=latent
         )
 
-        upsampled_encoding = vae_outputs.reconstructed_encoding
-        '''
         upsampled_encoding = upsample(
             vae_outputs.reconstructed_encoding,
             stride=2 ** (len(self.config.funnel.block_sizes) - 1),
@@ -316,7 +314,6 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
             separate_cls=self.config.funnel.separate_cls,
             truncate_seq=self.config.funnel.truncate_seq,
         )
-        '''
 
         # Now using T5 decoder
 
