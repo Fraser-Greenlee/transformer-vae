@@ -6,3 +6,4 @@ render_text_image
 tokenizer_name=tokenizers/tkn_mnist-text-small_byte
 dont_clean_up_tokenization_spaces
 max_validation_size=100
+seq_check=mnist

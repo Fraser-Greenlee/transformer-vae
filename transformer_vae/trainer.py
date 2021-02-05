@@ -56,6 +56,8 @@ for logger_integration in NOT_ALLOWED_LOGGERS:
 
 
 class VAE_Trainer(trainer_script.Trainer):
+    text_to_array = None
+
     def __init__(self, model=None, args=None, custom_methods={}, **kwargs):
         self.latent_stack = torch.zeros(
             args.interpolate_training_step_rate * args.train_batch_size, model.config.latent_size,
@@ -163,25 +165,25 @@ class VAE_Trainer(trainer_script.Trainer):
 
         if self.args.render_text_image:
             self._log_image([start_txt] + texts + [end_txt])
-        else:
-            seq_check_results = 0
-            seq_check = SEQ_CHECKS[self.args.seq_check]
-            table = wandb.Table(columns=["Interpolation Ratio", "Text", "Valid"])
-            table.add_data(-10, start_txt, True)
 
-            for i in range(11):
-                valid = seq_check(texts[i])
-                table.add_data(interp_ratio[i].item(), texts[i], valid)
-                if i > 0 and i < 10:
-                    seq_check_results += int(valid)
-            table.add_data(10, end_txt, True)
+        seq_check_results = 0
+        seq_check = SEQ_CHECKS[self.args.seq_check]
+        table = wandb.Table(columns=["Interpolation Ratio", "Text", "Valid"])
+        table.add_data(-10, start_txt, True)
 
-            wandb.log({"interpolate points": table}, step=self.state.global_step)
-            if self.args.seq_check:
-                wandb.log(
-                    {'interpolation samples passing seq check': seq_check_results / 9},
-                    step=self.state.global_step
-                )
+        for i in range(11):
+            valid = seq_check(texts[i], self.text_to_array)
+            table.add_data(interp_ratio[i].item(), texts[i], valid)
+            if i > 0 and i < 10:
+                seq_check_results += int(valid)
+        table.add_data(10, end_txt, True)
+
+        wandb.log({"interpolate points": table}, step=self.state.global_step)
+        if self.args.seq_check:
+            wandb.log(
+                {'interpolation samples passing seq check': seq_check_results / 9},
+                step=self.state.global_step
+            )
 
     def _random_samples(self):
         raise NotImplementedError('Not sampling from true prioir here.')
