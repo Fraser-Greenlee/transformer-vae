@@ -89,6 +89,7 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
 
         # funnel encoder model
         self.funnel = AutoConfig.from_pretrained(funnel_name, cache_dir=cache_dir)
+        self.funnel.block_sizes = [3, 3, 3]
         self.funnel.decoder_start_token_id = decoder_start_token_id
         self.funnel.n_positions = set_seq_size
         pooling_division = 2 ** (len(self.funnel.block_sizes) - 1)
