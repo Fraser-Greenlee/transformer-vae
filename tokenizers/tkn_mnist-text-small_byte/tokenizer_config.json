@@ -1,1 +1,1 @@
-{"unk_token": "<|endoftext|>", "eos_token": "</s>", "add_prefix_space": false, "model_max_length": 225, "name_or_path": "gpt2"}
+{"unk_token": "<|endoftext|>", "eos_token": "</s>", "add_prefix_space": false, "model_max_length": 237, "name_or_path": "gpt2"}
