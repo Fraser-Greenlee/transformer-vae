@@ -97,6 +97,7 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
 
         # T5 decoder model
         self.t5 = AutoConfig.from_pretrained(t5_name, cache_dir=cache_dir)
+        self.t5.num_layers = 6
         self.t5.decoder_start_token_id = decoder_start_token_id
         self.t5.n_positions = self.funnel.n_positions
         assertEqual(self.t5.model_type, "t5", "Need t5 model type for transformer_decoder.")
