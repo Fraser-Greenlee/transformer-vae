@@ -68,7 +68,7 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         use_extra_logs=False,
         cache_dir=None,
         n_latent_tokens=5,
-        funnel_block_sizes='3 3 3',
+        funnel_block_sizes='3_3_3',
         **kwargs,
     ):
         assertIn(vae_encoder_model, VAE_ENCODER_MODELS.keys(), "Unexpected VAE encoder.")
@@ -90,7 +90,7 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
 
         # funnel encoder model
         self.funnel = AutoConfig.from_pretrained(funnel_name, cache_dir=cache_dir)
-        self.funnel.block_sizes = [int(i) for i in funnel_block_sizes.split()]
+        self.funnel.block_sizes = [int(i) for i in funnel_block_sizes.split('_')]
         self.funnel.decoder_start_token_id = decoder_start_token_id
         self.funnel.n_positions = set_seq_size
         pooling_division = 2 ** (len(self.funnel.block_sizes) - 1)
