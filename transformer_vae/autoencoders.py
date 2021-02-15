@@ -1,12 +1,11 @@
-import logging
+from transformers.utils import logging
 import torch
 from torch import nn
 from transformers.models.t5.modeling_t5 import T5LayerFF
 
 from transformer_vae.model_outputs import BaseVAE_Output
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger()
+logger = logging.get_logger()
 
 
 class LatentEncoderNTokens(nn.Module):

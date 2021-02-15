@@ -1,23 +1,24 @@
 """
     Base transformer-VAE model.
 """
-import logging
+import copy
 import numpy as np
 import torch
 from torch import nn
 from typing import Dict, Any
+from transformers.utils import logging
 from transformers.modeling_utils import PreTrainedModel
-from transformers import AutoModelForSeq2SeqLM, AutoModelForMaskedLM
 from transformers.modeling_outputs import BaseModelOutput
-from transformers.models.funnel.modeling_funnel import upsample
+from transformers.models.funnel.modeling_funnel import upsample, FunnelEncoder
 
+from transformer_vae.custom_t5 import T5StackGradAccum
 from transformer_vae.autoencoders import VAE_ENCODER_MODELS, VAE_DECODER_MODELS, EncoderDecoderVAE
 from transformer_vae.critic import CRITIC
 from transformer_vae.model_outputs import BaseTransformerVAE_Output
 from transformer_vae.config import Funnel_T5_VAE_Config
 
 
-logger = logging.getLogger(__name__)
+logger = logging.get_logger(__name__)
 
 
 class Funnel_T5_VAE_Model(PreTrainedModel):
@@ -69,17 +70,19 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
 
     def __init__(self, config: Funnel_T5_VAE_Config):
         super().__init__(config=config)
-        funnel_transformer = AutoModelForMaskedLM.from_config(config.funnel)
-        t5_transformer = AutoModelForSeq2SeqLM.from_config(config.t5)
-
-        self.encoder = funnel_transformer.funnel.encoder
-        self.decoder = t5_transformer.decoder
-        self.lm_head = t5_transformer.lm_head
-        self.shared_embedding = t5_transformer.shared
+        self.shared = nn.Embedding(config.t5.vocab_size, config.t5.d_model)
+        self.lm_head = nn.Linear(config.t5.d_model, config.t5.vocab_size, bias=False)
         self.decoder_start_token_id = self.config.t5.decoder_start_token_id
-        assert (
-            self.decoder_start_token_id is not None
-        ), "`self.config.t5.decoder_start_token_id` has to be defined. In T5 it is usually set to the pad_token_id. See T5 docs for more information"
+
+        self.encoder = FunnelEncoder(config.funnel)
+
+        decoder_config = copy.deepcopy(config.t5)
+        decoder_config.is_decoder = True
+        decoder_config.is_encoder_decoder = False
+        decoder_config.num_layers = config.t5.num_decoder_layers
+        self.decoder = T5StackGradAccum(decoder_config, self.shared)
+
+        self.init_weights()
 
         self.vae = EncoderDecoderVAE(
             VAE_ENCODER_MODELS[config.vae_encoder_model](self.config),
@@ -93,10 +96,10 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
             self.critic = CRITIC[config.critic_type](config.critic)
 
     def get_input_embeddings(self):
-        return self.shared_embedding
+        return self.shared
 
     def set_input_embeddings(self, new_embeddings):
-        self.shared_embedding = new_embeddings
+        self.shared = new_embeddings
 
     def _init_weights(self, module):
         classname = module.__class__.__name__
@@ -238,14 +241,28 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
             token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=device)
 
         if inputs_embeds is None:
-            inputs_embeds = self.shared_embedding(input_ids)
+            inputs_embeds = self.shared(input_ids)
+
+        if self.config.gradient_checkpoint_encoder:
+
+            def create_custom_forward(encoder):
+                def custom_forward(*inputs):
+                    return encoder(*inputs, False, False, False)
+                return custom_forward
+
+            return torch.utils.checkpoint.checkpoint(
+                create_custom_forward(self.encoder),
+                inputs_embeds,
+                attention_mask,
+                token_type_ids,
+            )
 
         return self.encoder(
             inputs_embeds,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
-            output_hidden_states=True,
-            return_dict=return_dict,
+            output_hidden_states=False,
+            return_dict=True,
         )
 
     def _shift_right(self, input_ids):
@@ -328,7 +345,7 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
         lm_logits = None
         if decoder_input_ids is not None:
             decoder_outputs = self.decoder(
-                input_ids=decoder_input_ids, encoder_hidden_states=upsampled_encoding, use_cache=use_cache, output_hidden_states=output_hidden_states, return_dict=True
+                input_ids=decoder_input_ids, encoder_hidden_states=upsampled_encoding, use_cache=use_cache, output_hidden_states=output_hidden_states, return_dict=True, grad_accumulation_rate=self.config.decoder_grad_accumulation_rate
             )
 
             sequence_output = decoder_outputs.last_hidden_state

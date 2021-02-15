@@ -1,13 +1,13 @@
 import copy
 import math
-import logging
+from transformers.utils import logging
 from transformers.configuration_utils import PretrainedConfig
 from transformers import AutoConfig
 
 from transformer_vae.autoencoders import VAE_ENCODER_MODELS, VAE_DECODER_MODELS
 from transformer_vae.utils import assertEqual, assertIn
 
-logger = logging.getLogger(__name__)
+logger = logging.get_logger(__name__)
 
 
 class Funnel_T5_VAE_Config(PretrainedConfig):
@@ -43,6 +43,9 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
             Added to global step in sigmoid, further delays increase in regulariser loss weight.
         use_extra_logs (:obj:`bool`, `optional`, defaults to False):
             Store extra logs during each training inference.
+        gradient_checkpoint (:obj:`bool`, `optional`, defaults to False):
+            Checkpoint gradients in the model.
+            Currently just checkpoints after the encoder + VAE
         *** End ***
 
         TODO: Add extra models to condition on the latent
@@ -68,7 +71,9 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         use_extra_logs=False,
         cache_dir=None,
         n_latent_tokens=5,
-        funnel_block_sizes='3_3_3',
+        funnel_block_sizes='1_1_1',
+        gradient_checkpoint_encoder=False,
+        decoder_grad_accumulation_rate=0,
         **kwargs,
     ):
         assertIn(vae_encoder_model, VAE_ENCODER_MODELS.keys(), "Unexpected VAE encoder.")
@@ -95,6 +100,7 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         self.funnel.n_positions = set_seq_size
         pooling_division = 2 ** (len(self.funnel.block_sizes) - 1)
         self.encoded_seq_size = math.ceil(self.funnel.n_positions / pooling_division)
+        self.gradient_checkpoint_encoder = gradient_checkpoint_encoder
 
         # T5 decoder model
         self.t5 = AutoConfig.from_pretrained(t5_name, cache_dir=cache_dir)
@@ -103,6 +109,7 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         self.t5.n_positions = self.funnel.n_positions
         assertEqual(self.t5.model_type, "t5", "Need t5 model type for transformer_decoder.")
         assertEqual(self.funnel.d_model, self.t5.d_model, "Funnel & T5 transformers have different dimensions.")
+        self.decoder_grad_accumulation_rate = decoder_grad_accumulation_rate
 
         # extra training losses
         self.mmd_batch_size = mmd_batch_size

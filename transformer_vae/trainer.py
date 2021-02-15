@@ -1,5 +1,4 @@
 import time
-import logging
 from typing import Optional, Dict, List, Tuple, Union, Any
 import numpy as np
 import torch
@@ -10,6 +9,7 @@ from torch.utils.data.dataloader import DataLoader
 from torch.cuda.amp import autocast
 
 from transformers import trainer as trainer_script
+from transformers.utils import logging
 from transformers.optimization import AdamW, get_scheduler
 from transformers.integrations import (
     WandbCallback,
@@ -33,8 +33,7 @@ from transformer_vae.trainer_callback import WandbCallbackUseModelLogs
 from transformer_vae.sklearn import train_svm
 from transformer_vae.utils import slerp
 
-
-logger = logging.getLogger(__name__)
+logger = logging.get_logger(__name__)
 
 if WandbCallback in trainer_script.DEFAULT_CALLBACKS:
     # Allow tracking extra training losses via the model's `get_latest_logs` method
