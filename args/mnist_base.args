@@ -1,0 +1,8 @@
+dataset_name=Fraser/mnist-text
+set_seq_size=840
+generate_max_len=840
+validation_name=test
+render_text_image
+tokenizer_name=tokenizers/tkn_mnist-text-small_byte
+dont_clean_up_tokenization_spaces
+max_validation_size=100
