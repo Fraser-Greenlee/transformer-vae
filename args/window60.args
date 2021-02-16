@@ -1,0 +1,2 @@
+attn_overlap_every_other_layer
+attention_window_size=60

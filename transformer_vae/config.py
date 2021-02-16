@@ -1,4 +1,5 @@
 import copy
+from logging import warning
 import math
 from transformers.utils import logging
 from transformers.configuration_utils import PretrainedConfig
@@ -8,6 +9,18 @@ from transformer_vae.autoencoders import VAE_ENCODER_MODELS, VAE_DECODER_MODELS
 from transformer_vae.utils import assertEqual, assertIn
 
 logger = logging.get_logger(__name__)
+
+
+def _test_overlap(s, w, o):
+    window_max = 0
+    while window_max < s:
+        start = max(window_max - o, 0)
+        end = min(w, s - start)
+        if window_max == 0:
+            window_max += w
+        else:
+            window_max += w - o
+    return w - end
 
 
 class Funnel_T5_VAE_Config(PretrainedConfig):
@@ -46,6 +59,8 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         gradient_checkpoint (:obj:`bool`, `optional`, defaults to False):
             Checkpoint gradients in the model.
             Currently just checkpoints after the encoder + VAE
+        funnel_block_sizes (:obj:`str`, defaults to '1_1_1'):
+            Size of each Funnel Encoder block, sequence is halved between each block.
         *** End ***
 
         TODO: Add extra models to condition on the latent
@@ -72,6 +87,9 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         cache_dir=None,
         n_latent_tokens=5,
         funnel_block_sizes='1_1_1',
+        attention_window_size=0,
+        attention_window_overlap=0,
+        attn_overlap_every_other_layer=False,
         gradient_checkpoint_encoder=False,
         decoder_grad_accumulation_rate=0,
         **kwargs,
@@ -104,12 +122,37 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
 
         # T5 decoder model
         self.t5 = AutoConfig.from_pretrained(t5_name, cache_dir=cache_dir)
-        # self.t5.num_decoder_layers = 6
         self.t5.decoder_start_token_id = decoder_start_token_id
         self.t5.n_positions = self.funnel.n_positions
         assertEqual(self.t5.model_type, "t5", "Need t5 model type for transformer_decoder.")
         assertEqual(self.funnel.d_model, self.t5.d_model, "Funnel & T5 transformers have different dimensions.")
         self.decoder_grad_accumulation_rate = decoder_grad_accumulation_rate
+        assert(attention_window_size < set_seq_size), 'Attention window must be smallar than set sequence size.'
+        self.attention_window_size = attention_window_size
+        self.attention_window_overlap = attention_window_overlap
+        self.attn_overlap_every_other_layer = attn_overlap_every_other_layer
+        if attention_window_size:
+            if not attn_overlap_every_other_layer:
+                overflow = None
+                if attention_window_overlap:
+                    overflow = _test_overlap(set_seq_size, attention_window_size, attention_window_overlap)
+
+                if overflow:
+                    if overflow:
+                        logger.warning(f'Overflowed by {overflow} tokens. Finding workable overflow sizes.')
+
+                    logger.warning('Working window overlap sizes:')
+                    logger.warning('- 0 (consider subsequences seperately, needs alternating layers to work)')
+                    for overlap in range(1, attention_window_size // 2 + 2):
+                        overflow = _test_overlap(set_seq_size, attention_window_size, overlap)
+                        if overflow == 0:
+                            logger.warning(f'- {overlap}')
+
+                    raise Exception('Window overflow, see logs for details.')
+
+            else:
+                assert(set_seq_size % attention_window_size != 0), 'When doing an alternating attention pattern the sequence size cannot be divisable by the window size as no alternations will be possible.'
+                self.attention_window_overlap = set_seq_size % attention_window_size
 
         # extra training losses
         self.mmd_batch_size = mmd_batch_size

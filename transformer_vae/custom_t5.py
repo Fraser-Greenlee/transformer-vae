@@ -1,6 +1,7 @@
 import torch
+from torch import nn
 from transformers.utils import logging
-from transformers.models.t5.modeling_t5 import T5Stack
+from transformers.models.t5.modeling_t5 import T5Block, T5Stack
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions
 
 from transformer_vae.checkpoint import checkpoint
@@ -9,10 +10,90 @@ from transformer_vae.checkpoint import checkpoint
 logger = logging.get_logger(__name__)
 
 
+class T5BlockWindows(T5Block):
+    def __init__(self, config, window_size, window_overlap, overlap_every_other_layer, layer_id=0):
+        super().__init__(config, has_relative_attention_bias=layer_id == 0)
+        self.layer_id = layer_id
+        self.d_model = config.d_model
+        self.window_size = window_size
+        self.window_overlap = window_overlap
+        self.overlap_every_other_layer = overlap_every_other_layer
+        self.odd_layer = layer_id % 1 == 1
+
+    def forward(
+        self,
+        hidden_states,
+        attention_mask=None,
+        position_bias=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+        encoder_decoder_position_bias=None,
+        layer_head_mask=None,
+        encoder_layer_head_mask=None,
+        past_key_value=None,
+        use_cache=False,
+        output_attentions=False,
+        return_dict=True,
+    ):
+        if self.window_size:
+            # split inputs into windows and run as a larger batch
+            # hidden_states (batch_size, seq_len, d_model) -> (batch_size * ?, window_len, d_model)
+            if self.overlap_every_other_layer:
+                if self.odd_layer:
+                    using_hidden_states, leftover_hidden_states = hidden_states[:, self.window_overlap:], hidden_states[:, :self.window_overlap]
+                else:
+                    using_hidden_states, leftover_hidden_states = hidden_states[:, :-self.window_overlap], hidden_states[:, -self.window_overlap:]
+                # convert to larger batches of shorter sequences
+                using_hidden_states = using_hidden_states.reshape(-1, self.window_size, self.d_model)
+            else:
+                # get subsequence handled by this layer
+                raise NotImplementedError()
+
+        outputs = super().forward(
+            using_hidden_states,
+            attention_mask,
+            position_bias,
+            encoder_hidden_states,
+            encoder_attention_mask,
+            encoder_decoder_position_bias,
+            layer_head_mask,
+            encoder_layer_head_mask,
+            past_key_value,
+            use_cache,
+            output_attentions,
+            return_dict,
+        )
+
+        if self.window_size:
+            # join inputs back into full sequences
+            if self.overlap_every_other_layer:
+                # concat leftover hidden state
+                batch_size = hidden_states.size(0)
+                new_hidden_states = outputs[0].reshape(batch_size, -1, self.d_model)
+                paired_states = (leftover_hidden_states, new_hidden_states) if self.odd_layer else (new_hidden_states, leftover_hidden_states)
+                new_hidden_states = torch.cat(paired_states, 1)
+            else:
+                raise NotImplementedError()
+
+        return (new_hidden_states,) + outputs[1:]
+
+
 class T5StackGradAccum(T5Stack):
     '''
         Modified to allow gradient accumulation between layers.
     '''
+    def __init__(self, config, embed_tokens, window_size, window_overlap, overlap_every_other_layer):
+        super().__init__(config, embed_tokens=embed_tokens)
+        self.window_mode = False
+        if window_size:
+            self.window_mode = True
+            self.window_size = window_size
+            self.window_overlap = window_overlap
+            self.block = nn.ModuleList(
+                [T5BlockWindows(config, window_size, window_overlap, overlap_every_other_layer, layer_id=i) for i in range(config.num_layers)]
+            )
+        self.init_weights()
+
     def forward(
         self,
         input_ids=None,
@@ -58,15 +139,24 @@ class T5StackGradAccum(T5Stack):
             assert self.embed_tokens is not None, "You have to initialize the model with valid token embeddings"
             inputs_embeds = self.embed_tokens(input_ids)
 
+        if self.window_mode:
+            # set input shape to window size to format attention masks correctly
+            batch_size, seq_length = input_shape
+            new_batch_size = batch_size * (seq_length // self.window_size)
+            input_shape = (new_batch_size, self.window_size)
+            if encoder_hidden_states is not None:
+                # match window batches
+                num_dups = new_batch_size // batch_size
+                # Get duplicated encodings together with indices [1,1, 2,2, 3,3, etc]
+                encoding_index = torch.arange(batch_size).repeat(num_dups, 1).T.reshape(-1)
+                encoder_hidden_states = encoder_hidden_states[encoding_index]
         batch_size, seq_length = input_shape
 
         # required mask seq length can be calculated via length of past
         mask_seq_length = past_key_values[0][0].shape[2] + seq_length if past_key_values is not None else seq_length
 
         if use_cache is True:
-            assert self.is_decoder, ":obj:`use_cache` can only be set to `True` if {} is used as a decoder".format(
-                self
-            )
+            assert self.is_decoder, f":obj:`use_cache` can only be set to `True` if {self} is used as a decoder"
 
         if attention_mask is None:
             attention_mask = torch.ones(batch_size, mask_seq_length).to(inputs_embeds.device)

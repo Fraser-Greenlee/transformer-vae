@@ -1,4 +1,4 @@
-dataset_name=Fraser/mnist-text
+dataset_name=Fraser/mnist-text-default
 set_seq_size=840
 generate_max_len=840
 validation_name=test

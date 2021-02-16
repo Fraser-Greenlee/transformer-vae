@@ -149,6 +149,9 @@ class DataTrainingArguments:
     dataset_name: Optional[str] = field(
         default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
     )
+    script_version: str = field(
+        default="main", metadata={"help": "Dataset branch to use (via the datasets library)."}
+    )
     dataset_config_name: Optional[str] = field(
         default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
     )
@@ -251,7 +254,7 @@ def get_datasets(data_args):
     # download the dataset.
     if data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
-        return load_dataset(data_args.dataset_name, data_args.dataset_config_name)
+        return load_dataset(data_args.dataset_name, data_args.dataset_config_name) # , script_version=data_args.script_version
     data_files = {}
     if data_args.train_file is not None:
         data_files["train"] = data_args.train_file
