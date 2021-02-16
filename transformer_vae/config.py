@@ -92,6 +92,7 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         attn_overlap_every_other_layer=False,
         gradient_checkpoint_encoder=False,
         decoder_grad_accumulation_rate=0,
+        skip_upsample=False,
         **kwargs,
     ):
         assertIn(vae_encoder_model, VAE_ENCODER_MODELS.keys(), "Unexpected VAE encoder.")
@@ -110,6 +111,7 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         self.latent_size = self.latent_token_dim * n_latent_tokens
         if self.latent_size != latent_size:
             logger.warning(f'model dimension, latent_size & n_latent_tokens don\'t match. Now using latent_size={self.latent_size} from latent_size={latent_size}')
+        self.skip_upsample = skip_upsample
 
         # funnel encoder model
         self.funnel = AutoConfig.from_pretrained(funnel_name, cache_dir=cache_dir)
