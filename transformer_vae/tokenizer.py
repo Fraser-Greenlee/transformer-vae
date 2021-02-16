@@ -15,7 +15,7 @@ class MatchPretrainedTokenizer():
 
     @mask_token.setter
     def mask_token(self, val):
-        self.tokenizer.enable_padding(pad_token='<pad>', pad_id=self.tokenizer.token_to_id('<pad>'), length=val)§
+        self.tokenizer.enable_padding(pad_token='<pad>', pad_id=self.tokenizer.token_to_id('<pad>'), length=val)
 
     @property
     def model_max_length(self):
