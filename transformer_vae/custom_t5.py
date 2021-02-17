@@ -228,7 +228,7 @@ class T5StackGradAccum(T5Stack):
                     x = i
 
                     def custom_forward(*inputs):
-                        return module(*inputs, head_mask[x], False, False, False)
+                        return module(*inputs, head_mask[x], encoder_head_mask[x], None, False, False)
                     return custom_forward
 
                 layer_outputs = checkpoint(
@@ -249,7 +249,8 @@ class T5StackGradAccum(T5Stack):
                     encoder_hidden_states=encoder_hidden_states,
                     encoder_attention_mask=encoder_extended_attention_mask,
                     encoder_decoder_position_bias=encoder_decoder_position_bias,
-                    head_mask=head_mask[i],
+                    layer_head_mask=layer_head_mask,
+                    encoder_layer_head_mask=encoder_layer_head_mask,
                     past_key_value=past_key_value,
                     use_cache=use_cache,
                     output_attentions=output_attentions,
