@@ -27,8 +27,7 @@ class T5BlockWindows(T5Block):
         encoder_hidden_states=None,
         encoder_attention_mask=None,
         encoder_decoder_position_bias=None,
-        layer_head_mask=None,
-        encoder_layer_head_mask=None,
+        head_mask=None,
         past_key_value=None,
         use_cache=False,
         output_attentions=False,
@@ -51,8 +50,7 @@ class T5BlockWindows(T5Block):
             encoder_hidden_states,
             encoder_attention_mask,
             encoder_decoder_position_bias,
-            layer_head_mask,
-            encoder_layer_head_mask,
+            head_mask,
             past_key_value,
             use_cache,
             output_attentions,
@@ -75,7 +73,7 @@ class T5StackGradAccum(T5Stack):
         Modified to allow gradient accumulation between layers.
     '''
     def __init__(self, config, embed_tokens, window_size, window_overlap):
-        super().__init__(config, embed_tokens=embed_tokens)
+        super().__init__(config, embed_tokens)
         self.window_mode = False
         if window_size:
             self.window_mode = True
@@ -84,7 +82,7 @@ class T5StackGradAccum(T5Stack):
             self.block = nn.ModuleList(
                 [T5BlockWindows(config, window_size, window_overlap, layer_id=i) for i in range(config.num_layers)]
             )
-        self.init_weights()
+            self.init_weights()
 
     def forward(
         self,
@@ -94,19 +92,20 @@ class T5StackGradAccum(T5Stack):
         encoder_attention_mask=None,
         inputs_embeds=None,
         head_mask=None,
-        encoder_head_mask=None,
         past_key_values=None,
         use_cache=None,
         output_attentions=None,
         output_hidden_states=None,
         return_dict=None,
-        grad_chk_pnt_rate=None,
+        grad_chk_pnt_rate=None
     ):
         # Model parallel
         if self.model_parallel:
             torch.cuda.set_device(self.first_device)
             self.embed_tokens = self.embed_tokens.to(self.first_device)
         use_cache = use_cache if use_cache is not None else self.config.use_cache
+        if self.training and use_cache:
+            assert(grad_chk_pnt_rate is None), "Can't use grad checkpoint and cache."
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -148,7 +147,9 @@ class T5StackGradAccum(T5Stack):
         mask_seq_length = past_key_values[0][0].shape[2] + seq_length if past_key_values is not None else seq_length
 
         if use_cache is True:
-            assert self.is_decoder, f":obj:`use_cache` can only be set to `True` if {self} is used as a decoder"
+            assert self.is_decoder, ":obj:`use_cache` can only be set to `True` if {} is used as a decoder".format(
+                self
+            )
 
         if attention_mask is None:
             attention_mask = torch.ones(batch_size, mask_seq_length).to(inputs_embeds.device)
@@ -172,7 +173,6 @@ class T5StackGradAccum(T5Stack):
 
         # Prepare head mask if needed
         head_mask = self.get_head_mask(head_mask, self.config.num_layers)
-        encoder_head_mask = self.get_head_mask(encoder_head_mask, self.config.num_layers)
         present_key_value_states = () if use_cache else None
         all_hidden_states = () if output_hidden_states else None
         all_attentions = () if output_attentions else None
@@ -183,8 +183,6 @@ class T5StackGradAccum(T5Stack):
         hidden_states = self.dropout(inputs_embeds)
 
         for i, (layer_module, past_key_value) in enumerate(zip(self.block, past_key_values)):
-            layer_head_mask = head_mask[i]
-            encoder_layer_head_mask = encoder_head_mask[i]
             # Model parallel
             if self.model_parallel:
                 torch.cuda.set_device(hidden_states.device)
@@ -199,16 +197,12 @@ class T5StackGradAccum(T5Stack):
                     encoder_extended_attention_mask = encoder_extended_attention_mask.to(hidden_states.device)
                 if encoder_decoder_position_bias is not None:
                     encoder_decoder_position_bias = encoder_decoder_position_bias.to(hidden_states.device)
-                if layer_head_mask is not None:
-                    layer_head_mask = layer_head_mask.to(hidden_states.device)
-                if encoder_layer_head_mask is not None:
-                    encoder_layer_head_mask = encoder_layer_head_mask.to(hidden_states.device)
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
             ### CHANGE BELOW
 
-            if grad_chk_pnt_rate and self.training:
+            if grad_chk_pnt_rate and self.training and i % grad_chk_pnt_rate != 0:
                 if use_cache:
                     logger.warn(
                         "`use_cache=True` is incompatible with `grad_chk_pnt_rate=True`. Setting "
@@ -216,42 +210,25 @@ class T5StackGradAccum(T5Stack):
                     )
                     use_cache = False
 
-                if i % grad_chk_pnt_rate == 0:
-                    # keep gradients to calculate future layers backwards pass (skip first layer)
-                    layer_outputs = layer_module(
-                        hidden_states,
-                        attention_mask=extended_attention_mask,
-                        position_bias=position_bias,
-                        encoder_hidden_states=encoder_hidden_states,
-                        encoder_attention_mask=encoder_extended_attention_mask,
-                        encoder_decoder_position_bias=encoder_decoder_position_bias,
-                        layer_head_mask=layer_head_mask,
-                        encoder_layer_head_mask=encoder_layer_head_mask,
-                        past_key_value=past_key_value,
-                        use_cache=use_cache,
-                        output_attentions=output_attentions,
-                    )
-                else:
-                    # recacluate gradients later
-                    assert(past_key_value is None)
+                # recacluate gradients later
+                assert(past_key_value is None)
 
-                    def create_custom_forward(module):
-                        def custom_forward(*inputs):
-                            return module(*inputs, None, False, False, False)
+                def create_custom_forward(module):
+                    x = i
 
-                        return custom_forward
+                    def custom_forward(*inputs):
+                        return module(*inputs, head_mask[x], False, False, False)
+                    return custom_forward
 
-                    layer_outputs = checkpoint(
-                        create_custom_forward(layer_module),
-                        hidden_states,
-                        attention_mask,
-                        position_bias,
-                        encoder_hidden_states,
-                        encoder_attention_mask,
-                        encoder_decoder_position_bias,
-                        layer_head_mask,
-                        encoder_layer_head_mask,
-                    )
+                layer_outputs = checkpoint(
+                    create_custom_forward(layer_module),
+                    hidden_states,
+                    extended_attention_mask,
+                    position_bias,
+                    encoder_hidden_states,
+                    encoder_extended_attention_mask,
+                    encoder_decoder_position_bias,
+                )
             else:
                 # std way of calculating gradients
                 layer_outputs = layer_module(
@@ -261,8 +238,7 @@ class T5StackGradAccum(T5Stack):
                     encoder_hidden_states=encoder_hidden_states,
                     encoder_attention_mask=encoder_extended_attention_mask,
                     encoder_decoder_position_bias=encoder_decoder_position_bias,
-                    layer_head_mask=layer_head_mask,
-                    encoder_layer_head_mask=encoder_layer_head_mask,
+                    head_mask=head_mask[i],
                     past_key_value=past_key_value,
                     use_cache=use_cache,
                     output_attentions=output_attentions,
