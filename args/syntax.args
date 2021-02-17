@@ -1,4 +1,3 @@
 dataset_name=Fraser/python-lines
 seq_check=python
 max_validation_size=100
-sample_from_latent

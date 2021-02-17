@@ -1,5 +1,6 @@
 import time
 from typing import Optional, Dict, List, Tuple, Union, Any
+import wandb
 import numpy as np
 import torch
 from torch import nn, autograd
