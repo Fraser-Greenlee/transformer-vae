@@ -1,18 +1,16 @@
 """
     Base transformer-VAE model.
 """
-import copy
-import numpy as np
 import torch
 from torch import nn
 from typing import Dict, Any
 from transformers.utils import logging
 from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_outputs import BaseModelOutput
-from transformers.models.funnel.modeling_funnel import upsample, FunnelEncoder
+from transformers.models.funnel.modeling_funnel import upsample
 from transformers import AutoModelForSeq2SeqLM, AutoModelForMaskedLM
 
-from transformer_vae.custom_t5 import T5StackGradAccum, T5Stack
+from transformer_vae.custom_t5 import modify_t5_stack
 from transformer_vae.autoencoders import VAE_ENCODER_MODELS, VAE_DECODER_MODELS, EncoderDecoderVAE
 from transformer_vae.critic import CRITIC
 from transformer_vae.model_outputs import BaseTransformerVAE_Output
@@ -90,7 +88,7 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
         t5_transformer = AutoModelForSeq2SeqLM.from_config(config.t5)
 
         self.encoder = funnel_transformer.funnel.encoder
-        self.decoder = t5_transformer.decoder
+        self.decoder = modify_t5_stack(t5_transformer.decoder, config)
         self.lm_head = t5_transformer.lm_head
         self.shared_embedding = t5_transformer.shared
         self.decoder_start_token_id = self.config.t5.decoder_start_token_id
@@ -115,76 +113,7 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
         self.shared_embedding = new_embeddings
 
     def _init_weights(self, module):
-        return None
-        classname = module.__class__.__name__
-
-        # Funnel init
-        config = self.config.funnel
-        if classname.startswith('Funnel'):
-            # only normalise linear layers in the funnel model
-            for k, v in module._modules.items():
-                if type(v) is nn.Linear:
-                    if getattr(v, "weight", None) is not None:
-                        if config.initializer_std is None:
-                            fan_out, fan_in = v.weight.shape
-                            std = np.sqrt(1.0 / float(fan_in + fan_out))
-                        else:
-                            std = config.initializer_std
-                        nn.init.normal_(v.weight, std=std)
-                    if getattr(v, "bias", None) is not None:
-                        nn.init.constant_(v.bias, 0.0)
-                    setattr(module, k, v)
-        if classname == "FunnelRelMultiheadAttention":
-            nn.init.uniform_(module.r_w_bias, b=config.initializer_range)
-            nn.init.uniform_(module.r_r_bias, b=config.initializer_range)
-            nn.init.uniform_(module.r_kernel, b=config.initializer_range)
-            nn.init.uniform_(module.r_s_bias, b=config.initializer_range)
-            nn.init.uniform_(module.seg_embed, b=config.initializer_range)
-        elif classname == "FunnelEmbeddings":
-            std = 1.0 if config.initializer_std is None else config.initializer_std
-            nn.init.normal_(module.word_embeddings.weight, std=std)
-
-        # T5 init
-        config = self.config.t5
-        factor = config.initializer_factor  # Used for testing weights initialization
-        if classname == 'T5LayerNorm':
-            module.weight.data.fill_(factor * 1.0)
-        elif classname == 'Embedding':
-            # Mesh TensorFlow embeddings initialization
-            # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L1624
-            module.weight.data.normal_(mean=0.0, std=factor * 1.0)
-        elif classname == 'T5DenseReluDense':
-            # Mesh TensorFlow FF initialization
-            # See https://github.com/tensorflow/mesh/blob/master/mesh_tensorflow/transformer/transformer_layers.py#L56
-            # and https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L89
-            module.wi.weight.data.normal_(mean=0.0, std=factor * ((config.d_model) ** -0.5))
-            if hasattr(module.wi, "bias") and module.wi.bias is not None:
-                module.wi.bias.data.zero_()
-            module.wo.weight.data.normal_(mean=0.0, std=factor * ((config.d_ff) ** -0.5))
-            if hasattr(module.wo, "bias") and module.wo.bias is not None:
-                module.wo.bias.data.zero_()
-        elif classname == 'T5DenseGatedGeluDense':
-            module.wi_0.weight.data.normal_(mean=0.0, std=factor * ((config.d_model) ** -0.5))
-            if hasattr(module.wi_0, "bias") and module.wi_0.bias is not None:
-                module.wi_0.bias.data.zero_()
-            module.wi_1.weight.data.normal_(mean=0.0, std=factor * ((config.d_model) ** -0.5))
-            if hasattr(module.wi_1, "bias") and module.wi_1.bias is not None:
-                module.wi_1.bias.data.zero_()
-            module.wo.weight.data.normal_(mean=0.0, std=factor * ((config.d_ff) ** -0.5))
-            if hasattr(module.wo, "bias") and module.wo.bias is not None:
-                module.wo.bias.data.zero_()
-        elif classname == 'T5Attention':
-            # Mesh TensorFlow attention initialization to avoid scaling before softmax
-            # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/attention.py#L136
-            d_model = config.d_model
-            key_value_proj_dim = config.d_kv
-            n_heads = config.num_heads
-            module.q.weight.data.normal_(mean=0.0, std=factor * ((d_model * key_value_proj_dim) ** -0.5))
-            module.k.weight.data.normal_(mean=0.0, std=factor * (d_model ** -0.5))
-            module.v.weight.data.normal_(mean=0.0, std=factor * (d_model ** -0.5))
-            module.o.weight.data.normal_(mean=0.0, std=factor * ((n_heads * key_value_proj_dim) ** -0.5))
-            if module.has_relative_attention_bias:
-                module.relative_attention_bias.weight.data.normal_(mean=0.0, std=factor * ((d_model) ** -0.5))
+        pass
 
     def _regulariser_loss_weight_schedule(self):
         if self.global_step is None or not self.config.use_reg_loss:

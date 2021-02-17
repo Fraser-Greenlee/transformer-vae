@@ -10,17 +10,19 @@ from transformer_vae.checkpoint import checkpoint
 logger = logging.get_logger(__name__)
 
 
-class T5BlockWindows(T5Block):
-    def __init__(self, config, window_size, window_overlap, layer_id=0):
-        super().__init__(config, has_relative_attention_bias=layer_id == 0)
-        self.layer_id = layer_id
-        self.d_model = config.d_model
-        self.window_size = window_size
-        self.window_overlap = window_overlap
-        self.odd_layer = layer_id % 1 == 1
+def t5_block_alt(self, config, layer_id):
+    '''
+        Change methods in existing T5Block instance.
+        Helps getting around init issues.
+    '''
+    self.layer_id = layer_id
+    self.d_model = config.d_model
+    self.window_size = config.attention_window_size
+    self.window_overlap = config.attention_window_overlap
+    self.odd_layer = layer_id % 1 == 1
+    self.true_forward = self.forward
 
-    def forward(
-        self,
+    def alt_forward(
         hidden_states,
         attention_mask=None,
         position_bias=None,
@@ -44,7 +46,7 @@ class T5BlockWindows(T5Block):
             # convert to larger batches of shorter sequences
             using_hidden_states = using_hidden_states.reshape(-1, self.window_size, self.d_model)
 
-        outputs = super().forward(
+        outputs = self.true_forward(
             using_hidden_states,
             attention_mask,
             position_bias,
@@ -69,25 +71,20 @@ class T5BlockWindows(T5Block):
 
         return outputs
 
+    self.forward = alt_forward
+    return self
 
-class T5StackGradAccum(T5Stack):
-    '''
-        Modified to allow gradient accumulation between layers.
-    '''
-    def __init__(self, config, embed_tokens, window_size, window_overlap):
-        super().__init__(config, embed_tokens)
-        self.window_mode = False
-        if window_size:
-            self.window_mode = True
-            self.window_size = window_size
-            self.window_overlap = window_overlap
-            self.block = nn.ModuleList(
-                [T5BlockWindows(config, window_size, window_overlap, layer_id=i) for i in range(config.num_layers)]
-            )
-            self.init_weights()
 
-    def forward(
-        self,
+def modify_t5_stack(self, config):
+    self.window_mode = False
+    if config.attention_window_size:
+        self.window_mode = True
+        self.window_size = config.attention_window_size
+        self.window_overlap = config.attention_window_overlap
+        for i, v in enumerate(self.block):
+            self.block[i] = t5_block_alt(v, config, i)
+
+    def alt_forward(
         input_ids=None,
         attention_mask=None,
         encoder_hidden_states=None,
@@ -309,3 +306,6 @@ class T5StackGradAccum(T5Stack):
             attentions=all_attentions,
             cross_attentions=all_cross_attentions,
         )
+
+    self.forward = alt_forward
+    return self
