@@ -59,8 +59,9 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         gradient_checkpoint (:obj:`bool`, `optional`, defaults to False):
             Checkpoint gradients in the model.
             Currently just checkpoints after the encoder + VAE
-        funnel_block_sizes (:obj:`str`, defaults to '1_1_1'):
+        funnel_block_sizes (:obj:`str`, `optional`, defaults to None):
             Size of each Funnel Encoder block, sequence is halved between each block.
+            Example specification: 1_1_1
         *** End ***
 
         TODO: Add extra models to condition on the latent
@@ -85,7 +86,7 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         use_extra_logs=False,
         cache_dir=None,
         n_latent_tokens=5,  # set to -1 for full sequence
-        funnel_block_sizes='1_1_1',
+        funnel_block_sizes=None,
         attention_window_size=0,
         attention_window_overlap=0,
         gradient_checkpoint_encoder=False,
@@ -110,7 +111,8 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
 
         # funnel encoder model
         self.funnel = AutoConfig.from_pretrained(funnel_name, cache_dir=cache_dir)
-        self.funnel.block_sizes = [int(i) for i in funnel_block_sizes.split('_')]
+        if funnel_block_sizes:
+            self.funnel.block_sizes = [int(i) for i in funnel_block_sizes.split('_')]
         self.funnel.decoder_start_token_id = decoder_start_token_id
         self.funnel.n_positions = set_seq_size
         pooling_division = 2 ** (len(self.funnel.block_sizes) - 1)
