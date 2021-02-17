@@ -130,7 +130,7 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
         factor = config.initializer_factor  # Used for testing weights initialization
         if classname == 'T5LayerNorm':
             module.weight.data.fill_(factor * 1.0)
-        elif classname in ['T5Model', 'T5ForConditionalGeneration', 'T5EncoderModel']:
+        elif classname == ['Funnel_T5_VAE_Model']:
             # Mesh TensorFlow embeddings initialization
             # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L1624
             module.shared.weight.data.normal_(mean=0.0, std=factor * 1.0)
