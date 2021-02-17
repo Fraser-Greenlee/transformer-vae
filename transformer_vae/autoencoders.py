@@ -9,6 +9,9 @@ logger = logging.get_logger()
 
 
 class LatentEncoderNTokens(nn.Module):
+    '''
+        Converts N hidden tokens into N seperate latent codes.
+    '''
     def __init__(self, config):
         super().__init__()
         self.token_to_latent = nn.Linear(config.t5.d_model, config.latent_token_dim)
@@ -17,25 +20,27 @@ class LatentEncoderNTokens(nn.Module):
 
     def forward(self, encoding) -> torch.Tensor:
         batch_size = encoding.size(0)
-        return self.tanh(self.token_to_latent(encoding))[:, : self.n_tokens, :].view(batch_size, -1)
+        # TODO view this so each batch has several latent codes
+        import pdb; pdb.set_trace()
+        return self.tanh(self.token_to_latent(encoding))[:, : self.n_tokens, :]
 
 
 class LatentDecoderNTokens(nn.Module):
     '''
-        Convert multiple token encodings into a single latent.
+        Take several latent tokens and convert them each full token hidden states.
     '''
     def __init__(self, config):
         super().__init__()
         self.latent_token_dim = config.latent_token_dim
         if self.latent_token_dim == config.t5.d_model:
-            logger.info('Latent decoder is not rescaling the latent code.')
+            logger.warning('Latent decoder is not rescaling the latent code.')
             self.latent_to_token = lambda x: x
         else:
             self.latent_to_token = nn.Linear(self.latent_token_dim, config.t5.d_model)
 
     def forward(self, latent) -> torch.Tensor:
-        batch_size = latent.size(0)
-        return self.latent_to_token(latent.view(batch_size, -1, self.latent_token_dim))
+        # TODO remove the view command here
+        return self.latent_to_token(latent)
 
 
 class LatentDecoderT5Norm(LatentDecoderNTokens):
@@ -84,11 +89,10 @@ class EncoderDecoderVAE(nn.Module):
 
     batch_size = None
 
-    def __init__(self, encoder, decoder, mmd_batch_size=None, use_reg_loss=True):
+    def __init__(self, encoder, decoder, use_reg_loss=True):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
-        self.mmd_batch_size = mmd_batch_size
         self.use_reg_loss = use_reg_loss
 
     def _model_forward(self, encoding, latent=None):
@@ -103,12 +107,13 @@ class EncoderDecoderVAE(nn.Module):
         skip_reg_loss=False,
     ):
         if input_encoding is None and latent is None:
-            raise ValueError("Both `input_encoding` and `latent` sent to VAE are Null.")
+            raise ValueError("Both `input_encoding` and `latent` sent to VAE are None.")
         use_reg_loss = self.use_reg_loss and latent is None and skip_reg_loss is False  # don't regularise if given latent
         recon_encoding, latent = self._model_forward(input_encoding, latent=latent)
         if use_reg_loss:
-            # TODO divide by batch size, or some custom val, sqrt batch?
-            reg_loss = self._regularliser_loss(latent) / latent.size(0)
+            # treat each token encoding as a seperate latent code
+            batch_size, n_latents_per_batch, latent_code_dim = latent.size()
+            reg_loss = self._regularliser_loss(latent.view(batch_size * n_latents_per_batch, latent_code_dim)) / (batch_size * n_latents_per_batch)
         else:
             reg_loss = torch.tensor(0, device=latent.device)
         return BaseVAE_Output(latent=latent, reconstructed_encoding=recon_encoding, reg_loss=reg_loss)
@@ -131,17 +136,5 @@ class EncoderDecoderVAE(nn.Module):
         return torch.mean(x_kernel) + torch.mean(y_kernel) - 2 * torch.mean(xy_kernel)
 
     def _regularliser_loss(self, latent):
-        if self.training and self.mmd_batch_size:
-            n_batches = latent.size(0) // self.mmd_batch_size
-            n_samples = n_batches * self.mmd_batch_size
-            all_latents = latent[:n_samples].view(
-                -1, self.mmd_batch_size, latent.size(1)
-            )
-            true_samples = torch.randn(all_latents.size(), device=latent.device)
-            total = torch.tensor(0.0, device=latent.device)
-            # TODO compute this in parallel
-            for i, latent_batch in enumerate(all_latents):
-                total += self._compute_mmd(true_samples[i], latent_batch)
-            return total / n_samples
         true_samples = torch.randn(latent.size(), device=latent.device)
         return self._compute_mmd(true_samples, latent)

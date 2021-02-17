@@ -263,7 +263,6 @@ def get_datasets(data_args):
     extension = data_args.train_file.split(".")[-1]
     if extension == "txt":
         extension = "text"
-    # TODO have this dataset split samples on some substring
     return load_dataset(extension, data_files=data_files)
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.

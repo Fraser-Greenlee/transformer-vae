@@ -288,6 +288,8 @@ class VAE_Trainer(trainer_script.Trainer):
 
     def gradual_interpolation_inputs(self, latent_start, latent_end):
         ratios = torch.arange(0, 1.1, 0.1, device=self.args.device)
+        # handle slerp seperately for each latent token
+        import pdb; pdb.set_trace()
         interpolations = slerp(ratios, latent_start.repeat(11, 1), latent_end.repeat(11, 1))
         return interpolations, ratios
 
@@ -316,10 +318,10 @@ class VAE_Trainer(trainer_script.Trainer):
 
     def training_interpolation_step(self, final_decoder_hidden_states, latent, model):
         '''
-            Only to be ran with Funnel-T5.
+            Sample interpolations to add additional losses.
+
+            None of these have substantially improved interpolation quality yet.
         '''
-        # TODO try using many more interpolation samples here
-        # TODO Also filter out ones where autoencoder is not an exact match?
         interpolated_latent, reconstructed_encoding, interpolated_last_hidden_state, target_a = self.prepare_interpolation_data(latent, model)
         interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
 

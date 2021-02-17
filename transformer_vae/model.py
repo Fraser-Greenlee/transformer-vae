@@ -87,7 +87,6 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
         self.vae = EncoderDecoderVAE(
             VAE_ENCODER_MODELS[config.vae_encoder_model](self.config),
             VAE_DECODER_MODELS[config.vae_decoder_model](self.config),
-            self.config.mmd_batch_size,
             self.config.use_reg_loss,
         )
 

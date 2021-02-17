@@ -22,11 +22,8 @@ install_requires = [
     "torch==1.7.0",
     "sklearn",  # for SVM
 ]
-# "mpi4py==3.0.3",
 
 tests_require = ["pytest", "flake8", "flake8-mypy", "black", "twine"]
-
-# TODO allow executing training directly
 
 setup(
     name=package,

@@ -40,6 +40,6 @@ def train_svm(latents_with_class):
 
 
 def t_sne(self, latents_with_class):
-    # TODO get t-sne plot then return points for W&B
+    # TODO get t-sne plot of latent codes then return points for W&B
     # for i, perplexity in enumerate([5, 30, 50, 100]):
     pass
