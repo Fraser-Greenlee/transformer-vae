@@ -80,7 +80,7 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
         decoder_config.is_decoder = True
         decoder_config.is_encoder_decoder = False
         decoder_config.num_layers = config.t5.num_decoder_layers
-        self.decoder = T5StackGradAccum(decoder_config, self.shared, config.attention_window_size, config.attention_window_overlap, config.attn_overlap_every_other_layer)
+        self.decoder = T5StackGradAccum(decoder_config, self.shared, config.attention_window_size, config.attention_window_overlap)
 
         self.init_weights()
 

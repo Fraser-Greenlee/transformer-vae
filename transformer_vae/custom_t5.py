@@ -11,13 +11,12 @@ logger = logging.get_logger(__name__)
 
 
 class T5BlockWindows(T5Block):
-    def __init__(self, config, window_size, window_overlap, overlap_every_other_layer, layer_id=0):
+    def __init__(self, config, window_size, window_overlap, layer_id=0):
         super().__init__(config, has_relative_attention_bias=layer_id == 0)
         self.layer_id = layer_id
         self.d_model = config.d_model
         self.window_size = window_size
         self.window_overlap = window_overlap
-        self.overlap_every_other_layer = overlap_every_other_layer
         self.odd_layer = layer_id % 1 == 1
 
     def forward(
@@ -35,19 +34,15 @@ class T5BlockWindows(T5Block):
         output_attentions=False,
         return_dict=True,
     ):
-        if self.window_size:
+        if self.training and self.window_size:
             # split inputs into windows and run as a larger batch
             # hidden_states (batch_size, seq_len, d_model) -> (batch_size * ?, window_len, d_model)
-            if self.overlap_every_other_layer:
-                if self.odd_layer:
-                    using_hidden_states, leftover_hidden_states = hidden_states[:, self.window_overlap:], hidden_states[:, :self.window_overlap]
-                else:
-                    using_hidden_states, leftover_hidden_states = hidden_states[:, :-self.window_overlap], hidden_states[:, -self.window_overlap:]
-                # convert to larger batches of shorter sequences
-                using_hidden_states = using_hidden_states.reshape(-1, self.window_size, self.d_model)
+            if self.odd_layer:
+                using_hidden_states, leftover_hidden_states = hidden_states[:, self.window_overlap:], hidden_states[:, :self.window_overlap]
             else:
-                # get subsequence handled by this layer
-                raise NotImplementedError()
+                using_hidden_states, leftover_hidden_states = hidden_states[:, :-self.window_overlap], hidden_states[:, -self.window_overlap:]
+            # convert to larger batches of shorter sequences
+            using_hidden_states = using_hidden_states.reshape(-1, self.window_size, self.d_model)
 
         outputs = super().forward(
             using_hidden_states,
@@ -64,16 +59,12 @@ class T5BlockWindows(T5Block):
             return_dict,
         )
 
-        if self.window_size:
-            # join inputs back into full sequences
-            if self.overlap_every_other_layer:
-                # concat leftover hidden state
-                batch_size = hidden_states.size(0)
-                new_hidden_states = outputs[0].reshape(batch_size, -1, self.d_model)
-                paired_states = (leftover_hidden_states, new_hidden_states) if self.odd_layer else (new_hidden_states, leftover_hidden_states)
-                new_hidden_states = torch.cat(paired_states, 1)
-            else:
-                raise NotImplementedError()
+        if self.training and self.window_size:
+            # concat leftover hidden state
+            batch_size = hidden_states.size(0)
+            new_hidden_states = outputs[0].reshape(batch_size, -1, self.d_model)
+            paired_states = (leftover_hidden_states, new_hidden_states) if self.odd_layer else (new_hidden_states, leftover_hidden_states)
+            new_hidden_states = torch.cat(paired_states, 1)
 
         return (new_hidden_states,) + outputs[1:]
 
@@ -82,7 +73,7 @@ class T5StackGradAccum(T5Stack):
     '''
         Modified to allow gradient accumulation between layers.
     '''
-    def __init__(self, config, embed_tokens, window_size, window_overlap, overlap_every_other_layer):
+    def __init__(self, config, embed_tokens, window_size, window_overlap):
         super().__init__(config, embed_tokens=embed_tokens)
         self.window_mode = False
         if window_size:
@@ -90,7 +81,7 @@ class T5StackGradAccum(T5Stack):
             self.window_size = window_size
             self.window_overlap = window_overlap
             self.block = nn.ModuleList(
-                [T5BlockWindows(config, window_size, window_overlap, overlap_every_other_layer, layer_id=i) for i in range(config.num_layers)]
+                [T5BlockWindows(config, window_size, window_overlap, layer_id=i) for i in range(config.num_layers)]
             )
         self.init_weights()
 
@@ -139,7 +130,7 @@ class T5StackGradAccum(T5Stack):
             assert self.embed_tokens is not None, "You have to initialize the model with valid token embeddings"
             inputs_embeds = self.embed_tokens(input_ids)
 
-        if self.window_mode:
+        if self.training and self.window_mode:
             # set input shape to window size to format attention masks correctly
             batch_size, seq_length = input_shape
             new_batch_size = batch_size * (seq_length // self.window_size)

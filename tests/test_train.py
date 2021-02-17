@@ -716,7 +716,6 @@ class TrainTests(TestCasePlus):
         tmp_dir = self.get_auto_remove_tmp_dir()
         testargs = f"""
             train.py
-            --attn_overlap_every_other_layer
             --attention_window_size=7
             --train_file ./tests/fixtures/all_len_16.txt
             --validation_file ./tests/fixtures/all_len_16.txt

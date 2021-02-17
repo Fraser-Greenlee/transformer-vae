@@ -89,7 +89,6 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         funnel_block_sizes='1_1_1',
         attention_window_size=0,
         attention_window_overlap=0,
-        attn_overlap_every_other_layer=False,
         gradient_checkpoint_encoder=False,
         decoder_grad_accumulation_rate=0,
         skip_upsample=False,
@@ -132,29 +131,9 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         assert(attention_window_size < set_seq_size), 'Attention window must be smallar than set sequence size.'
         self.attention_window_size = attention_window_size
         self.attention_window_overlap = attention_window_overlap
-        self.attn_overlap_every_other_layer = attn_overlap_every_other_layer
         if attention_window_size:
-            if not attn_overlap_every_other_layer:
-                overflow = None
-                if attention_window_overlap:
-                    overflow = _test_overlap(set_seq_size, attention_window_size, attention_window_overlap)
-
-                if overflow:
-                    if overflow:
-                        logger.warning(f'Overflowed by {overflow} tokens. Finding workable overflow sizes.')
-
-                    logger.warning('Working window overlap sizes:')
-                    logger.warning('- 0 (consider subsequences seperately, needs alternating layers to work)')
-                    for overlap in range(1, attention_window_size // 2 + 2):
-                        overflow = _test_overlap(set_seq_size, attention_window_size, overlap)
-                        if overflow == 0:
-                            logger.warning(f'- {overlap}')
-
-                    raise Exception('Window overflow, see logs for details.')
-
-            else:
-                assert(set_seq_size % attention_window_size != 0), 'When doing an alternating attention pattern the sequence size cannot be divisable by the window size as no alternations will be possible.'
-                self.attention_window_overlap = set_seq_size % attention_window_size
+            assert(set_seq_size % attention_window_size != 0), 'When doing an alternating attention pattern the sequence size cannot be divisable by the window size as no alternations will be possible.'
+            self.attention_window_overlap = set_seq_size % attention_window_size
 
         # extra training losses
         self.mmd_batch_size = mmd_batch_size
