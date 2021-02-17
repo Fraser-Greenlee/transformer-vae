@@ -100,7 +100,7 @@ class T5StackGradAccum(T5Stack):
         output_attentions=None,
         output_hidden_states=None,
         return_dict=None,
-        grad_accumulation_rate=None,
+        grad_chk_pnt_rate=None,
     ):
         # Model parallel
         if self.model_parallel:
@@ -208,15 +208,15 @@ class T5StackGradAccum(T5Stack):
 
             ### CHANGE BELOW
 
-            if grad_accumulation_rate and self.training:
+            if grad_chk_pnt_rate and self.training:
                 if use_cache:
                     logger.warn(
-                        "`use_cache=True` is incompatible with `grad_accumulation_rate=True`. Setting "
+                        "`use_cache=True` is incompatible with `grad_chk_pnt_rate=True`. Setting "
                         "`use_cache=False`..."
                     )
                     use_cache = False
 
-                if i % grad_accumulation_rate == 0:
+                if i % grad_chk_pnt_rate == 0:
                     # keep gradients to calculate future layers backwards pass (skip first layer)
                     layer_outputs = layer_module(
                         hidden_states,

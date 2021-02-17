@@ -1,2 +1,2 @@
 gradient_checkpoint_encoder
-decoder_grad_accumulation_rate=3
+decoder_grad_chk_pnt_rate=3

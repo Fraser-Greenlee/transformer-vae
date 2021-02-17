@@ -89,7 +89,7 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         attention_window_size=0,
         attention_window_overlap=0,
         gradient_checkpoint_encoder=False,
-        decoder_grad_accumulation_rate=0,
+        decoder_grad_chk_pnt_rate=0,
         skip_upsample=False,
         **kwargs,
     ):
@@ -123,7 +123,7 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         self.t5.n_positions = self.funnel.n_positions
         assertEqual(self.t5.model_type, "t5", "Need t5 model type for transformer_decoder.")
         assertEqual(self.funnel.d_model, self.t5.d_model, "Funnel & T5 transformers have different dimensions.")
-        self.decoder_grad_accumulation_rate = decoder_grad_accumulation_rate
+        self.decoder_grad_chk_pnt_rate = decoder_grad_chk_pnt_rate
         assert(attention_window_size < set_seq_size), 'Attention window must be smallar than set sequence size.'
         self.attention_window_size = attention_window_size
         self.attention_window_overlap = attention_window_overlap

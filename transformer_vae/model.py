@@ -347,7 +347,7 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
         lm_logits = None
         if decoder_input_ids is not None:
             decoder_outputs = self.decoder(
-                input_ids=decoder_input_ids, encoder_hidden_states=upsampled_encoding, use_cache=use_cache, output_hidden_states=output_hidden_states, return_dict=True, grad_accumulation_rate=self.config.decoder_grad_accumulation_rate
+                input_ids=decoder_input_ids, encoder_hidden_states=upsampled_encoding, use_cache=use_cache, output_hidden_states=output_hidden_states, return_dict=True, grad_chk_pnt_rate=self.config.decoder_grad_chk_pnt_rate
             )
 
             sequence_output = decoder_outputs.last_hidden_state

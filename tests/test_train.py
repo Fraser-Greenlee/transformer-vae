@@ -648,7 +648,7 @@ class TrainTests(TestCasePlus):
         tmp_dir = self.get_auto_remove_tmp_dir()
         testargs = f"""
             train.py
-            --decoder_grad_accumulation_rate=3
+            --decoder_grad_chk_pnt_rate=3
             --gradient_checkpoint_encoder
             --train_file ./tests/fixtures/line_by_line_max_len_3.txt
             --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
