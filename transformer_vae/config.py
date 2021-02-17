@@ -79,7 +79,7 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         critic_name=None,
         set_seq_size=60,
         decoder_start_token_id=0,
-        use_reg_loss=True,
+        dont_use_reg_loss=True,
         reg_schedule_k=0.0025,
         reg_schedule_b=6.25,
         use_extra_logs=False,
@@ -132,8 +132,8 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
             self.attention_window_overlap = set_seq_size % attention_window_size
 
         # extra training losses
-        self.use_reg_loss = use_reg_loss
-        if not use_reg_loss:
+        self.use_reg_loss = not dont_use_reg_loss
+        if dont_use_reg_loss:
             logger.warning("Regularisation loss is turned off, you are training an Autoencoder (not a VAE).")
         self.reg_schedule_k = reg_schedule_k
         self.reg_schedule_b = reg_schedule_b
