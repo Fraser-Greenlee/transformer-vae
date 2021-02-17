@@ -92,7 +92,6 @@ class VAE_Trainer(trainer_script.Trainer):
             if self.args.adafactor:
                 optimizer_kwargs = {"scale_parameter": False, "relative_step": False}
             else:
-                optimizer_cls = AdamW
                 optimizer_kwargs = {
                     "betas": (self.args.adam_beta1, self.args.adam_beta2),
                     "eps": self.args.adam_epsilon,

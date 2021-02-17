@@ -11,7 +11,7 @@ from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_outputs import BaseModelOutput
 from transformers.models.funnel.modeling_funnel import upsample, FunnelEncoder
 
-from transformer_vae.custom_t5 import T5StackGradAccum
+from transformer_vae.custom_t5 import T5StackGradAccum, T5Stack
 from transformer_vae.autoencoders import VAE_ENCODER_MODELS, VAE_DECODER_MODELS, EncoderDecoderVAE
 from transformer_vae.critic import CRITIC
 from transformer_vae.model_outputs import BaseTransformerVAE_Output
@@ -80,7 +80,7 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
         decoder_config.is_decoder = True
         decoder_config.is_encoder_decoder = False
         decoder_config.num_layers = config.t5.num_decoder_layers
-        self.decoder = T5StackGradAccum(decoder_config, self.shared, config.attention_window_size, config.attention_window_overlap)
+        self.decoder = T5Stack(decoder_config, self.shared)  # T5StackGradAccum(decoder_config, self.shared, config.attention_window_size, config.attention_window_overlap)
 
         self.init_weights()
 
