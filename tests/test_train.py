@@ -19,15 +19,16 @@ class TrainTests(TestCasePlus):
         tmp_dir = self.get_auto_remove_tmp_dir()
         testargs = f"""
             train.py
-            --train_file ./tests/fixtures/line_by_line_max_len_3.txt
-            --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --train_file ./tests/fixtures/all_len_16.txt
+            --validation_file ./tests/fixtures/all_len_16.txt
             --do_train
             --do_eval
             --per_device_train_batch_size 4
             --per_device_eval_batch_size 4
-            --num_train_epochs 2
-            --set_seq_size 5
-            --latent_size 2
+            --num_train_epochs 1
+            --set_seq_size 16
+            --n_latent_tokens 5
+            --latent_size 77
             --output_dir {tmp_dir}
             --overwrite_output_dir
             """.split()

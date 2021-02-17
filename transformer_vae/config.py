@@ -84,7 +84,7 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         reg_schedule_b=6.25,
         use_extra_logs=False,
         cache_dir=None,
-        n_latent_tokens=5,
+        n_latent_tokens=5,  # set to -1 for full sequence
         funnel_block_sizes='1_1_1',
         attention_window_size=0,
         attention_window_overlap=0,
@@ -104,11 +104,8 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         if set_seq_size < n_latent_tokens:
             logger.warning(f'set_seq_size size is smaller than n_latent_tokens, now using n_latent_tokens={set_seq_size} from {n_latent_tokens}')
             n_latent_tokens = set_seq_size
-        self.latent_token_dim = math.ceil(latent_size / n_latent_tokens)
+        self.latent_size = latent_size
         self.n_latent_tokens = n_latent_tokens
-        self.latent_size = self.latent_token_dim * n_latent_tokens
-        if self.latent_size != latent_size:
-            logger.warning(f'model dimension, latent_size & n_latent_tokens don\'t match. Now using latent_size={self.latent_size} from latent_size={latent_size}')
         self.skip_upsample = skip_upsample
 
         # funnel encoder model

@@ -14,14 +14,11 @@ class LatentEncoderNTokens(nn.Module):
     '''
     def __init__(self, config):
         super().__init__()
-        self.token_to_latent = nn.Linear(config.t5.d_model, config.latent_token_dim)
+        self.token_to_latent = nn.Linear(config.t5.d_model, config.latent_size)
         self.n_tokens = config.n_latent_tokens
         self.tanh = nn.Tanh()
 
     def forward(self, encoding) -> torch.Tensor:
-        batch_size = encoding.size(0)
-        # TODO view this so each batch has several latent codes
-        import pdb; pdb.set_trace()
         return self.tanh(self.token_to_latent(encoding))[:, : self.n_tokens, :]
 
 
@@ -31,12 +28,12 @@ class LatentDecoderNTokens(nn.Module):
     '''
     def __init__(self, config):
         super().__init__()
-        self.latent_token_dim = config.latent_token_dim
-        if self.latent_token_dim == config.t5.d_model:
+        self.latent_size = config.latent_size
+        if self.latent_size == config.t5.d_model:
             logger.warning('Latent decoder is not rescaling the latent code.')
             self.latent_to_token = lambda x: x
         else:
-            self.latent_to_token = nn.Linear(self.latent_token_dim, config.t5.d_model)
+            self.latent_to_token = nn.Linear(self.latent_size, config.t5.d_model)
 
     def forward(self, latent) -> torch.Tensor:
         # TODO remove the view command here

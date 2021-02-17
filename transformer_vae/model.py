@@ -332,7 +332,7 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
                 target_len=self.config.t5.n_positions,
                 separate_cls=self.config.funnel.separate_cls,
                 truncate_seq=self.config.funnel.truncate_seq,
-            )            
+            )
 
         # Now using T5 decoder
 
