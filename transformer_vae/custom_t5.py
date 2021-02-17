@@ -65,8 +65,9 @@ class T5BlockWindows(T5Block):
             new_hidden_states = outputs[0].reshape(batch_size, -1, self.d_model)
             paired_states = (leftover_hidden_states, new_hidden_states) if self.odd_layer else (new_hidden_states, leftover_hidden_states)
             new_hidden_states = torch.cat(paired_states, 1)
+            return (new_hidden_states,) + outputs[1:]
 
-        return (new_hidden_states,) + outputs[1:]
+        return outputs
 
 
 class T5StackGradAccum(T5Stack):
@@ -205,7 +206,7 @@ class T5StackGradAccum(T5Stack):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
-            ### CHANGE HERE
+            ### CHANGE BELOW
 
             if grad_accumulation_rate and self.training:
                 if use_cache:
@@ -267,7 +268,7 @@ class T5StackGradAccum(T5Stack):
                     output_attentions=output_attentions,
                 )
 
-            ### CHANGE HERE
+            ### CHANGE ABOVE
 
             # layer_outputs is a tuple with:
             # hidden-states, key-value-states, (self-attention weights), (self-attention position bias), (cross-attention weights), (cross-attention position bias)
