@@ -253,7 +253,7 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
             token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=device)
 
         if inputs_embeds is None:
-            inputs_embeds = self.shared(input_ids)
+            inputs_embeds = self.shared_embedding(input_ids)
 
         if self.config.gradient_checkpoint_encoder:
 
