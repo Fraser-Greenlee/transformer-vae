@@ -85,6 +85,7 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
         decoder_config.num_layers = config.t5.num_decoder_layers
         self.decoder = T5Stack(decoder_config, self.shared)  # T5StackGradAccum(decoder_config, self.shared, config.attention_window_size, config.attention_window_overlap)
         '''
+        # TODO allow grad accumulation on auto loaded model
         funnel_transformer = AutoModelForMaskedLM.from_config(config.funnel)
         t5_transformer = AutoModelForSeq2SeqLM.from_config(config.t5)
 

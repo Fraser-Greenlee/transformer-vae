@@ -19,8 +19,7 @@ class LatentEncoderNTokens(nn.Module):
         self.tanh = nn.Tanh()
 
     def forward(self, encoding) -> torch.Tensor:
-        batch_size = encoding.size(0)
-        return self.tanh(self.token_to_latent(encoding))[:, : self.n_tokens, :].view(batch_size, -1)
+        return self.tanh(self.token_to_latent(encoding))[:, : self.n_tokens, :]
 
 
 class LatentDecoderNTokens(nn.Module):
@@ -37,8 +36,7 @@ class LatentDecoderNTokens(nn.Module):
             self.latent_to_token = nn.Linear(self.latent_size, config.t5.d_model)
 
     def forward(self, latent) -> torch.Tensor:
-        batch_size = latent.size(0)
-        return self.latent_to_token(latent.view(batch_size, -1, self.latent_size))
+        return self.latent_to_token(latent)
 
 
 class LatentDecoderT5Norm(LatentDecoderNTokens):
@@ -110,8 +108,8 @@ class EncoderDecoderVAE(nn.Module):
         recon_encoding, latent = self._model_forward(input_encoding, latent=latent)
         if use_reg_loss:
             # treat each token encoding as a seperate latent code
-            # batch_size, n_latents_per_batch, latent_code_dim = latent.size()
-            reg_loss = self._regularliser_loss(latent) / latent.size(0)
+            batch_size, n_latents_per_batch, latent_code_dim = latent.size()
+            reg_loss = self._regularliser_loss(latent.reshape(-1, latent_code_dim)) / batch_size * n_latents_per_batch
         else:
             reg_loss = torch.tensor(0, device=latent.device)
         return BaseVAE_Output(latent=latent, reconstructed_encoding=recon_encoding, reg_loss=reg_loss)
