@@ -31,7 +31,6 @@ class WandbCallbackUseModelLogs(WandbCallback):
     Adds model's internal logs to allow logging extra losses.
     """
     def on_log(self, args, state, control, model=None, logs=None, **kwargs):
-        import pdb; pdb.set_trace()
         if logs:
             logs = {**logs, **model.get_latest_logs()}
         super().on_log(args, state, control, model=model, logs=logs, **kwargs)
