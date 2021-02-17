@@ -27,7 +27,8 @@ class T5BlockWindows(T5Block):
         encoder_hidden_states=None,
         encoder_attention_mask=None,
         encoder_decoder_position_bias=None,
-        head_mask=None,
+        layer_head_mask=None,
+        encoder_layer_head_mask=None,
         past_key_value=None,
         use_cache=False,
         output_attentions=False,
@@ -50,7 +51,8 @@ class T5BlockWindows(T5Block):
             encoder_hidden_states,
             encoder_attention_mask,
             encoder_decoder_position_bias,
-            head_mask,
+            layer_head_mask,
+            encoder_layer_head_mask,
             past_key_value,
             use_cache,
             output_attentions,
@@ -92,6 +94,7 @@ class T5StackGradAccum(T5Stack):
         encoder_attention_mask=None,
         inputs_embeds=None,
         head_mask=None,
+        encoder_head_mask=None,
         past_key_values=None,
         use_cache=None,
         output_attentions=None,
@@ -141,6 +144,7 @@ class T5StackGradAccum(T5Stack):
                 # Get duplicated encodings together with indices [1,1, 2,2, 3,3, etc]
                 encoding_index = torch.arange(batch_size).repeat(num_dups, 1).T.reshape(-1)
                 encoder_hidden_states = encoder_hidden_states[encoding_index]
+
         batch_size, seq_length = input_shape
 
         # required mask seq length can be calculated via length of past
@@ -173,6 +177,7 @@ class T5StackGradAccum(T5Stack):
 
         # Prepare head mask if needed
         head_mask = self.get_head_mask(head_mask, self.config.num_layers)
+        encoder_head_mask = self.get_head_mask(encoder_head_mask, self.config.num_layers)
         present_key_value_states = () if use_cache else None
         all_hidden_states = () if output_hidden_states else None
         all_attentions = () if output_attentions else None
@@ -183,6 +188,8 @@ class T5StackGradAccum(T5Stack):
         hidden_states = self.dropout(inputs_embeds)
 
         for i, (layer_module, past_key_value) in enumerate(zip(self.block, past_key_values)):
+            layer_head_mask = head_mask[i]
+            encoder_layer_head_mask = encoder_head_mask[i]
             # Model parallel
             if self.model_parallel:
                 torch.cuda.set_device(hidden_states.device)
@@ -197,6 +204,10 @@ class T5StackGradAccum(T5Stack):
                     encoder_extended_attention_mask = encoder_extended_attention_mask.to(hidden_states.device)
                 if encoder_decoder_position_bias is not None:
                     encoder_decoder_position_bias = encoder_decoder_position_bias.to(hidden_states.device)
+                if layer_head_mask is not None:
+                    layer_head_mask = layer_head_mask.to(hidden_states.device)
+                if encoder_layer_head_mask is not None:
+                    encoder_layer_head_mask = encoder_layer_head_mask.to(hidden_states.device)
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
