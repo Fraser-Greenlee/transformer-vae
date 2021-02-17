@@ -4,3 +4,4 @@ logging_steps 100
 overwrite_output_dir
 save_total_limit 3
 save_steps 1000
+use_extra_logs
