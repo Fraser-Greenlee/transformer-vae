@@ -105,7 +105,7 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
 
         # Funnel init
         config = self.config.funnel
-        if classname.find("Linear") != -1:
+        if False and classname.find("Linear") != -1:
             if getattr(module, "weight", None) is not None:
                 if config.initializer_std is None:
                     fan_out, fan_in = module.weight.shape
