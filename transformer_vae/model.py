@@ -114,21 +114,26 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
         self.shared_embedding = new_embeddings
 
     def _init_weights(self, module):
+        return None
         classname = module.__class__.__name__
 
         # Funnel init
         config = self.config.funnel
-        if classname.find("Linear") != -1:
-            if getattr(module, "weight", None) is not None:
-                if config.initializer_std is None:
-                    fan_out, fan_in = module.weight.shape
-                    std = np.sqrt(1.0 / float(fan_in + fan_out))
-                else:
-                    std = config.initializer_std
-                nn.init.normal_(module.weight, std=std)
-            if getattr(module, "bias", None) is not None:
-                nn.init.constant_(module.bias, 0.0)
-        elif classname == "FunnelRelMultiheadAttention":
+        if classname.startswith('Funnel'):
+            # only normalise linear layers in the funnel model
+            for k, v in module._modules.items():
+                if type(v) is nn.Linear:
+                    if getattr(v, "weight", None) is not None:
+                        if config.initializer_std is None:
+                            fan_out, fan_in = v.weight.shape
+                            std = np.sqrt(1.0 / float(fan_in + fan_out))
+                        else:
+                            std = config.initializer_std
+                        nn.init.normal_(v.weight, std=std)
+                    if getattr(v, "bias", None) is not None:
+                        nn.init.constant_(v.bias, 0.0)
+                    setattr(module, k, v)
+        if classname == "FunnelRelMultiheadAttention":
             nn.init.uniform_(module.r_w_bias, b=config.initializer_range)
             nn.init.uniform_(module.r_r_bias, b=config.initializer_range)
             nn.init.uniform_(module.r_kernel, b=config.initializer_range)
@@ -143,10 +148,10 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
         factor = config.initializer_factor  # Used for testing weights initialization
         if classname == 'T5LayerNorm':
             module.weight.data.fill_(factor * 1.0)
-        elif classname in ['T5Model', 'T5ForConditionalGeneration', 'T5EncoderModel']:
+        elif classname == 'Embedding':
             # Mesh TensorFlow embeddings initialization
             # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L1624
-            module.shared.weight.data.normal_(mean=0.0, std=factor * 1.0)
+            module.weight.data.normal_(mean=0.0, std=factor * 1.0)
         elif classname == 'T5DenseReluDense':
             # Mesh TensorFlow FF initialization
             # See https://github.com/tensorflow/mesh/blob/master/mesh_tensorflow/transformer/transformer_layers.py#L56
