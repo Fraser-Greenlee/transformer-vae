@@ -35,14 +35,6 @@ from transformer_vae.utils import slerp
 
 logger = logging.get_logger(__name__)
 
-if WandbCallback in trainer_script.DEFAULT_CALLBACKS:
-    # Allow tracking extra training losses via the model's `get_latest_logs` method
-    trainer_script.DEFAULT_CALLBACKS.remove(WandbCallback)  # type: ignore
-    trainer_script.DEFAULT_CALLBACKS.append(WandbCallbackUseModelLogs)  # type: ignore
-    import wandb
-else:
-    logger.warning("Not using Weights and Biasis, this will give you incomplete logs.")
-
 
 NOT_ALLOWED_LOGGERS = [TensorBoardCallback, CometCallback, AzureMLCallback, MLflowCallback]
 
@@ -71,6 +63,8 @@ class VAE_Trainer(trainer_script.Trainer):
             assert 'custom_text_to_array' in custom_methods
             self.text_to_array = custom_methods['custom_text_to_array']
         super().__init__(model, args, **kwargs)
+        self.remove_callback(WandbCallback)
+        self.add_callback(WandbCallbackUseModelLogs)
 
     def create_optimizer_and_scheduler(self, num_training_steps: int):
         """
