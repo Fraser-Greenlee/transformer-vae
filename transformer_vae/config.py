@@ -80,7 +80,7 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         critic_name=None,
         set_seq_size=60,
         decoder_start_token_id=0,
-        dont_use_reg_loss=True,
+        dont_use_reg_loss=False,
         reg_schedule_k=0.0025,
         reg_schedule_b=6.25,
         use_extra_logs=False,
