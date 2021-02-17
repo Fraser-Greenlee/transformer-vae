@@ -105,17 +105,21 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
 
         # Funnel init
         config = self.config.funnel
-        if False and classname.find("Linear") != -1:
-            if getattr(module, "weight", None) is not None:
-                if config.initializer_std is None:
-                    fan_out, fan_in = module.weight.shape
-                    std = np.sqrt(1.0 / float(fan_in + fan_out))
-                else:
-                    std = config.initializer_std
-                nn.init.normal_(module.weight, std=std)
-            if getattr(module, "bias", None) is not None:
-                nn.init.constant_(module.bias, 0.0)
-        elif classname == "FunnelRelMultiheadAttention":
+        if classname.startswith('Funnel'):
+            # only normalise linear layers in the funnel model
+            for k, v in module._modules.items():
+                if type(v) is nn.Linear:
+                    if getattr(v, "weight", None) is not None:
+                        if config.initializer_std is None:
+                            fan_out, fan_in = v.weight.shape
+                            std = np.sqrt(1.0 / float(fan_in + fan_out))
+                        else:
+                            std = config.initializer_std
+                        nn.init.normal_(v.weight, std=std)
+                    if getattr(v, "bias", None) is not None:
+                        nn.init.constant_(v.bias, 0.0)
+                    setattr(module, k, v)
+        if classname == "FunnelRelMultiheadAttention":
             nn.init.uniform_(module.r_w_bias, b=config.initializer_range)
             nn.init.uniform_(module.r_r_bias, b=config.initializer_range)
             nn.init.uniform_(module.r_kernel, b=config.initializer_range)
