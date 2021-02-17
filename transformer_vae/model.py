@@ -108,10 +108,10 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
             self.critic = CRITIC[config.critic_type](config.critic)
 
     def get_input_embeddings(self):
-        return self.shared
+        return self.shared_embedding
 
     def set_input_embeddings(self, new_embeddings):
-        self.shared = new_embeddings
+        self.shared_embedding = new_embeddings
 
     def _init_weights(self, module):
         classname = module.__class__.__name__
