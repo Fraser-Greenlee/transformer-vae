@@ -110,7 +110,7 @@ class EncoderDecoderVAE(nn.Module):
         if use_reg_loss:
             # treat each token encoding as a seperate latent code
             batch_size, n_latents_per_batch, latent_code_dim = latent.size()
-            reg_loss = self._regularliser_loss(latent.view(batch_size * n_latents_per_batch, latent_code_dim)) / (batch_size * n_latents_per_batch)
+            reg_loss = self._regularliser_loss(latent.reshape(batch_size * n_latents_per_batch, latent_code_dim)) / (batch_size * n_latents_per_batch)
         else:
             reg_loss = torch.tensor(0, device=latent.device)
         return BaseVAE_Output(latent=latent, reconstructed_encoding=recon_encoding, reg_loss=reg_loss)
