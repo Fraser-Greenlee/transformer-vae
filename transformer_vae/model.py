@@ -10,6 +10,7 @@ from transformers.utils import logging
 from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_outputs import BaseModelOutput
 from transformers.models.funnel.modeling_funnel import upsample, FunnelEncoder
+from transformers import AutoModelForSeq2SeqLM, AutoModelForMaskedLM
 
 from transformer_vae.custom_t5 import T5StackGradAccum, T5Stack
 from transformer_vae.autoencoders import VAE_ENCODER_MODELS, VAE_DECODER_MODELS, EncoderDecoderVAE
@@ -70,6 +71,8 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
 
     def __init__(self, config: Funnel_T5_VAE_Config):
         super().__init__(config=config)
+        '''
+        # OLD model definition
         self.shared = nn.Embedding(config.t5.vocab_size, config.t5.d_model)
         self.lm_head = nn.Linear(config.t5.d_model, config.t5.vocab_size, bias=False)
         self.decoder_start_token_id = self.config.t5.decoder_start_token_id
@@ -81,8 +84,18 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
         decoder_config.is_encoder_decoder = False
         decoder_config.num_layers = config.t5.num_decoder_layers
         self.decoder = T5Stack(decoder_config, self.shared)  # T5StackGradAccum(decoder_config, self.shared, config.attention_window_size, config.attention_window_overlap)
+        '''
+        funnel_transformer = AutoModelForMaskedLM.from_config(config.funnel)
+        t5_transformer = AutoModelForSeq2SeqLM.from_config(config.t5)
 
-        self.init_weights()
+        self.encoder = funnel_transformer.funnel.encoder
+        self.decoder = t5_transformer.decoder
+        self.lm_head = t5_transformer.lm_head
+        self.shared_embedding = t5_transformer.shared
+        self.decoder_start_token_id = self.config.t5.decoder_start_token_id
+        assert (
+            self.decoder_start_token_id is not None
+        ), "`self.config.t5.decoder_start_token_id` has to be defined. In T5 it is usually set to the pad_token_id. See T5 docs for more information"
 
         self.vae = EncoderDecoderVAE(
             VAE_ENCODER_MODELS[config.vae_encoder_model](self.config),
@@ -105,21 +118,17 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
 
         # Funnel init
         config = self.config.funnel
-        if classname.startswith('Funnel'):
-            # only normalise linear layers in the funnel model
-            for k, v in module._modules.items():
-                if type(v) is nn.Linear:
-                    if getattr(v, "weight", None) is not None:
-                        if config.initializer_std is None:
-                            fan_out, fan_in = v.weight.shape
-                            std = np.sqrt(1.0 / float(fan_in + fan_out))
-                        else:
-                            std = config.initializer_std
-                        nn.init.normal_(v.weight, std=std)
-                    if getattr(v, "bias", None) is not None:
-                        nn.init.constant_(v.bias, 0.0)
-                    setattr(module, k, v)
-        if classname == "FunnelRelMultiheadAttention":
+        if classname.find("Linear") != -1:
+            if getattr(module, "weight", None) is not None:
+                if config.initializer_std is None:
+                    fan_out, fan_in = module.weight.shape
+                    std = np.sqrt(1.0 / float(fan_in + fan_out))
+                else:
+                    std = config.initializer_std
+                nn.init.normal_(module.weight, std=std)
+            if getattr(module, "bias", None) is not None:
+                nn.init.constant_(module.bias, 0.0)
+        elif classname == "FunnelRelMultiheadAttention":
             nn.init.uniform_(module.r_w_bias, b=config.initializer_range)
             nn.init.uniform_(module.r_r_bias, b=config.initializer_range)
             nn.init.uniform_(module.r_kernel, b=config.initializer_range)
@@ -134,10 +143,10 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
         factor = config.initializer_factor  # Used for testing weights initialization
         if classname == 'T5LayerNorm':
             module.weight.data.fill_(factor * 1.0)
-        elif classname == 'Embedding':
+        elif classname in ['T5Model', 'T5ForConditionalGeneration', 'T5EncoderModel']:
             # Mesh TensorFlow embeddings initialization
             # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/layers.py#L1624
-            module.weight.data.normal_(mean=0.0, std=factor * 1.0)
+            module.shared.weight.data.normal_(mean=0.0, std=factor * 1.0)
         elif classname == 'T5DenseReluDense':
             # Mesh TensorFlow FF initialization
             # See https://github.com/tensorflow/mesh/blob/master/mesh_tensorflow/transformer/transformer_layers.py#L56
