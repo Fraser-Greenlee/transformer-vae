@@ -34,7 +34,7 @@ def t5_block_alt(self, config, layer_id):
         output_attentions=False,
         return_dict=True,
     ):
-        if self.training and self.window_size:
+        if self.window_size:
             # split inputs into windows and run as a larger batch
             # hidden_states (batch_size, seq_len, d_model) -> (batch_size * ?, window_len, d_model)
             if self.odd_layer:
@@ -59,7 +59,7 @@ def t5_block_alt(self, config, layer_id):
             return_dict,
         )
 
-        if self.training and self.window_size:
+        if self.window_size:
             # concat leftover hidden state
             batch_size = hidden_states.size(0)
             new_hidden_states = outputs[0].reshape(batch_size, -1, self.d_model)
@@ -130,7 +130,7 @@ def modify_t5_stack(self, config):
 
         ### CHANGE BELOW
 
-        if self.training and self.window_mode:
+        if self.window_mode:
             # set input shape to window size to format attention masks correctly
             batch_size, seq_length = input_shape
             new_batch_size = batch_size * (seq_length // self.window_size)
