@@ -282,10 +282,10 @@ class VAE_Trainer(trainer_script.Trainer):
 
     def gradual_interpolation_inputs(self, latent_start, latent_end):
         ratios = torch.arange(0, 1.1, 0.1, device=self.args.device)
-        # TODO: handle slerp seperately for each latent token
-        import pdb; pdb.set_trace()
-        interpolations = slerp(ratios, latent_start.repeat(11, 1), latent_end.repeat(11, 1))
-        return interpolations, ratios
+        num_latent_tokens = latent_start.size(0)
+        latent_token_dim = latent_start.size(1)
+        interpolations = slerp(ratios.repeat(num_latent_tokens), latent_start.repeat(11, 1), latent_end.repeat(11, 1))
+        return interpolations.view(11, num_latent_tokens, latent_token_dim), ratios
 
     def random_interpolation_inputs(self, latent):
         batch_size = latent.size(0)
