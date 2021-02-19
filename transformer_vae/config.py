@@ -87,6 +87,8 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         cache_dir='',
         n_latent_tokens=5,  # set to -1 for full sequence
         funnel_block_sizes='',
+        num_decoder_layers=0,
+        num_decoder_heads=0,
         attention_window_size=0,
         attention_window_overlap=0,
         gradient_checkpoint_encoder=False,
@@ -124,6 +126,10 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
 
         # T5 decoder model
         self.t5 = AutoConfig.from_pretrained(t5_name, cache_dir=cache_dir)
+        if num_decoder_layers:
+            self.t5.num_layers = num_decoder_layers
+        if num_decoder_heads:
+            self.t5.num_heads = num_decoder_heads
         self.t5.decoder_start_token_id = decoder_start_token_id
         self.t5.n_positions = self.funnel.n_positions
         assertEqual(self.t5.model_type, "t5", "Need t5 model type for transformer_decoder.")
