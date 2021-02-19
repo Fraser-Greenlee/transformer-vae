@@ -1,7 +1,5 @@
 import torch
-from torch import nn
 from transformers.utils import logging
-from transformers.models.t5.modeling_t5 import T5Block, T5Stack
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions
 
 from transformer_vae.checkpoint import checkpoint
@@ -16,7 +14,7 @@ def t5_block_alt(self, config, layer_id):
         Helps getting around init issues.
     '''
     self.layer_id = layer_id
-    self.d_model = config.d_model
+    self.d_model = config.t5.d_model
     self.window_size = config.attention_window_size
     self.window_overlap = config.attention_window_overlap
     self.odd_layer = layer_id % 1 == 1
@@ -130,6 +128,8 @@ def modify_t5_stack(self, config):
             assert self.embed_tokens is not None, "You have to initialize the model with valid token embeddings"
             inputs_embeds = self.embed_tokens(input_ids)
 
+        ### CHANGE BELOW
+
         if self.training and self.window_mode:
             # set input shape to window size to format attention masks correctly
             batch_size, seq_length = input_shape
@@ -141,6 +141,8 @@ def modify_t5_stack(self, config):
                 # Get duplicated encodings together with indices [1,1, 2,2, 3,3, etc]
                 encoding_index = torch.arange(batch_size).repeat(num_dups, 1).T.reshape(-1)
                 encoder_hidden_states = encoder_hidden_states[encoding_index]
+
+        ### CHANGE ABOVE
 
         batch_size, seq_length = input_shape
 
