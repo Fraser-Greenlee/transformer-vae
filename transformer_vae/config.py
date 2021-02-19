@@ -84,7 +84,7 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         reg_schedule_k=0.0025,
         reg_schedule_b=6.25,
         use_extra_logs=False,
-        cache_dir='',
+        cache_dir=None,
         n_latent_tokens=5,  # set to -1 for full sequence
         funnel_block_sizes='',
         num_decoder_layers=0,
@@ -98,9 +98,6 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
     ):
         assertIn(vae_encoder_model, VAE_ENCODER_MODELS.keys(), "Unexpected VAE encoder.")
         assertIn(vae_decoder_model, VAE_DECODER_MODELS.keys(), "Unexpected VAE decoder.")
-
-        if not cache_dir:
-            cache_dir = None
 
         super().__init__(**kwargs)
 

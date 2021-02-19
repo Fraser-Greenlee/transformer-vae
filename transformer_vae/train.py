@@ -124,6 +124,12 @@ fields = [
             default=True,
             metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
         )
+    ),
+    (
+        'cache_dir', str, field(
+            default=None,
+            metadata={"help": "Cache directory."},
+        )
     )
 ] + [
     (
@@ -132,7 +138,7 @@ fields = [
         )
     )
     # get relevent model arguments with defaults
-    for name, info in inspect.signature(Funnel_T5_VAE_Config.__init__).parameters.items() if name not in ['self', 'kwargs', 'use_extra_logs']
+    for name, info in inspect.signature(Funnel_T5_VAE_Config.__init__).parameters.items() if name not in ['self', 'kwargs', 'use_extra_logs', 'cache_dir']
 ]
 # ensure starting with non-default args
 start_f = list(filter(lambda field: field[2].default is None, fields))
