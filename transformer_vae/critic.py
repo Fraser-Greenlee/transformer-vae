@@ -1,3 +1,8 @@
+'''
+    I wanted to use a critic model to improve interpolation performance.
+
+    Sadly none of these methods worked.
+'''
 import torch
 from torch import nn
 from transformers import AutoModelForSeq2SeqLM, AutoModelForMaskedLM
@@ -54,7 +59,7 @@ class CriticMeanNoAct(Critic):
 
 
 CRITIC = {
-    None: Critic,
+    '': Critic,
     'mean': CriticMean,
     'mean_no_act': CriticMeanNoAct,
 }

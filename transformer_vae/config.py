@@ -59,7 +59,7 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         gradient_checkpoint (:obj:`bool`, `optional`, defaults to False):
             Checkpoint gradients in the model.
             Currently just checkpoints after the encoder + VAE
-        funnel_block_sizes (:obj:`str`, `optional`, defaults to None):
+        funnel_block_sizes (:obj:`str`, `optional`, defaults to ''):
             Size of each Funnel Encoder block, sequence is halved between each block.
             Example specification: 1_1_1
         *** End ***
@@ -74,19 +74,19 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         latent_size=1_000,
         funnel_name="funnel-transformer/intermediate",
         t5_name="t5-base",
-        vae_encoder_model=None,
-        vae_decoder_model=None,
-        critic_type=None,
-        critic_name=None,
+        vae_encoder_model='',
+        vae_decoder_model='',
+        critic_type='',
+        critic_name='',
         set_seq_size=60,
         decoder_start_token_id=0,
         dont_use_reg_loss=False,
         reg_schedule_k=0.0025,
         reg_schedule_b=6.25,
         use_extra_logs=False,
-        cache_dir=None,
+        cache_dir='',
         n_latent_tokens=5,  # set to -1 for full sequence
-        funnel_block_sizes=None,
+        funnel_block_sizes='',
         attention_window_size=0,
         attention_window_overlap=0,
         gradient_checkpoint_encoder=False,
@@ -96,6 +96,9 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
     ):
         assertIn(vae_encoder_model, VAE_ENCODER_MODELS.keys(), "Unexpected VAE encoder.")
         assertIn(vae_decoder_model, VAE_DECODER_MODELS.keys(), "Unexpected VAE decoder.")
+
+        if not cache_dir:
+            cache_dir = None
 
         super().__init__(**kwargs)
 

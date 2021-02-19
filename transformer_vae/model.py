@@ -69,21 +69,6 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
 
     def __init__(self, config: Funnel_T5_VAE_Config):
         super().__init__(config=config)
-        '''
-        # OLD model definition
-        self.shared = nn.Embedding(config.t5.vocab_size, config.t5.d_model)
-        self.lm_head = nn.Linear(config.t5.d_model, config.t5.vocab_size, bias=False)
-        self.decoder_start_token_id = self.config.t5.decoder_start_token_id
-
-        self.encoder = FunnelEncoder(config.funnel)
-
-        decoder_config = copy.deepcopy(config.t5)
-        decoder_config.is_decoder = True
-        decoder_config.is_encoder_decoder = False
-        decoder_config.num_layers = config.t5.num_decoder_layers
-        self.decoder = T5Stack(decoder_config, self.shared)  # T5StackGradAccum(decoder_config, self.shared, config.attention_window_size, config.attention_window_overlap)
-        '''
-        # TODO allow grad accumulation on auto loaded model
         funnel_transformer = AutoModelForMaskedLM.from_config(config.funnel)
         t5_transformer = AutoModelForSeq2SeqLM.from_config(config.t5)
 

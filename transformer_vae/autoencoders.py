@@ -68,10 +68,10 @@ class LatentDecoderFunnelNorm(LatentDecoderNTokens):
 
 
 VAE_ENCODER_MODELS = {
-    None: LatentEncoderNTokens,
+    "": LatentEncoderNTokens,
 }
 VAE_DECODER_MODELS = {
-    None: LatentDecoderFunnelNorm,
+    "": LatentDecoderFunnelNorm,
     "t5_norm": LatentDecoderT5Norm,
     "no_norm": LatentDecoderNTokens,
 }
