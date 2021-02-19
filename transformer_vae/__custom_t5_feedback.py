@@ -10,6 +10,7 @@
     Ideally this will give the model more representational power while using less memory & more training time.
 '''
 
+"""
 import math
 import torch
 from transformers.utils import logging
@@ -283,3 +284,4 @@ def modify_t5_stack(self, config):
     self.forward = alt_forward_feedback
 
     return self
+"""
