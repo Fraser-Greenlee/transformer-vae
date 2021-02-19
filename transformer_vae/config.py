@@ -101,6 +101,8 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
 
         super().__init__(**kwargs)
 
+        self.set_seq_size = set_seq_size
+
         # VAE
         self.vae_encoder_model = vae_encoder_model
         self.vae_decoder_model = vae_decoder_model

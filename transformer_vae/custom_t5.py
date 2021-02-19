@@ -37,12 +37,19 @@ def t5_block_alt(self, config, layer_id):
         if self.window_size:
             # split inputs into windows and run as a larger batch
             # hidden_states (batch_size, seq_len, d_model) -> (batch_size * ?, window_len, d_model)
+            seq_len = hidden_states.size(1)
             if self.odd_layer:
+                if seq_len < self.window_overlap:
+                    # skip if not yet in Odd window range
+                    return (hidden_states,)
                 using_hidden_states, leftover_hidden_states = hidden_states[:, self.window_overlap:], hidden_states[:, :self.window_overlap]
             else:
-                using_hidden_states, leftover_hidden_states = hidden_states[:, :-self.window_overlap], hidden_states[:, -self.window_overlap:]
+                if seq_len < self.window_overlap:
+                    using_hidden_states = hidden_states, leftover_hidden_states = None
+                else:
+                    using_hidden_states, leftover_hidden_states = hidden_states[:, :-self.window_overlap], hidden_states[:, -self.window_overlap:]
             # convert to larger batches of shorter sequences
-            using_hidden_states = using_hidden_states.reshape(-1, self.window_size, self.d_model)
+            using_hidden_states = using_hidden_states.reshape(-1, min(self.window_size, seq_len), self.d_model)
 
         outputs = self.true_forward(
             using_hidden_states,
@@ -63,8 +70,9 @@ def t5_block_alt(self, config, layer_id):
             # concat leftover hidden state
             batch_size = hidden_states.size(0)
             new_hidden_states = outputs[0].reshape(batch_size, -1, self.d_model)
-            paired_states = (leftover_hidden_states, new_hidden_states) if self.odd_layer else (new_hidden_states, leftover_hidden_states)
-            new_hidden_states = torch.cat(paired_states, 1)
+            if leftover_hidden_states is not None:
+                paired_states = (leftover_hidden_states, new_hidden_states) if self.odd_layer else (new_hidden_states, leftover_hidden_states)
+                new_hidden_states = torch.cat(paired_states, 1)
             return (new_hidden_states,) + outputs[1:]
 
         return outputs
@@ -79,6 +87,7 @@ def modify_t5_stack(self, config):
         self.window_mode = True
         self.window_size = config.attention_window_size
         self.window_overlap = config.attention_window_overlap
+        self.windows_per_sample = self.set_seq_size // self.window_size
         for i, v in enumerate(self.block):
             self.block[i] = t5_block_alt(v, config, i)
 
@@ -133,13 +142,12 @@ def modify_t5_stack(self, config):
         if self.window_mode:
             # set input shape to window size to format attention masks correctly
             batch_size, seq_length = input_shape
-            new_batch_size = batch_size * (seq_length // self.window_size)
-            input_shape = (new_batch_size, self.window_size)
+            new_batch_size = batch_size * self.windows_per_sample
+            input_shape = (new_batch_size, min(seq_length, self.window_size))
             if encoder_hidden_states is not None:
                 # match window batches
-                num_dups = new_batch_size // batch_size
                 # Get duplicated encodings together with indices [1,1, 2,2, 3,3, etc]
-                encoding_index = torch.arange(batch_size).repeat(num_dups, 1).T.reshape(-1)
+                encoding_index = torch.arange(batch_size).repeat(self.windows_per_sample, 1).T.reshape(-1)
                 encoder_hidden_states = encoder_hidden_states[encoding_index]
 
         ### CHANGE ABOVE
