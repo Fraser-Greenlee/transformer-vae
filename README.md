@@ -2,7 +2,7 @@
 
 ![Diagram of the a python State Autoencoder](https://github.com/Fraser-Greenlee/transformer-vae/blob/master/t-vae.png)
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](http://colab.research.google.com/github/orpatashnik/StyleCLIP/blob/main/playground.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1S8sUSkc_7ON00HDnse1MUXTTflo59VxA?usp=sharing)
 
 Transformer-VAE's learn smooth latent spaces of discrete sequences without any explicit rules in their decoders.
 
