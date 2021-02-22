@@ -1,91 +1,74 @@
-# Transformer-VAE (WIP)
+# Transformer-VAE
 
-![Diagram of the a State Autoencoder](https://github.com/Fraser-Greenlee/transformer-vae/blob/v1/t5-vae.png)
+![Diagram of the a python State Autoencoder](https://github.com/Fraser-Greenlee/transformer-vae/blob/master/t-vae.png)
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](http://colab.research.google.com/github/orpatashnik/StyleCLIP/blob/main/playground.ipynb)
 
 Transformer-VAE's learn smooth latent spaces of discrete sequences without any explicit rules in their decoders.
 
 This can be used for program synthesis, drug discovery, music generation and much more!
+To lean more about how it works checkout [this blog post](https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html).
 
-To see how it works checkout [this blog post](https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html).
-
-This repo is in active development but I should be coming out with full a release soon.
+If you notice any issues please reach out and open an issue! I'll try to get back to you ASAP.
 
 ## Install
 
-Install using pip:
-```
-pip install transformer_vae
-```
-
-## Usage
-
-You can exececute the module to easily train it on your own data.
 ```bash
-python -m transformer_vae \
-    --project_name="T5-VAE" \
-    --output_dir=poet \
-    --do_train \
-    --huggingface_dataset=poems \
+git clone https://github.com/Fraser-Greenlee/transformer-vae.git;
+cd transformer-vae; python setup.py -q install
 ```
-Or you can import Transformer-VAE to use as a package much like a Huggingface model.
-```python
-from transformer_vae import T5_VAE_Model
 
-model = T5_VAE_Model.from_pretrained('t5-vae-poet')
-```
-## Training
-Setup [Weights & Biasis](https://app.wandb.ai/) for logging, see [client](https://github.com/wandb/client).
+## Running
 
-Get a dataset to model, must be represented with text. This is what we will be interpolating over.
-
-This can be a text file with each line representing a sample.
+The model uses Weights and Biasis for logging. Ensure you have the following enviroment variables set before running:
 ```bash
-python -m transformer_vae \
-    --project_name="T5-VAE" \
-    --output_dir=poet \
-    --do_train \
-    --train_file=poems.txt \
+WANDB_API_KEY=791c072dd3f0d33aed57e13af6ba86d312cc68c0
+WANDB_WATCH=false
+WANDB_PROJECT=t-vae_training_demo
 ```
-Alternatively seperate each sample with a line containing only `<|endoftext|>` seperating samples:
+
+When running the model will run interpolations and log samples.
+Note that this currently doesn't work when using "window attention".
+
+Max run specs (12GB GPU):
+
+* Base model
+  * 237seq, 1 batch size
+  * 99seq, 7 batch size
+  * 30seq, 125 batch size
+* Base model (half Funnel 3_3_3)
+  * 99seq, 30 batch size
+* Base model (tiny Funnel 1_1_1)
+  * 237seq 15 batch size
+  * 99seq, 40 batch size
+* Base model (tiny Funnel 1_1_1) (grad checkpoint every 3 layers)
+  * 237seq 30 batch size
+* Base model (tiny Funnel 1_1_1) (grad checkpoint every 3 layers + window60)
+  * 237seq 50 batch size
+* Base model (tiny Funnel 2_2_2) (grad checkpoint every 3 layers + window100-300)
+  * 840seq 10 batch size
+* Base model (tiny Funnel 1_1_1) (grad checkpoint every layer)
+  * 237seq 40 batch size
+* Large model,
+  * 30seq, 5 batch size
+
+
+MNIST base (no latent samples):
 ```bash
-python -m transformer_vae \
-    --project_name="T5-VAE" \
-    --output_dir=poet \
-    --do_train \
-    --train_file=poems.txt \
-    --multiline_samples
+cd transformer-vae; python run_experiment.py mnist_base tenth_5_tkn grad_check_pnt batch_small window200 funnel_small
 ```
-Alternatively provide a Huggingface dataset.
+
+MNIST small:
 ```bash
-python -m transformer_vae \
-    --project_name="T5-VAE" \
-    --output_dir=poet \
-    --do_train \
-    --dataset=poems \
-    --content_key text
+cd transformer-vae; python run_experiment.py mnist_small tenth_5_tkn batch_small eval
 ```
 
-Experiment with different parameters.
-
-Once finished upload to huggingface model hub.
-
+Python Lines
 ```bash
-# TODO
+cd transformer-vae; python run_experiment.py syntax tenth_5_tkn batch_large 30Seq eval
 ```
 
-Explore the produced latent space using `Colab_T5_VAE.ipynb` or vising this [Colab page](TODO).
-
-### Contributing
-
-Install with tests:
+News Headlines
+```bash
+cd transformer-vae; python run_experiment.py semantics tenth_5_tkn batch_large 30Seq eval
 ```
-pip install -e .[test]
-```
-
-Possible contributions to make:
-1. Could the docs be more clear? Would it be worth having a docs site/blog?
-2. Use a Funnel transformer encoder, is it more efficient?
-3. Allow defining alternative tokens set.
-4. Store the latent codes from the previous step to use in MMD loss so smaller batch sizes are possible.
-
-Feel free to ask what would be useful!
