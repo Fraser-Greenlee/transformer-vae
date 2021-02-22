@@ -207,7 +207,9 @@ class VAE_Trainer(trainer_script.Trainer):
             inputs = self._prepare_inputs(inputs)
             outputs = self.model(**inputs)
 
-            row = [outputs.get("latent").tolist()]
+            latent = outputs.get("latent")
+            latent = latent.reshape(-1, latent.size(2))
+            row = [latent.tolist()]
             row.append(class_label.tolist())  # type: ignore
 
             latents_with_class.append(row)
