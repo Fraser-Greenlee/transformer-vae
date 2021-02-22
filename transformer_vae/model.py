@@ -226,6 +226,9 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
         use_cache=None,
         output_hidden_states=None,
         return_dict=True,
+        # unused args
+        class_label=None,
+        label=None,
         **unused_kwargs
     ):
         assert return_dict, "Need return_dict=True, using tuple's is not implimented"

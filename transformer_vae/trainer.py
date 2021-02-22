@@ -202,15 +202,13 @@ class VAE_Trainer(trainer_script.Trainer):
         dataloader = self.get_eval_dataloader(eval_dataset)
         latents_with_class = []
         for inputs in dataloader:
-            if self.args.test_classification:
-                class_label = inputs.pop("class_label")
+            class_label = inputs.pop("class_label")
 
             inputs = self._prepare_inputs(inputs)
             outputs = self.model(**inputs)
 
             row = [outputs.get("latent").tolist()]
-            if self.args.test_classification:
-                row.append(class_label.tolist())  # type: ignore
+            row.append(class_label.tolist())  # type: ignore
 
             latents_with_class.append(row)
         return latents_with_class
