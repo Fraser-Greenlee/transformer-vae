@@ -2,7 +2,7 @@ import copy
 import math
 from transformers.utils import logging
 from transformers.configuration_utils import PretrainedConfig
-from transformers import AutoConfig
+from transformers import AutoConfig, T5Config, FunnelConfig
 
 from transformer_vae.autoencoders import VAE_ENCODER_MODELS, VAE_DECODER_MODELS
 from transformer_vae.utils import assertEqual, assertIn
@@ -123,7 +123,7 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
             self.encoded_seq_size = math.ceil(self.funnel.n_positions / pooling_division)
             self.gradient_checkpoint_encoder = gradient_checkpoint_encoder
         else:
-            self.funnel = kwargs.pop('funnel')
+            self.funnel = FunnelConfig(**kwargs.pop('funnel'))
 
         # T5 decoder model
         if 't5' not in kwargs:
@@ -136,7 +136,7 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
             self.t5.n_positions = self.funnel.n_positions
             assertEqual(self.t5.model_type, "t5", "Need t5 model type for transformer_decoder.")
         else:
-            self.t5 = kwargs.pop('t5')
+            self.t5 = T5Config(**kwargs.pop('t5'))
         assertEqual(self.funnel.d_model, self.t5.d_model, "Funnel & T5 transformers have different dimensions.")
         self.decoder_grad_chk_pnt_rate = decoder_grad_chk_pnt_rate
         assert(attention_window_size < set_seq_size), 'Attention window must be smallar than set sequence size.'
@@ -161,7 +161,7 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
             if 'critic' not in kwargs:
                 self.critic = AutoConfig.from_pretrained(critic_name, cache_dir=cache_dir)
             else:
-                self.critic = kwargs.pop('critic')
+                self.critic = FunnelConfig(**kwargs.pop('critic'))
             assertEqual(self.t5.d_model, self.critic.d_model, "Funnel & T5 transformers have different dimensions.")
 
         # misc
