@@ -378,6 +378,9 @@ def preprocess_datasets(training_args, data_args, tokenizer, datasets):
 def main():
     model_args, data_args, training_args = get_args()
 
+    if training_args.output_dir and training_args.output_dir[-1] == '/' and training_args.run_name:
+        training_args.output_dir += training_args.run_name
+
     setup_logs(training_args)
 
     # Set seed before initializing model.
@@ -416,7 +419,7 @@ def main():
 
         results = trainer.evaluate()
 
-        output_eval_file = os.path.join(training_args.output_dir, "eval_results_T5_VAE.txt")
+        output_eval_file = os.path.join(training_args.output_dir, "eval_results_T_VAE.txt")
         if trainer.is_world_process_zero():
             with open(output_eval_file, "w") as writer:
                 logger.info("***** Eval results *****")

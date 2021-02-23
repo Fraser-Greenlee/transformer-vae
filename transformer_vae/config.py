@@ -1,5 +1,4 @@
 import copy
-from logging import warning
 import math
 from transformers.utils import logging
 from transformers.configuration_utils import PretrainedConfig
