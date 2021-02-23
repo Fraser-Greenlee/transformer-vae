@@ -119,11 +119,11 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
                 self.funnel.block_sizes = [int(i) for i in funnel_block_sizes.split('_')]
             self.funnel.decoder_start_token_id = decoder_start_token_id
             self.funnel.n_positions = set_seq_size
-            pooling_division = 2 ** (len(self.funnel.block_sizes) - 1)
-            self.encoded_seq_size = math.ceil(self.funnel.n_positions / pooling_division)
-            self.gradient_checkpoint_encoder = gradient_checkpoint_encoder
         else:
             self.funnel = FunnelConfig(**kwargs.pop('funnel'))
+        pooling_division = 2 ** (len(self.funnel.block_sizes) - 1)
+        self.encoded_seq_size = math.ceil(self.funnel.n_positions / pooling_division)
+        self.gradient_checkpoint_encoder = gradient_checkpoint_encoder
 
         # T5 decoder model
         if 't5' not in kwargs:
