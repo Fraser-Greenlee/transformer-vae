@@ -113,24 +113,30 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         self.skip_upsample = skip_upsample
 
         # funnel encoder model
-        self.funnel = AutoConfig.from_pretrained(funnel_name, cache_dir=cache_dir)
-        if funnel_block_sizes:
-            self.funnel.block_sizes = [int(i) for i in funnel_block_sizes.split('_')]
-        self.funnel.decoder_start_token_id = decoder_start_token_id
-        self.funnel.n_positions = set_seq_size
-        pooling_division = 2 ** (len(self.funnel.block_sizes) - 1)
-        self.encoded_seq_size = math.ceil(self.funnel.n_positions / pooling_division)
-        self.gradient_checkpoint_encoder = gradient_checkpoint_encoder
+        if 'funnel' not in kwargs:
+            self.funnel = AutoConfig.from_pretrained(funnel_name, cache_dir=cache_dir)
+            if funnel_block_sizes:
+                self.funnel.block_sizes = [int(i) for i in funnel_block_sizes.split('_')]
+            self.funnel.decoder_start_token_id = decoder_start_token_id
+            self.funnel.n_positions = set_seq_size
+            pooling_division = 2 ** (len(self.funnel.block_sizes) - 1)
+            self.encoded_seq_size = math.ceil(self.funnel.n_positions / pooling_division)
+            self.gradient_checkpoint_encoder = gradient_checkpoint_encoder
+        else:
+            self.funnel = kwargs.pop('funnel')
 
         # T5 decoder model
-        self.t5 = AutoConfig.from_pretrained(t5_name, cache_dir=cache_dir)
-        if num_decoder_layers:
-            self.t5.num_layers = num_decoder_layers
-        if num_decoder_heads:
-            self.t5.num_heads = num_decoder_heads
-        self.t5.decoder_start_token_id = decoder_start_token_id
-        self.t5.n_positions = self.funnel.n_positions
-        assertEqual(self.t5.model_type, "t5", "Need t5 model type for transformer_decoder.")
+        if 't5' not in kwargs:
+            self.t5 = AutoConfig.from_pretrained(t5_name, cache_dir=cache_dir)
+            if num_decoder_layers:
+                self.t5.num_layers = num_decoder_layers
+            if num_decoder_heads:
+                self.t5.num_heads = num_decoder_heads
+            self.t5.decoder_start_token_id = decoder_start_token_id
+            self.t5.n_positions = self.funnel.n_positions
+            assertEqual(self.t5.model_type, "t5", "Need t5 model type for transformer_decoder.")
+        else:
+            self.t5 = kwargs.pop('t5')
         assertEqual(self.funnel.d_model, self.t5.d_model, "Funnel & T5 transformers have different dimensions.")
         self.decoder_grad_chk_pnt_rate = decoder_grad_chk_pnt_rate
         assert(attention_window_size < set_seq_size), 'Attention window must be smallar than set sequence size.'
@@ -152,7 +158,10 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         self.critic = None
         if critic_name:
             self.critic_type = critic_type
-            self.critic = AutoConfig.from_pretrained(critic_name, cache_dir=cache_dir)
+            if 'critic' not in kwargs:
+                self.critic = AutoConfig.from_pretrained(critic_name, cache_dir=cache_dir)
+            else:
+                self.critic = kwargs.pop('critic')
             assertEqual(self.t5.d_model, self.critic.d_model, "Funnel & T5 transformers have different dimensions.")
 
         # misc
