@@ -35,7 +35,7 @@ class VAE_TrainingArguments(TrainingArguments):
     """
     Extra arguments to specify generation during evaluation.
     """
-
+    save_steps: int = field(default=1000, metadata={"help": "Save checkpoint every X updates steps."})
     generate_min_len: int = field(
         default=1,
         metadata={"help": "The minimum length of sequences to be generated from latent points during evaluation."},
