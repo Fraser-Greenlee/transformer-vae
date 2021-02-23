@@ -151,7 +151,7 @@ class VAE_Trainer(trainer_script.Trainer):
         )
         samples = self._prepare_inputs(next(mini_eval_dataloader_iter))
         latents = self.model(**samples).latent
-        interp_latent, interp_ratio = self.gradual_interpolation_inputs(latents[0], latents[1])
+        interp_latent, interp_ratio = self.gradual_interpolation_inputs(latents[0], latents[1], self.args.device, self.args.interpolate_all_at_once)
         start_txt = self.tokenizer.decode(samples["input_ids"][0], clean_up_tokenization_spaces=self.clean_tkn_spaces)
         end_txt = self.tokenizer.decode(samples["input_ids"][1], clean_up_tokenization_spaces=self.clean_tkn_spaces)
         texts = self._text_from_latent(interp_latent)
@@ -280,11 +280,18 @@ class VAE_Trainer(trainer_script.Trainer):
 
         return loss.detach()
 
-    def gradual_interpolation_inputs(self, latent_start, latent_end):
-        ratios = torch.arange(0, 1.1, 0.1, device=self.args.device)
+    @staticmethod
+    def gradual_interpolation_inputs(latent_start, latent_end, device, interpolate_all_at_once):
+        ratios = torch.arange(0, 1.1, 0.1, device=device)
         num_latent_tokens = latent_start.size(0)
         latent_token_dim = latent_start.size(1)
-        interpolations = slerp(ratios.repeat(num_latent_tokens), latent_start.repeat(11, 1), latent_end.repeat(11, 1))
+        if interpolate_all_at_once:
+            latent_start, latent_end = latent_start.view(1, -1), latent_end.view(1, -1)
+            interpolations = slerp(ratios, latent_start.repeat(11, 1), latent_end.repeat(11, 1))
+            return interpolations.view(11, num_latent_tokens, latent_token_dim), ratios
+        # get list of repeating ratios so [0.0, 0.0, 0.1, 0.1,,,] when num_latent_tokens=2
+        rep_ratios = ratios.repeat(num_latent_tokens, 1).T.reshape(-1)
+        interpolations = slerp(rep_ratios, latent_start.repeat(11, 1), latent_end.repeat(11, 1))
         return interpolations.view(11, num_latent_tokens, latent_token_dim), ratios
 
     def random_interpolation_inputs(self, latent):

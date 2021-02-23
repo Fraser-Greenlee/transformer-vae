@@ -4,7 +4,7 @@ from unittest.mock import patch
 import torch
 from transformers.testing_utils import TestCasePlus, torch_device
 
-from transformer_vae.train import main
+from transformer_vae.train import main, VAE_Trainer
 
 
 logging.basicConfig(level=logging.DEBUG)
@@ -705,3 +705,8 @@ class TrainTests(TestCasePlus):
         with patch.object(sys, "argv", testargs):
             result = main()
             self.assertAlmostEqual(result["epoch"], 2.0)
+
+    def test_gradual_interpolation_inputs(self):
+        latent_start = torch.tensor([[1.0, 1.0], [3.0, 4.0], [5.0, 6.0]])
+        latent_end = torch.tensor([[-1.0, -1.0], [7.0, 8.0], [9.0, 10.0]])
+        VAE_Trainer.gradual_interpolation_inputs(latent_start, latent_end, 'cpu', False)

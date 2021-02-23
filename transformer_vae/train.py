@@ -94,6 +94,10 @@ class VAE_TrainingArguments(TrainingArguments):
         default=False,
         metadata={"help": "Don't clean up token spaces, turn off for non NLP tasks."},
     )
+    interpolate_all_at_once: bool = field(
+        default=False,
+        metadata={"help": "Treat all latent tokens as one during slerp."},
+    )
 
 
 """
