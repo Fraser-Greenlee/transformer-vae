@@ -16,16 +16,14 @@ contents = file_to_string(package, "__init__.py")
 __version__ = re.search(r'__version__ = "([.\d]+)"', contents).group(1)
 
 install_requires = [
-    "datasets==1.1.3",
-    "transformers==4.1.1",
-    "wandb>=0.10.12",
+    "datasets==1.3.0",
+    "transformers==4.3.2",
+    "wandb>=0.10.14",
     "torch==1.7.0",
     "sklearn",  # for SVM
 ]
 
 tests_require = ["pytest", "flake8", "flake8-mypy", "black", "twine"]
-
-# TODO allow executing training directly
 
 setup(
     name=package,

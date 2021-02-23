@@ -1,129 +1,136 @@
-import logging
-import math
+from transformers.utils import logging
 import torch
 from torch import nn
-from transformers.models.t5.modeling_t5 import T5LayerFF, T5LayerSelfAttention
+from transformers.models.t5.modeling_t5 import T5LayerFF
 
+from transformer_vae.model_outputs import BaseVAE_Output
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger()
-
-
-class LatentEncoder(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        assert config.transformer.d_model > 100
-        assert 100 * config.transformer.n_positions > config.latent_size
-        self.shrink_tokens = nn.Linear(config.transformer.d_model, 100)
-        self.shrink_sequence = nn.Linear(100 * config.transformer.n_positions, config.latent_size)
-        self.tanh = nn.Tanh()
-
-    def forward(self, encoding) -> torch.Tensor:
-        batch_size = encoding.size(0)
-        encoding = self.shrink_tokens(encoding)
-        encoding = self.shrink_sequence(encoding.view(batch_size, -1))
-        return self.tanh(encoding)
+logger = logging.get_logger()
 
 
 class LatentEncoderNTokens(nn.Module):
+    '''
+        Converts N hidden tokens into N seperate latent codes.
+    '''
     def __init__(self, config):
         super().__init__()
-        self.token_to_latent = nn.Linear(config.transformer.d_model, config.latent_token_dim)
+        self.token_to_latent = nn.Linear(config.t5.d_model, config.latent_size)
         self.n_tokens = config.n_latent_tokens
         self.tanh = nn.Tanh()
 
     def forward(self, encoding) -> torch.Tensor:
-        batch_size = encoding.size(0)
-        return self.tanh(self.token_to_latent(encoding))[:, : self.n_tokens, :].view(batch_size, -1)
-
-
-class LatentDecoder(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        t_config = config.transformer
-
-        self.decode_latent = nn.Linear(config.latent_size, 10 * t_config.n_positions)
-        self.grow_sequence = nn.Linear(10 * t_config.n_positions, 100 * t_config.n_positions)
-        self.grow_tokens = nn.Linear(100, t_config.d_model)
-
-        if t_config.model_type == "t5":
-            # TODO would this actually effect `dropout_rate`?
-            dropout_rate = t_config.dropout_rate
-            t_config.dropout_rate = 0
-            self.norm = T5LayerFF(t_config)
-            t_config.dropout_rate = dropout_rate
-        elif t_config.model_type == "funnel":
-            self.norm = nn.LayerNorm(t_config.d_model, t_config.layer_norm_eps)
-        else:
-            raise ValueError(f'Unknown config.transformer.model_type: "{t_config.model_type}"')
-
-    def forward(self, latent) -> torch.Tensor:
-        batch_size = latent.size(0)
-        latent = self.decode_latent(latent)
-        latent = self.grow_sequence(latent)
-        return self.norm(self.grow_tokens(latent.view(batch_size, -1, 100)))
+        return self.tanh(self.token_to_latent(encoding))[:, : self.n_tokens, :]
 
 
 class LatentDecoderNTokens(nn.Module):
     '''
-        Convert multiple token encodings into a single latent.
+        Take several latent tokens and convert them each full token hidden states.
     '''
     def __init__(self, config):
         super().__init__()
-        self.latent_token_dim = config.latent_token_dim
-        if self.latent_token_dim == config.transformer.d_model:
-            logger.info('Latent decoder is not rescaling the latent code.')
+        self.latent_size = config.latent_size
+        if self.latent_size == config.t5.d_model:
+            logger.warning('Latent decoder is not rescaling the latent code.')
             self.latent_to_token = lambda x: x
         else:
-            self.latent_to_token = nn.Linear(self.latent_token_dim, config.transformer.d_model)
+            self.latent_to_token = nn.Linear(self.latent_size, config.t5.d_model)
 
     def forward(self, latent) -> torch.Tensor:
-        batch_size = latent.size(0)
-        return self.latent_to_token(latent.view(batch_size, -1, self.latent_token_dim))
+        return self.latent_to_token(latent)
 
 
-class LatentDecoderMatchEncoder(LatentDecoder):
-    """
-    Just do one jump from latent -> 100x sequence.
-    """
-
+class LatentDecoderT5Norm(LatentDecoderNTokens):
+    '''
+        Use T5 norm.
+    '''
     def __init__(self, config):
         super().__init__(config)
-        self.grow_sequence = nn.Linear(config.latent_size, 100 * config.transformer.n_positions)
+        t_config = config.t5
+        dropout_rate = t_config.dropout_rate
+        t_config.dropout_rate = 0
+        self.norm = T5LayerFF(t_config)
+        t_config.dropout_rate = dropout_rate
 
     def forward(self, latent) -> torch.Tensor:
-        batch_size = latent.size(0)
-        latent = self.grow_sequence(latent)
-        return self.norm(self.grow_tokens(latent.view(batch_size, -1, 100)))
+        return self.norm(super().forward(latent))
 
 
-class LatentDecoderSelfAttnGrow(LatentDecoder):
-    """
-    Start with 10-dim tokens and grow them whith cross-attention.
-    """
-
-    # TODO add position bias
+class LatentDecoderFunnelNorm(LatentDecoderNTokens):
+    '''
+        Use Funnel norm.
+    '''
     def __init__(self, config):
         super().__init__(config)
-        self.grow_tokens_to_100 = nn.Linear(10, 100)
-        self.grow_tokens_to_dim_m = nn.Linear(100, config.dim_m)
-        config.transformer.d_model = 100
-        self.self_attention = T5LayerSelfAttention(config.transformer)
+        self.norm = nn.LayerNorm(config.funnel.d_model, config.funnel.layer_norm_eps)
 
     def forward(self, latent) -> torch.Tensor:
-        batch_size = latent.size(0)
-        latent = self.grow_sequence(latent)
-        encoding_100_dim = self.self_attention(self.norm(self.grow_tokens_to_100(latent.view(batch_size, -1, 10))))
-        return self.norm(self.grow_tokens_to_dim_m(encoding_100_dim))
+        return self.norm(super().forward(latent))
 
 
 VAE_ENCODER_MODELS = {
-    None: LatentEncoder,
-    "n-tokens": LatentEncoderNTokens,
+    "": LatentEncoderNTokens,
 }
 VAE_DECODER_MODELS = {
-    None: LatentDecoder,
-    "n-tokens": LatentDecoderNTokens,
-    "match-encoder": LatentDecoderMatchEncoder,
-    "attention": LatentDecoderSelfAttnGrow,
+    "": LatentDecoderFunnelNorm,
+    "t5_norm": LatentDecoderT5Norm,
+    "no_norm": LatentDecoderNTokens,
 }
+
+
+class EncoderDecoderVAE(nn.Module):
+    """
+    An MMD-VAE used with encoder-decoder models.
+    Encodes all token encodings into a single latent & spits them back out.
+    """
+
+    batch_size = None
+
+    def __init__(self, encoder, decoder, use_reg_loss=True):
+        super().__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+        self.use_reg_loss = use_reg_loss
+
+    def _model_forward(self, encoding, latent=None):
+        if latent is None:
+            latent = self.encoder(encoding)
+        return self.decoder(latent), latent
+
+    def forward(
+        self,
+        input_encoding=None,
+        latent=None,
+        skip_reg_loss=False,
+    ):
+        if input_encoding is None and latent is None:
+            raise ValueError("Both `input_encoding` and `latent` sent to VAE are None.")
+        use_reg_loss = self.use_reg_loss and latent is None and skip_reg_loss is False  # don't regularise if given latent
+        recon_encoding, latent = self._model_forward(input_encoding, latent=latent)
+        if use_reg_loss:
+            # treat each token encoding as a seperate latent code
+            batch_size, n_latents_per_batch, latent_code_dim = latent.size()
+            reg_loss = self._regularliser_loss(latent.reshape(-1, latent_code_dim)) / batch_size * n_latents_per_batch
+        else:
+            reg_loss = torch.tensor(0, device=latent.device)
+        return BaseVAE_Output(latent=latent, reconstructed_encoding=recon_encoding, reg_loss=reg_loss)
+
+    @staticmethod
+    def _compute_kernel(x, y):
+        x_size = x.shape[0]
+        y_size = y.shape[0]
+        dim = x.shape[1]
+
+        tiled_x = x.view(x_size, 1, dim).repeat(1, y_size, 1)
+        tiled_y = y.view(1, y_size, dim).repeat(x_size, 1, 1)
+
+        return torch.exp(-torch.mean((tiled_x - tiled_y) ** 2, dim=2) / dim * 1.0)
+
+    def _compute_mmd(self, x, y):
+        x_kernel = self._compute_kernel(x, x)
+        y_kernel = self._compute_kernel(y, y)
+        xy_kernel = self._compute_kernel(x, y)
+        return torch.mean(x_kernel) + torch.mean(y_kernel) - 2 * torch.mean(xy_kernel)
+
+    def _regularliser_loss(self, latent):
+        true_samples = torch.randn(latent.size(), device=latent.device)
+        return self._compute_mmd(true_samples, latent)

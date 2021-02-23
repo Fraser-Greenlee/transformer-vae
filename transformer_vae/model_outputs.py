@@ -17,20 +17,19 @@ class BaseVAE_Output(ModelOutput):
             Latent codes representing encoded sequences.
         reg_loss (:obj:`torch.FloatTensor` of shape :obj:`(batch_size)`):
             MMD-VAE regularisation loss for this step.
-        latent_dropout (:obj:`float`):
-            Dropout rate of the latent code, needed for logging during training.
     """
 
     latent: torch.FloatTensor = None
     reconstructed_encoding: torch.FloatTensor = None
     reg_loss: Optional[torch.FloatTensor] = None
-    latent_dropout: Optional[float] = None
 
 
 @dataclass
 class BaseTransformerVAE_Output(ModelOutput):
     """
     Base class for a Transformer-VAE's outputs.
+
+    NOTE: `hidden_states` only holds encoder hidden states as the generate from latent process is a little hacky right now.
 
     Args:
         loss (:obj:`torch.FloatTensor` of shape :obj:`(1,)`, `optional`, returned when :obj:`labels` is provided):
@@ -49,6 +48,7 @@ class BaseTransformerVAE_Output(ModelOutput):
     logits: Optional[torch.FloatTensor] = None
     past_key_values: Optional[List[torch.FloatTensor]] = None
     decoder_hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     decoder_attentions: Optional[Tuple[torch.FloatTensor]] = None
     cross_attentions: Optional[Tuple[torch.FloatTensor]] = None
     encoder_last_hidden_state: Optional[torch.FloatTensor] = None

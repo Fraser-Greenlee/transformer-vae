@@ -4,11 +4,10 @@ from unittest.mock import patch
 import torch
 from transformers.testing_utils import TestCasePlus, torch_device
 
-from transformer_vae.train import main
+from transformer_vae.train import main, VAE_Trainer
 
 
 logging.basicConfig(level=logging.DEBUG)
-
 logger = logging.getLogger()
 
 
@@ -20,16 +19,16 @@ class TrainTests(TestCasePlus):
         tmp_dir = self.get_auto_remove_tmp_dir()
         testargs = f"""
             train.py
-            --train_file ./tests/fixtures/line_by_line_max_len_3.txt
-            --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --train_file ./tests/fixtures/all_len_16.txt
+            --validation_file ./tests/fixtures/all_len_16.txt
             --do_train
             --do_eval
             --per_device_train_batch_size 4
             --per_device_eval_batch_size 4
-            --num_train_epochs 2
-            --set_seq_size 4
-            --latent_size 2
-            --transformer_name t5-small
+            --num_train_epochs 1
+            --set_seq_size 16
+            --n_latent_tokens 5
+            --latent_size 77
             --output_dir {tmp_dir}
             --overwrite_output_dir
             """.split()
@@ -61,7 +60,6 @@ class TrainTests(TestCasePlus):
             --num_train_epochs 2
             --set_seq_size 5
             --latent_size 2
-            --transformer_name t5-small
             --output_dir {tmp_dir}
             --overwrite_output_dir
             """.split()
@@ -93,148 +91,6 @@ class TrainTests(TestCasePlus):
             --num_train_epochs 2
             --set_seq_size 4
             --latent_size 2
-            --transformer_name t5-small
-            --output_dir {tmp_dir}
-            --overwrite_output_dir
-            """.split()
-
-        if torch.cuda.device_count() > 1:
-            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
-            return
-
-        if torch_device != "cuda":
-            testargs.append("--no_cuda")
-
-        with patch.object(sys, "argv", testargs):
-            result = main()
-            self.assertAlmostEqual(result["epoch"], 2.0)
-
-    def test_train_funnel(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
-        tmp_dir = self.get_auto_remove_tmp_dir()
-        testargs = f"""
-            train.py
-            --train_file ./tests/fixtures/line_by_line_max_len_3.txt
-            --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
-            --do_train
-            --do_eval
-            --per_device_train_batch_size 4
-            --per_device_eval_batch_size 4
-            --num_train_epochs 2
-            --set_seq_size 8
-            --encoded_seq_size 2
-            --latent_size 2
-            --transformer_type funnel
-            --transformer_name funnel-transformer/small
-            --output_dir {tmp_dir}
-            --overwrite_output_dir
-            """.split()
-
-        if torch.cuda.device_count() > 1:
-            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
-            return
-
-        if torch_device != "cuda":
-            testargs.append("--no_cuda")
-
-        with patch.object(sys, "argv", testargs):
-            result = main()
-            self.assertAlmostEqual(result["epoch"], 2.0)
-
-    def test_train_funnel_t5(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
-        tmp_dir = self.get_auto_remove_tmp_dir()
-        testargs = f"""
-            train.py
-            --train_file ./tests/fixtures/line_by_line_max_len_3.txt
-            --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
-            --do_train
-            --do_eval
-            --per_device_train_batch_size 4
-            --per_device_eval_batch_size 4
-            --num_train_epochs 2
-            --set_seq_size 8
-            --encoder_model n-tokens
-            --decoder_model n-tokens
-            --n_latent_tokens 8
-            --encoded_seq_size 2
-            --latent_size 2
-            --transformer_type funnel-t5
-            --transformer_name funnel-transformer/intermediate
-            --transformer_decoder_name t5-base
-            --output_dir {tmp_dir}
-            --overwrite_output_dir
-            """.split()
-
-        if torch.cuda.device_count() > 1:
-            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
-            return
-
-        if torch_device != "cuda":
-            testargs.append("--no_cuda")
-
-        with patch.object(sys, "argv", testargs):
-            result = main()
-            self.assertAlmostEqual(result["epoch"], 2.0)
-
-    def test_train_1st_token(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
-        tmp_dir = self.get_auto_remove_tmp_dir()
-        testargs = f"""
-            train.py
-            --train_file ./tests/fixtures/line_by_line_max_len_3.txt
-            --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
-            --do_train
-            --do_eval
-            --per_device_train_batch_size 4
-            --per_device_eval_batch_size 4
-            --num_train_epochs 2
-            --set_seq_size 8
-            --encoded_seq_size 2
-            --latent_size 2
-            --transformer_type t5
-            --transformer_name t5-small
-            --encoder_model 1st-token
-            --output_dir {tmp_dir}
-            --overwrite_output_dir
-            """.split()
-
-        if torch.cuda.device_count() > 1:
-            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
-            return
-
-        if torch_device != "cuda":
-            testargs.append("--no_cuda")
-
-        with patch.object(sys, "argv", testargs):
-            result = main()
-            self.assertAlmostEqual(result["epoch"], 2.0)
-
-    def test_train_mini_mmd_batch_size(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
-        tmp_dir = self.get_auto_remove_tmp_dir()
-        testargs = f"""
-            train.py
-            --train_file ./tests/fixtures/line_by_line_max_len_3.txt
-            --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
-            --do_train
-            --do_eval
-            --per_device_train_batch_size 4
-            --per_device_eval_batch_size 4
-            --mmd_batch_size 2
-            --num_train_epochs 2
-            --set_seq_size 4
-            --latent_size 2
-            --transformer_type t5
-            --transformer_name t5-small
             --output_dir {tmp_dir}
             --overwrite_output_dir
             """.split()
@@ -266,14 +122,8 @@ class TrainTests(TestCasePlus):
             --per_device_eval_batch_size 4
             --num_train_epochs 1
             --set_seq_size 8
-            --encoder_model n-tokens
-            --decoder_model n-tokens
             --n_latent_tokens 1
-            --encoded_seq_size 2
             --latent_size 2
-            --transformer_type funnel-t5
-            --transformer_name funnel-transformer/intermediate
-            --transformer_decoder_name t5-base
             --output_dir {tmp_dir}
             --overwrite_output_dir
             --seq_check python
@@ -306,9 +156,6 @@ class TrainTests(TestCasePlus):
             --num_train_epochs 2
             --set_seq_size 4
             --dont_use_reg_loss
-            --encoder_model full-1st-token
-            --decoder_model n-tokens
-            --transformer_name t5-small
             --output_dir {tmp_dir}
             --overwrite_output_dir
             """.split()
@@ -339,10 +186,7 @@ class TrainTests(TestCasePlus):
             --per_device_eval_batch_size 2
             --max_validation_size 100
             --eval_steps 4
-            --encoder_model full-1st-token
-            --decoder_model n-tokens
             --latent_size 2
-            --transformer_name t5-small
             --output_dir {tmp_dir}
             --overwrite_output_dir
             """.split()
@@ -372,11 +216,8 @@ class TrainTests(TestCasePlus):
             --per_device_train_batch_size 2
             --num_train_epochs 1
             --set_seq_size 4
-            --encoder_model n-tokens
             --n_latent_tokens 2
-            --decoder_model n-tokens
             --latent_size 2
-            --transformer_name t5-small
             --output_dir {tmp_dir}
             --overwrite_output_dir
             """.split()
@@ -407,10 +248,7 @@ class TrainTests(TestCasePlus):
             --per_device_train_batch_size 2
             --per_device_eval_batch_size 2
             --max_validation_size 100
-            --encoder_model full-1st-token
-            --decoder_model n-tokens
             --latent_size 2
-            --transformer_name t5-small
             --output_dir {tmp_dir}
             --overwrite_output_dir
             """.split()
@@ -425,7 +263,7 @@ class TrainTests(TestCasePlus):
         with patch.object(sys, "argv", testargs):
             main()
 
-    def test_train_gpt2_decoder(self):
+    def test_train(self):
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
 
@@ -435,15 +273,16 @@ class TrainTests(TestCasePlus):
             --train_file ./tests/fixtures/line_by_line_max_len_3.txt
             --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
             --do_train
-            --max_steps=10
+            --do_eval
+            --eval_steps 3
+            --evaluation_strategy steps
+            --sample_from_latent
             --per_device_train_batch_size 2
-            --encoder_model full-1st-token
-            --decoder_model n-tokens
+            --per_device_eval_batch_size 2
+            --num_train_epochs 1
             --set_seq_size 8
-            --transformer_type funnel-gpt2
-            --transformer_name funnel-transformer/intermediate
-            --transformer_decoder_name distilgpt2
-            --tokenizer_name distilgpt2
+            --n_latent_tokens 1
+            --latent_size 2
             --output_dir {tmp_dir}
             --overwrite_output_dir
             """.split()
@@ -456,9 +295,10 @@ class TrainTests(TestCasePlus):
             testargs.append("--no_cuda")
 
         with patch.object(sys, "argv", testargs):
-            main()
+            result = main()
+            self.assertAlmostEqual(result["epoch"], 1.0)
 
-    def test_train_funnel_t5_skip_connection(self):
+    def test_train_critic(self):
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
 
@@ -469,19 +309,123 @@ class TrainTests(TestCasePlus):
             --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
             --do_train
             --do_eval
+            --eval_steps 3
+            --evaluation_strategy steps
+            --sample_from_latent
+            --per_device_train_batch_size 4
+            --per_device_eval_batch_size 4
+            --num_train_epochs 1
+            --set_seq_size 8
+            --n_latent_tokens 1
+            --latent_size 2
+            --transformer_critic_name funnel-transformer/intermediate
+            --output_dir {tmp_dir}
+            --overwrite_output_dir
+            """.split()
+
+        if torch.cuda.device_count() > 1:
+            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
+            return
+
+        if torch_device != "cuda":
+            testargs.append("--no_cuda")
+
+        with patch.object(sys, "argv", testargs):
+            result = main()
+            self.assertAlmostEqual(result["epoch"], 1.0)
+
+    def test_train_cycle_loss(self):
+        stream_handler = logging.StreamHandler(sys.stdout)
+        logger.addHandler(stream_handler)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        testargs = f"""
+            train.py
+            --train_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --do_train
+            --do_eval
+            --eval_steps 3
+            --evaluation_strategy steps
+            --sample_from_latent
+            --per_device_train_batch_size 4
+            --per_device_eval_batch_size 4
+            --num_train_epochs 1
+            --set_seq_size 8
+            --n_latent_tokens 1
+            --latent_size 2
+            --cycle_loss
+            --output_dir {tmp_dir}
+            --overwrite_output_dir
+            """.split()
+
+        if torch.cuda.device_count() > 1:
+            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
+            return
+
+        if torch_device != "cuda":
+            testargs.append("--no_cuda")
+
+        with patch.object(sys, "argv", testargs):
+            result = main()
+            self.assertAlmostEqual(result["epoch"], 1.0)
+
+    def test_interpolate_training_step_rate(self):
+        stream_handler = logging.StreamHandler(sys.stdout)
+        logger.addHandler(stream_handler)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        testargs = f"""
+            train.py
+            --train_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --do_train
+            --do_eval
+            --eval_steps 3
+            --evaluation_strategy steps
+            --sample_from_latent
+            --per_device_train_batch_size 4
+            --per_device_eval_batch_size 4
+            --interpolate_training_step_rate 2
+            --cycle_loss
+            --transformer_critic_name funnel-transformer/intermediate
+            --num_train_epochs 1
+            --set_seq_size 8
+            --min_critic_steps 1
+            --n_latent_tokens 1
+            --latent_size 2
+            --output_dir {tmp_dir}
+            --overwrite_output_dir
+            """.split()
+
+        if torch.cuda.device_count() > 1:
+            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
+            return
+
+        if torch_device != "cuda":
+            testargs.append("--no_cuda")
+
+        with patch.object(sys, "argv", testargs):
+            result = main()
+            self.assertAlmostEqual(result["epoch"], 1.0)
+
+    def test_train_latent_decoder_t5_norm(self):
+        stream_handler = logging.StreamHandler(sys.stdout)
+        logger.addHandler(stream_handler)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        testargs = f"""
+            train.py
+            --train_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --do_train
+            --do_eval
+            --decoder_model t5_norm
             --per_device_train_batch_size 4
             --per_device_eval_batch_size 4
             --num_train_epochs 2
-            --set_seq_size 8
-            --encoder_model n-tokens
-            --decoder_model n-tokens
-            --n_latent_tokens 1
-            --encoded_seq_size 2
+            --set_seq_size 5
             --latent_size 2
-            --transformer_type funnel-t5
-            --transformer_name funnel-transformer/intermediate
-            --transformer_decoder_name t5-base
-            --use_skip_connection
             --output_dir {tmp_dir}
             --overwrite_output_dir
             """.split()
@@ -497,7 +441,7 @@ class TrainTests(TestCasePlus):
             result = main()
             self.assertAlmostEqual(result["epoch"], 2.0)
 
-    def test_train_funnel_t5_latent_dropout(self):
+    def test_train_latent_decoder_funnel_norm(self):
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
 
@@ -508,19 +452,12 @@ class TrainTests(TestCasePlus):
             --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
             --do_train
             --do_eval
+            --decoder_model funnel_norm
             --per_device_train_batch_size 4
             --per_device_eval_batch_size 4
             --num_train_epochs 2
-            --set_seq_size 8
-            --encoder_model n-tokens
-            --decoder_model n-tokens
-            --n_latent_tokens 1
-            --encoded_seq_size 2
+            --set_seq_size 5
             --latent_size 2
-            --transformer_type funnel-t5
-            --transformer_name funnel-transformer/intermediate
-            --transformer_decoder_name t5-base
-            --use_latent_dropout
             --output_dir {tmp_dir}
             --overwrite_output_dir
             """.split()
@@ -535,3 +472,241 @@ class TrainTests(TestCasePlus):
         with patch.object(sys, "argv", testargs):
             result = main()
             self.assertAlmostEqual(result["epoch"], 2.0)
+
+    def test_train_vae_cycle_loss(self):
+        stream_handler = logging.StreamHandler(sys.stdout)
+        logger.addHandler(stream_handler)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        testargs = f"""
+            train.py
+            --train_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --do_train
+            --do_eval
+            --vae_cycle_loss
+            --per_device_train_batch_size 4
+            --per_device_eval_batch_size 4
+            --num_train_epochs 2
+            --set_seq_size 5
+            --latent_size 2
+            --output_dir {tmp_dir}
+            --overwrite_output_dir
+            """.split()
+
+        if torch.cuda.device_count() > 1:
+            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
+            return
+
+        if torch_device != "cuda":
+            testargs.append("--no_cuda")
+
+        with patch.object(sys, "argv", testargs):
+            result = main()
+            self.assertAlmostEqual(result["epoch"], 2.0)
+
+    def test_train_deepspeed(self):
+        '''
+            Can only run with CUDA.
+        '''
+        stream_handler = logging.StreamHandler(sys.stdout)
+        logger.addHandler(stream_handler)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        testargs = f"""
+            train.py
+            --deepspeed deepspeed/ds_config.json
+            --train_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --do_train
+            --do_eval
+            --per_device_train_batch_size 4
+            --per_device_eval_batch_size 4
+            --num_train_epochs 2
+            --set_seq_size 5
+            --latent_size 2
+            --output_dir {tmp_dir}
+            --overwrite_output_dir
+            """.split()
+
+        if torch.cuda.device_count() > 1:
+            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
+            return
+
+        if torch_device != "cuda":
+            testargs.append("--no_cuda")
+
+        with patch.object(sys, "argv", testargs):
+            result = main()
+            self.assertAlmostEqual(result["epoch"], 2.0)
+
+    def test_train_adafactor(self):
+        stream_handler = logging.StreamHandler(sys.stdout)
+        logger.addHandler(stream_handler)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        testargs = f"""
+            train.py
+            --adafactor
+            --train_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --do_train
+            --do_eval
+            --per_device_train_batch_size 4
+            --per_device_eval_batch_size 4
+            --num_train_epochs 2
+            --set_seq_size 5
+            --latent_size 2
+            --output_dir {tmp_dir}
+            --overwrite_output_dir
+            """.split()
+
+        if torch.cuda.device_count() > 1:
+            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
+            return
+
+        if torch_device != "cuda":
+            testargs.append("--no_cuda")
+
+        with patch.object(sys, "argv", testargs):
+            result = main()
+            self.assertAlmostEqual(result["epoch"], 2.0)
+
+    def test_train_local_gpt2_tokenizer(self):
+        stream_handler = logging.StreamHandler(sys.stdout)
+        logger.addHandler(stream_handler)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        testargs = f"""
+            train.py
+            --train_file ./tests/fixtures/all_len_16.txt
+            --validation_file ./tests/fixtures/all_len_16.txt
+            --do_train
+            --do_eval
+            --tokenizer_name tokenizers/tkn_mnist-text-small_byte
+            --per_device_train_batch_size 4
+            --per_device_eval_batch_size 4
+            --num_train_epochs 2
+            --set_seq_size 16
+            --latent_size 2
+            --output_dir {tmp_dir}
+            --overwrite_output_dir
+            """.split()
+
+        if torch.cuda.device_count() > 1:
+            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
+            return
+
+        if torch_device != "cuda":
+            testargs.append("--no_cuda")
+
+        with patch.object(sys, "argv", testargs):
+            result = main()
+            self.assertAlmostEqual(result["epoch"], 2.0)
+
+    def test_train_render_text_image(self):
+        stream_handler = logging.StreamHandler(sys.stdout)
+        logger.addHandler(stream_handler)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        testargs = f"""
+            train.py
+            --dataset_name=Fraser/mnist-text-default
+            --eval_steps 2
+            --validation_name test
+            --do_eval
+            --tokenizer_name tokenizers/tkn_mnist-text-small_byte
+            --sample_from_latent
+            --render_text_image
+            --seq_check python
+            --dont_clean_up_tokenization_spaces
+            --per_device_train_batch_size 2
+            --per_device_eval_batch_size 2
+            --num_train_epochs 2
+            --set_seq_size 237
+            --generate_max_len 2
+            --latent_size 2
+            --output_dir {tmp_dir}
+            --overwrite_output_dir
+            """.split()
+
+        if torch.cuda.device_count() > 1:
+            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
+            return
+
+        if torch_device != "cuda":
+            testargs.append("--no_cuda")
+
+        with patch.object(sys, "argv", testargs):
+            result = main()
+            self.assertAlmostEqual(result["epoch"], 2.0)
+
+    def test_train_grad_checkpoint(self):
+        stream_handler = logging.StreamHandler(sys.stdout)
+        logger.addHandler(stream_handler)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        testargs = f"""
+            train.py
+            --decoder_grad_chk_pnt_rate=3
+            --gradient_checkpoint_encoder
+            --train_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --validation_file ./tests/fixtures/line_by_line_max_len_3.txt
+            --do_train
+            --do_eval
+            --per_device_train_batch_size 4
+            --per_device_eval_batch_size 4
+            --num_train_epochs 2
+            --set_seq_size 5
+            --latent_size 2
+            --output_dir {tmp_dir}
+            --overwrite_output_dir
+            """.split()
+
+        if torch.cuda.device_count() > 1:
+            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
+            return
+
+        if torch_device != "cuda":
+            testargs.append("--no_cuda")
+
+        with patch.object(sys, "argv", testargs):
+            result = main()
+            self.assertAlmostEqual(result["epoch"], 2.0)
+
+    def test_train_window_attn_overlap_every_other_layer(self):
+        stream_handler = logging.StreamHandler(sys.stdout)
+        logger.addHandler(stream_handler)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        testargs = f"""
+            train.py
+            --attention_window_size=7
+            --train_file ./tests/fixtures/all_len_16.txt
+            --validation_file ./tests/fixtures/all_len_16.txt
+            --do_train
+            --do_eval
+            --per_device_train_batch_size 4
+            --per_device_eval_batch_size 4
+            --num_train_epochs 2
+            --set_seq_size 16
+            --latent_size 2
+            --output_dir {tmp_dir}
+            --overwrite_output_dir
+            """.split()
+
+        if torch.cuda.device_count() > 1:
+            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
+            return
+
+        if torch_device != "cuda":
+            testargs.append("--no_cuda")
+
+        with patch.object(sys, "argv", testargs):
+            result = main()
+            self.assertAlmostEqual(result["epoch"], 2.0)
+
+    def test_gradual_interpolation_inputs(self):
+        latent_start = torch.tensor([[1.0, 1.0], [3.0, 4.0], [5.0, 6.0]])
+        latent_end = torch.tensor([[-1.0, -1.0], [7.0, 8.0], [9.0, 10.0]])
+        VAE_Trainer.gradual_interpolation_inputs(latent_start, latent_end, 'cpu', False)

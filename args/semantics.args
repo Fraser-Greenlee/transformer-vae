@@ -1,3 +1,6 @@
 dataset_name=Fraser/news-category-dataset
 text_column=headline
 classification_column=category_num
+sample_from_latent
+test_classification
+max_validation_size=1000

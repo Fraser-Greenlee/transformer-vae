@@ -1,7 +1,7 @@
 import ast
 
 
-def check_python(s):
+def check_python(s, unused_args):
     try:
         ast.parse(s)
         return True
@@ -9,7 +9,16 @@ def check_python(s):
         return False
 
 
+def check_mnist(s, text_to_array):
+    '''
+        Checks if s is a valid image string.
+    '''
+    arr = text_to_array(s)
+    return bool(arr.sum() != 0)
+
+
 SEQ_CHECKS = {
     "python": check_python,
-    None: lambda x: False
+    "mnist": check_mnist,
+    None: lambda x, y: False
 }
