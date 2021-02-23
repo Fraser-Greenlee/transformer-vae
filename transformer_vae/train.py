@@ -309,11 +309,15 @@ def load_model_and_tokenizer(model_args):
             config=config,
             cache_dir=model_args.cache_dir,
         )
+        model.resize_token_embeddings(len(tokenizer))
     else:
+        vocab_size = len(tokenizer)
+        config.funnel.vocab_size = vocab_size
+        config.t5.vocab_size = vocab_size
+        config.vocab_size = vocab_size
         logger.info("Training new model from scratch")
         model = Funnel_T5_VAE_Model(config)
 
-    model.resize_token_embeddings(len(tokenizer))
     if model_args.set_seq_size:
         tokenizer.model_max_length = model_args.set_seq_size
     tokenizer.mask_token = tokenizer.unk_token

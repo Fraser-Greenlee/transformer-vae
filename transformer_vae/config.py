@@ -71,7 +71,6 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
     def __init__(
         self,
         latent_size=1_000,
-        vocab_size=0,
         funnel_name="funnel-transformer/intermediate",
         t5_name="t5-base",
         vae_encoder_model='',
@@ -125,9 +124,6 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
 
         # T5 decoder model
         self.t5 = AutoConfig.from_pretrained(t5_name, cache_dir=cache_dir)
-        if vocab_size:
-            self.t5.vocab_size = vocab_size
-        self.vocab_size = self.t5.vocab_size
         if num_decoder_layers:
             self.t5.num_layers = num_decoder_layers
         if num_decoder_heads:
