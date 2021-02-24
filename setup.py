@@ -21,6 +21,7 @@ install_requires = [
     "wandb>=0.10.14",
     "torch==1.7.0",
     "sklearn",  # for SVM
+    "torch-dct"
 ]
 
 tests_require = ["pytest", "flake8", "flake8-mypy", "black", "twine"]

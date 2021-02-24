@@ -744,3 +744,37 @@ class TrainTests(TestCasePlus):
             result = main()
             self.assertGreater(result["eval_loss"], 0.0)
             self.assertNotIn("epoch", result)
+
+    def test_train_prism(self):
+        stream_handler = logging.StreamHandler(sys.stdout)
+        logger.addHandler(stream_handler)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        testargs = f"""
+            train.py
+            --train_file ./tests/fixtures/all_len_6.txt
+            --validation_file ./tests/fixtures/all_len_6.txt
+            --do_train
+            --do_eval
+            --per_device_train_batch_size 4
+            --per_device_eval_batch_size 4
+            --num_train_epochs 1
+            --set_seq_size 6
+            --latent_size 77
+            --output_dir {tmp_dir}
+            --overwrite_output_dir
+            --spectral_filter_bands=130_511__34_129__9_33__0_8
+            --spectral_coef 0.1
+            """.split()
+
+        if torch.cuda.device_count() > 1:
+            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
+            return
+
+        if torch_device != "cuda":
+            testargs.append("--no_cuda")
+
+        with patch.object(sys, "argv", testargs):
+            result = main()
+            self.assertGreater(result["eval_loss"], 0.0)
+            self.assertNotIn("epoch", result)

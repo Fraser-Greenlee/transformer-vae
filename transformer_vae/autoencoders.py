@@ -1,7 +1,8 @@
-from transformers.utils import logging
+import copy
 import torch
 from torch import nn
-from transformers.models.t5.modeling_t5 import T5LayerFF
+from torch_dct import dct, idct
+from transformers.utils import logging
 
 from transformer_vae.model_outputs import BaseVAE_Output
 
@@ -22,6 +23,38 @@ class LatentEncoderNTokens(nn.Module):
         return self.tanh(self.token_to_latent(encoding))[:, : self.n_tokens, :]
 
 
+class LatentEncoderNTokensSpectralFilter(nn.Module):
+    '''
+        Converts N hidden tokens with S spectral filters into N*S seperate latent codes.
+
+    '''
+    def __init__(self, config):
+        super().__init__()
+        self.n_tokens = config.n_latent_tokens
+        self.tanh = nn.Tanh()
+        self.spectral_filter_bands = config.spectral_filter_bands
+        self.n_sectors = len(config.spectral_filter_bands)
+        self.spectral_sector_size = config.t5.d_model // self.n_sectors
+        self.token_to_latent = nn.Linear(self.spectral_sector_size, config.latent_size)
+        self.spectral_coef = config.spectral_coef
+        assert(config.t5.d_model % self.n_sectors == 0), 'Must have an equally sized band for each spectrum to make latent tokens.'
+
+    def spectral_filter(self, H, low, high):
+        H_dct = dct(H.T)
+        H_dct[:, :low] *= self.spectral_coef
+        H_dct[:, high:] *= self.spectral_coef
+        return idct(H_dct).T
+
+    def forward(self, encoding) -> torch.Tensor:
+        # encoding (b, s, d)
+        # -> (b, s, sectors, d/sectors)
+        batch, seq_len = encoding.size()[:2]
+        encoding = encoding.view(batch, seq_len, self.n_sectors, self.spectral_sector_size)
+        for i, (low, high) in enumerate(self.spectral_filter_bands):
+            encoding[:, :, i] = self.spectral_filter(encoding[:, :, i], low, high)
+        return self.tanh(self.token_to_latent(encoding))[:, :self.n_tokens]
+
+
 class LatentDecoderNTokens(nn.Module):
     '''
         Take several latent tokens and convert them each full token hidden states.
@@ -34,46 +67,35 @@ class LatentDecoderNTokens(nn.Module):
             self.latent_to_token = lambda x: x
         else:
             self.latent_to_token = nn.Linear(self.latent_size, config.t5.d_model)
-
-    def forward(self, latent) -> torch.Tensor:
-        return self.latent_to_token(latent)
-
-
-class LatentDecoderT5Norm(LatentDecoderNTokens):
-    '''
-        Use T5 norm.
-    '''
-    def __init__(self, config):
-        super().__init__(config)
-        t_config = config.t5
-        dropout_rate = t_config.dropout_rate
-        t_config.dropout_rate = 0
-        self.norm = T5LayerFF(t_config)
-        t_config.dropout_rate = dropout_rate
-
-    def forward(self, latent) -> torch.Tensor:
-        return self.norm(super().forward(latent))
-
-
-class LatentDecoderFunnelNorm(LatentDecoderNTokens):
-    '''
-        Use Funnel norm.
-    '''
-    def __init__(self, config):
-        super().__init__(config)
         self.norm = nn.LayerNorm(config.funnel.d_model, config.funnel.layer_norm_eps)
 
     def forward(self, latent) -> torch.Tensor:
-        return self.norm(super().forward(latent))
+        return self.norm(self.latent_to_token(latent))
+
+
+class LatentDecoderNTokensSpectralFilter(LatentDecoderNTokens):
+    '''
+        Join spectrum tokens together.
+    '''
+    def __init__(self, config):
+        config = copy.deepcopy(config)
+        config.latent_size *= len(config.spectral_filter_bands)
+        super().__init__(config)
+
+    def forward(self, latent) -> torch.Tensor:
+        # merge spectrum tokens
+        return super().forward(latent.view(
+            latent.size(0), latent.size(1), -1
+        ))
 
 
 VAE_ENCODER_MODELS = {
     "": LatentEncoderNTokens,
+    "spectral": LatentEncoderNTokensSpectralFilter,
 }
 VAE_DECODER_MODELS = {
-    "": LatentDecoderFunnelNorm,
-    "t5_norm": LatentDecoderT5Norm,
-    "no_norm": LatentDecoderNTokens,
+    "": LatentDecoderNTokens,
+    "spectral": LatentDecoderNTokensSpectralFilter,
 }
 
 
@@ -108,8 +130,9 @@ class EncoderDecoderVAE(nn.Module):
         recon_encoding, latent = self._model_forward(input_encoding, latent=latent)
         if use_reg_loss:
             # treat each token encoding as a seperate latent code
-            batch_size, n_latents_per_batch, latent_code_dim = latent.size()
-            reg_loss = self._regularliser_loss(latent.reshape(-1, latent_code_dim)) / batch_size * n_latents_per_batch
+            latent_code_dim = latent.size()[-1]
+            flat_latents = latent.reshape(-1, latent_code_dim)
+            reg_loss = self._regularliser_loss(flat_latents) / flat_latents.size(0)
         else:
             reg_loss = torch.tensor(0, device=latent.device)
         return BaseVAE_Output(latent=latent, reconstructed_encoding=recon_encoding, reg_loss=reg_loss)

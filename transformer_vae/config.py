@@ -61,6 +61,9 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         funnel_block_sizes (:obj:`str`, `optional`, defaults to ''):
             Size of each Funnel Encoder block, sequence is halved between each block.
             Example specification: 1_1_1
+        spectral_filter_bands (:obj:`str`, `optional`, defaults to ''):
+            Bands used for spectral filtering. d_model must be divisable by the number of bands.
+            Example specification: 130_511__34_129__9_33__0_8
         *** End ***
 
         TODO: Add extra models to condition on the latent
@@ -93,6 +96,8 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         gradient_checkpoint_encoder=False,
         decoder_grad_chk_pnt_rate=0,
         skip_upsample=False,
+        spectral_filter_bands='',
+        spectral_coef=0.0,
         **kwargs,
     ):
         assertIn(vae_encoder_model, VAE_ENCODER_MODELS.keys(), "Unexpected VAE encoder.")
@@ -111,6 +116,17 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         self.latent_size = latent_size
         self.n_latent_tokens = n_latent_tokens
         self.skip_upsample = skip_upsample
+
+        if spectral_filter_bands:
+            bands = [int(v) for v in spectral_filter_bands.replace('__', '_').split('_')]
+            self.spectral_filter_bands = list(zip(bands[::2], bands[1::2]))
+            self.vae_encoder_model = 'spectral'
+            self.vae_decoder_model = 'spectral'
+            self.latent_size //= len(self.spectral_filter_bands)
+            logger.info('Now using latent size: ', self.latent_size)
+        else:
+            self.spectral_filter_bands = None
+        self.spectral_coef = spectral_coef
 
         # funnel encoder model
         if 'funnel' not in kwargs:
