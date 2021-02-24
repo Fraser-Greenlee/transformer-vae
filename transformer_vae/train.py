@@ -272,7 +272,7 @@ def get_datasets(data_args):
     # download the dataset.
     if data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
-        return load_dataset(data_args.dataset_name, data_args.dataset_config_name) # , script_version=data_args.script_version
+        return load_dataset(data_args.dataset_name, data_args.dataset_config_name)  # , script_version=data_args.script_version
     data_files = {}
     if data_args.train_file is not None:
         data_files["train"] = data_args.train_file
@@ -373,7 +373,7 @@ def preprocess_datasets(training_args, data_args, tokenizer, datasets):
         batched=True,
         batch_size=training_args.per_device_train_batch_size,
         num_proc=data_args.preprocessing_num_workers,
-        remove_columns=[text_column_name],
+        remove_columns=[text_column_name] if not data_args.learn_segments else column_names,
         load_from_cache_file=not data_args.overwrite_cache,
     )
 
