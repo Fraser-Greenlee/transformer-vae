@@ -26,7 +26,6 @@ class LatentEncoderNTokens(nn.Module):
 class LatentEncoderNTokensSpectralFilter(nn.Module):
     '''
         Converts N hidden tokens with S spectral filters into N*S seperate latent codes.
-
     '''
     def __init__(self, config):
         super().__init__()
