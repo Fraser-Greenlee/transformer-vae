@@ -391,14 +391,19 @@ def preprocess_datasets(training_args, data_args, tokenizer, datasets):
         )["test"]
 
     if data_args.save_tokenized_dataset:
+        print('Saving dataset segments!')
         ds = tokenized_datasets['train']
+        i = 0
         while len(ds) >= 10_000:  # ignore overflow of <10k
             splits = ds.train_test_split(data_args.tokenized_max_row_count)
             subset = splits['test']
-            folder = 'subset_{i}'
+            folder = f'subset_{i}'
             os.mkdir(folder)
+            print(f'Saving segment {i}...')
             subset.save_to_disk(folder)
+            print('Saved')
             ds = splits['train']
+            i += 1
         raise Exception('Datasets segments have been saved!')
 
     data_collator = DataCollatorForLanguageAutoencoding(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
