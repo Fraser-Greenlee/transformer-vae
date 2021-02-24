@@ -199,6 +199,14 @@ class DataTrainingArguments:
         default=0,
         metadata={"help": "Overlap segments with N tokens."},
     )
+    save_tokenized_dataset: bool = field(
+        default=False,
+        metadata={"help": "Cancel training & instead save tokenized datasets."},
+    )
+    tokenized_max_row_count: bool = field(
+        default=50_000,
+        metadata={"help": "Cancel training & instead save tokenized datasets."},
+    )
 
     def __post_init__(self):
         if self.dataset_name is None and self.train_file is None and self.validation_file is None:
@@ -381,6 +389,13 @@ def preprocess_datasets(training_args, data_args, tokenizer, datasets):
         tokenized_datasets[data_args.validation_name] = tokenized_datasets[data_args.validation_name].train_test_split(
             training_args.max_validation_size
         )["test"]
+
+    if data_args.save_tokenized_dataset:
+        for i in range(0, len(tokenized_datasets), data_args.tokenized_max_row_count):
+            subset = tokenized_datasets[i * data_args.tokenized_max_row_count : (i + 1) * data_args.tokenized_max_row_count]
+            # subset.save_to_disk
+            import pdb
+            pdb.set_trace()
 
     data_collator = DataCollatorForLanguageAutoencoding(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
 
