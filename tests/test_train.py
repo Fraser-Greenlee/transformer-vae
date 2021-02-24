@@ -710,3 +710,37 @@ class TrainTests(TestCasePlus):
         latent_start = torch.tensor([[1.0, 1.0], [3.0, 4.0], [5.0, 6.0]])
         latent_end = torch.tensor([[-1.0, -1.0], [7.0, 8.0], [9.0, 10.0]])
         VAE_Trainer.gradual_interpolation_inputs(latent_start, latent_end, 'cpu', False)
+
+    def test_train_segments(self):
+        stream_handler = logging.StreamHandler(sys.stdout)
+        logger.addHandler(stream_handler)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        testargs = f"""
+            train.py
+            --train_file ./tests/fixtures/line_by_line_max_len_6.txt
+            --validation_file ./tests/fixtures/line_by_line_max_len_6.txt
+            --do_train
+            --do_eval
+            --per_device_train_batch_size 4
+            --per_device_eval_batch_size 4
+            --num_train_epochs 1
+            --set_seq_size 5
+            --latent_size 77
+            --output_dir {tmp_dir}
+            --overwrite_output_dir
+            --learn_segments
+            --segments_stride 3
+            """.split()
+
+        if torch.cuda.device_count() > 1:
+            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
+            return
+
+        if torch_device != "cuda":
+            testargs.append("--no_cuda")
+
+        with patch.object(sys, "argv", testargs):
+            result = main()
+            self.assertGreater(result["eval_loss"], 0.0)
+            self.assertNotIn("epoch", result)

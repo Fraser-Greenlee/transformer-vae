@@ -1,0 +1,4 @@
+dataset_name=wikicorpus
+max_validation_size=100
+sample_from_latent
+learn_segments

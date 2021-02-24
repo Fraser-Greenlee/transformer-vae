@@ -191,6 +191,14 @@ class DataTrainingArguments:
         default=None,
         metadata={"help": "How many classes in the data, found using a ClassLabel column if none given."},
     )
+    learn_segments: bool = field(
+        default=False,
+        metadata={"help": "Instead of truncating inputs that are too long, split those samples into multiple ones."},
+    )
+    segments_stride: int = field(
+        default=0,
+        metadata={"help": "Overlap segments with N tokens."},
+    )
 
     def __post_init__(self):
         if self.dataset_name is None and self.train_file is None and self.validation_file is None:
@@ -355,10 +363,10 @@ def preprocess_datasets(training_args, data_args, tokenizer, datasets):
 
     if tokenizer.pad_token_id is None:
         def tokenize_function(examples):
-            return tokenizer(examples[text_column_name], truncation=True)
+            return tokenizer(examples[text_column_name], truncation=True, return_overflowing_tokens=data_args.learn_segments, stride=data_args.segments_stride)
     else:
         def tokenize_function(examples):
-            return tokenizer(examples[text_column_name], padding="max_length", truncation=True)
+            return tokenizer(examples[text_column_name], padding="max_length", truncation=True, return_overflowing_tokens=data_args.learn_segments, stride=data_args.segments_stride)
 
     tokenized_datasets = datasets.map(
         tokenize_function,
