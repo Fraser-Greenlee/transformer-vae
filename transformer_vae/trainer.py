@@ -283,6 +283,10 @@ class VAE_Trainer(trainer_script.Trainer):
     @staticmethod
     def gradual_interpolation_inputs(latent_start, latent_end, device, interpolate_all_at_once):
         ratios = torch.arange(0, 1.1, 0.1, device=device)
+        if len(latent_start.size()) > 2:
+            # if using spectrum tokens just interpolate all at once
+            latent_start = latent_start.view(latent_start.size(0), -1)
+            latent_end = latent_start.view(latent_start.size(0), -1)
         num_latent_tokens = latent_start.size(0)
         latent_token_dim = latent_start.size(1)
         if interpolate_all_at_once:
