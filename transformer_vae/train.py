@@ -385,7 +385,7 @@ def preprocess_datasets(training_args, data_args, tokenizer, datasets):
         load_from_cache_file=not data_args.overwrite_cache,
     )
 
-    if training_args.max_validation_size:
+    if training_args.do_eval and training_args.max_validation_size:
         tokenized_datasets[data_args.validation_name] = tokenized_datasets[data_args.validation_name].train_test_split(
             training_args.max_validation_size
         )["test"]
