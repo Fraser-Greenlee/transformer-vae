@@ -173,7 +173,7 @@ class DataTrainingArguments:
     )
     overwrite_cache: bool = field(default=False, metadata={"help": "Overwrite the cached training and evaluation sets"})
     preprocessing_num_workers: Optional[int] = field(
-        default=None,
+        default=8,
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
     mlm_probability: float = field(
