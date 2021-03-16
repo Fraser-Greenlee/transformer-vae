@@ -40,3 +40,5 @@ wandb
 .pypirc
 
 .dccache
+
+*_segments/

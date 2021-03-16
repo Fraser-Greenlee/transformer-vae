@@ -4,9 +4,12 @@
 import logging
 import inspect
 import os
+import shutil
 import sys
 from dataclasses import dataclass, field, make_dataclass
 from typing import Optional, Any
+import numpy as np
+from tqdm import tqdm
 
 from datasets import load_dataset
 import transformers
@@ -98,6 +101,7 @@ class VAE_TrainingArguments(TrainingArguments):
         default=False,
         metadata={"help": "Treat all latent tokens as one during slerp."},
     )
+    n_tokenized_segments: int = field(default=0, metadata={"help": "Don't train just tokenize dataset into N segments instead."})
 
 
 """
@@ -250,6 +254,23 @@ def get_args():
     return model_args, data_args, training_args
 
 
+def save_segmented_dataset(n_tokenized_segments, dataset_name, tokenized_datasets):
+    ds_dir = f'{dataset_name}_segments'
+    if os.path.exists(ds_dir):
+        shutil.rmtree(ds_dir)
+    os.mkdir(ds_dir)
+    ds_split = tokenized_datasets['train']
+    ds_split.remove_columns_([c for c in ds_split.features if c != 'input_ids'])
+    samples_per_segment = len(ds_split) // n_tokenized_segments
+    for i in tqdm(range(n_tokenized_segments), desc='Saving Segments'):
+        segment = ds_split.select(
+            indices=np.arange(samples_per_segment * i, samples_per_segment * (i + 1))
+        )
+        seg_path = os.path.join(ds_dir, f'segment_{i}')
+        os.mkdir(seg_path)
+        segment.save_to_disk(seg_path)
+
+
 def setup_logs(training_args):
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -384,6 +405,10 @@ def preprocess_datasets(training_args, data_args, tokenizer, datasets):
         remove_columns=[text_column_name] if not data_args.learn_segments else column_names,
         load_from_cache_file=not data_args.overwrite_cache,
     )
+
+    if training_args.n_tokenized_segments:
+        save_segmented_dataset(training_args.n_tokenized_segments, data_args.dataset_name, tokenized_datasets)
+        exit()
 
     if training_args.do_eval and training_args.max_validation_size:
         tokenized_datasets[data_args.validation_name] = tokenized_datasets[data_args.validation_name].train_test_split(

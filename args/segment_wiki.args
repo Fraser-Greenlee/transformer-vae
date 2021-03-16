@@ -1,0 +1,3 @@
+dataset_name=wikicorpus
+dataset_config_name=raw_en
+n_tokenized_segments=10
