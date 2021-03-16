@@ -16,10 +16,10 @@ contents = file_to_string(package, "__init__.py")
 __version__ = re.search(r'__version__ = "([.\d]+)"', contents).group(1)
 
 install_requires = [
-    "datasets==1.3.0",
-    "transformers==4.3.2",
+    "datasets==1.4.1",
+    "transformers==4.4.0",
     "wandb>=0.10.14",
-    "torch==1.7.0",
+    "torch==1.8.0",
     "sklearn",  # for SVM
     "torch-dct"
 ]
