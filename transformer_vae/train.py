@@ -3,6 +3,7 @@
 """
 import logging
 import inspect
+import subprocess
 import os
 import shutil
 import sys
@@ -159,9 +160,11 @@ class DataTrainingArguments:
     """
     Arguments pertaining to what data we are going to input our model for training and eval.
     """
-
     dataset_name: Optional[str] = field(
         default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
+    )
+    gs_path: Optional[str] = field(
+        default=None, metadata={"help": "Download from GCS Bucket, load a dataset from the file."}
     )
     script_version: str = field(
         default="main", metadata={"help": "Dataset branch to use (via the datasets library)."}
@@ -299,6 +302,23 @@ def get_datasets(data_args):
     #
     # In distributed training, the load_dataset function guarantee that only one local process can concurrently
     # download the dataset.
+    if data_args.gs_path:
+        subprocess.check_output(f'gsutil cp {data_args.gs_path} .'.split())
+        name = data_args.gs_path.split('/')[-1]
+        path = name
+        if '.' in name:
+            name, fext = name.split('.')
+            if fext == '.zip':
+                subprocess.check_output(f'unzip {name}.{fext}'.split())
+                subprocess.check_output(f'rm {name}.{fext}'.split())
+                zip_files = os.listdir(name)
+                assert(len(zip_files) == 1), 'Only handles a zip holding a single file'
+                path = os.path.join(name, zip_files[0])
+        # TODO load .jsonl file & take it as a train segment
+        import pdb
+        pdb.set_trace()
+        return load_dataset(path)
+
     if data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
         return load_dataset(data_args.dataset_name, data_args.dataset_config_name)  # , script_version=data_args.script_version
@@ -378,6 +398,11 @@ def preprocess_datasets(training_args, data_args, tokenizer, datasets):
             datasets = datasets.map(add_class_column, remove_columns=[data_args.classification_column])
 
     # tokenize all the texts.
+
+    # ensure I don't try to re-tokenize the data
+    import pdb
+    pdb.set_trace()
+
     if training_args.do_train:
         column_names = datasets["train"].column_names
     else:
@@ -388,7 +413,7 @@ def preprocess_datasets(training_args, data_args, tokenizer, datasets):
         text_column_name = "text" if "text" in column_names else column_names[0]
 
     if text_column_name != "text":
-        logger.info(f'Using column "{text_column_name}" as text column.')
+        logger.warning(f'Using column "{text_column_name}" as text column.')
 
     if tokenizer.pad_token_id is None:
         def tokenize_function(examples):
