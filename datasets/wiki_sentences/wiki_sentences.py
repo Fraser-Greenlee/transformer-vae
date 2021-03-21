@@ -47,6 +47,11 @@ class WikiSentences(datasets.GeneratorBasedBuilder):
     def _info(self):
         return datasets.DatasetInfo(
             description=_DESCRIPTION,
+            features=datasets.Features(
+                {
+                    'token_ids': [datasets.Value("int32")],
+                }
+            ),
             homepage="https://github.com/Fraser-Greenlee/transformer-vae",
         )
 
