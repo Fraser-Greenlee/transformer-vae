@@ -1,4 +1,4 @@
-dataset_name=datasets/wiki_sentences.py
+dataset_name=./datasets/wiki_sentences
 set_seq_size=64
 generate_max_len=64
 tokenizer_name=gpt2-base
