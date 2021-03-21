@@ -2,6 +2,7 @@
 
 from __future__ import absolute_import, division, print_function
 
+import os
 import json
 
 import datasets
@@ -55,12 +56,12 @@ class WikiSentences(datasets.GeneratorBasedBuilder):
         )
 
     def _split_generators(self, dl_manager):
-        import pdb
-        pdb.set_trace()
-        assert(self.config.segment_num < NUM_SEGMENTS), f'Segment does not exist, requested segment {self.config.segment_num}, but max segment num is {NUM_SEGMENTS - 1}'
-        train_path = dl_manager.download_and_extract(_TRAIN_DOWNLOAD_URL.format(self.config.segment_num))
+        assert(self.config.segment < NUM_SEGMENTS), f'Segment does not exist, requested segment {self.config.segment}, but max segment num is {NUM_SEGMENTS - 1}'
+        folder_path = dl_manager.download_and_extract(_TRAIN_DOWNLOAD_URL.format(self.config.segment))
         return [
-            datasets.SplitGenerator(name=datasets.Split.TRAIN, gen_kwargs={"filepath": train_path}),
+            datasets.SplitGenerator(
+                name=datasets.Split.TRAIN, gen_kwargs={"filepath": os.path.join(folder_path, 'segment_output.jsonl')}
+            ),
         ]
 
     def _generate_examples(self, filepath):
