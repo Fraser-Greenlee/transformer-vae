@@ -301,9 +301,7 @@ def get_datasets(data_args):
     # download the dataset.
     if data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
-        import pdb
-        pdb.set_trace()
-        return load_dataset(data_args.dataset_name, data_args.dataset_config_name)  # , script_version=data_args.script_version
+        return load_dataset(data_args.dataset_name, data_args.dataset_config_name)
     data_files = {}
     if data_args.train_file is not None:
         data_files["train"] = data_args.train_file

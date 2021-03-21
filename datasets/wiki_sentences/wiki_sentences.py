@@ -67,9 +67,5 @@ class WikiSentences(datasets.GeneratorBasedBuilder):
     def _generate_examples(self, filepath):
         """Generate examples."""
         with open(filepath, encoding="utf-8") as json_lines_file:
-            data = []
-            for line in json_lines_file:
-                data.append(json.loads(line))
-
-            for id_, row in enumerate(data):
-                yield id_, row
+            for id_, line in enumerate(json_lines_file):
+                yield id_, json.loads(line)
