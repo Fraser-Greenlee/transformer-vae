@@ -1,4 +1,4 @@
-gs_path=https://storage.googleapis.com/t-vae/wikipedia_json_64_filtered_segment_0.zip
+dataset_name=datasets/wiki_sentences.py
 set_seq_size=64
 generate_max_len=64
 tokenizer_name=gpt2-base

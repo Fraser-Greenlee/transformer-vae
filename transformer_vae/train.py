@@ -163,9 +163,6 @@ class DataTrainingArguments:
     dataset_name: Optional[str] = field(
         default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
     )
-    gs_path: Optional[str] = field(
-        default=None, metadata={"help": "Download from GCS Bucket, load a dataset from the file."}
-    )
     script_version: str = field(
         default="main", metadata={"help": "Dataset branch to use (via the datasets library)."}
     )
@@ -302,25 +299,10 @@ def get_datasets(data_args):
     #
     # In distributed training, the load_dataset function guarantee that only one local process can concurrently
     # download the dataset.
-    if data_args.gs_path:
-        subprocess.check_output(f'gsutil cp {data_args.gs_path} .'.split())
-        name = data_args.gs_path.split('/')[-1]
-        path = name
-        if '.' in name:
-            name, fext = name.split('.')
-            if fext == '.zip':
-                subprocess.check_output(f'unzip {name}.{fext}'.split())
-                subprocess.check_output(f'rm {name}.{fext}'.split())
-                zip_files = os.listdir(name)
-                assert(len(zip_files) == 1), 'Only handles a zip holding a single file'
-                path = os.path.join(name, zip_files[0])
-        # TODO load .jsonl file & take it as a train segment
-        import pdb
-        pdb.set_trace()
-        return load_dataset(path)
-
     if data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
+        import pdb
+        pdb.set_trace()
         return load_dataset(data_args.dataset_name, data_args.dataset_config_name)  # , script_version=data_args.script_version
     data_files = {}
     if data_args.train_file is not None:
