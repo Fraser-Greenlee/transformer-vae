@@ -27,7 +27,7 @@ class PythonLines(datasets.GeneratorBasedBuilder):
             description=_DESCRIPTION,
             features=datasets.Features(
                 {
-                    'token_ids': datasets.Value("list of integers"),
+                    'token_ids': datasets.Value("null"),
                 }
             ),
             homepage="https://github.com/Fraser-Greenlee/transformer-vae",
