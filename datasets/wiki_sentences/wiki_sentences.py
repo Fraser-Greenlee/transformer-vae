@@ -15,12 +15,33 @@ Each row is a tokenised sentence.
 This is to test the semantics of a Transformer-VAEs latent space by interpolating on sentences.
 """
 
-_MAX_SEGMENTS = 4
+NUM_SEGMENTS = 5
 _TRAIN_DOWNLOAD_URL = r"https://storage.googleapis.com/t-vae/wikipedia_json_64_filtered_segment_{0}.zip"
 
 
-class PythonLines(datasets.GeneratorBasedBuilder):
-    """Python lines dataset."""
+class WikiSentencesConfig(datasets.BuilderConfig):
+    """BuilderConfig for WikiSentences."""
+
+    def __init__(self, segment=None, **kwargs):
+        """BuilderConfig for WikiSentences.
+        Args:
+          segment_num: keyword argument to specify the segment of the dataset to load
+          **kwargs: keyword arguments forwarded to super.
+        """
+        self.segment = segment
+        super(WikiSentencesConfig, self).__init__(**kwargs)
+
+
+class WikiSentences(datasets.GeneratorBasedBuilder):
+    """Sentences from Wikipedia."""
+
+    BUILDER_CONFIGS = [
+        WikiSentencesConfig(
+            name=f"segment_{i}",
+            description=f"Segment {i+1}/{NUM_SEGMENTS} of WikiSentences Dataset for interpolating on natural language.",
+            segment=i
+        ) for i in range(NUM_SEGMENTS)
+    ]
 
     def _info(self):
         return datasets.DatasetInfo(
@@ -36,7 +57,7 @@ class PythonLines(datasets.GeneratorBasedBuilder):
     def _split_generators(self, dl_manager):
         import pdb
         pdb.set_trace()
-        assert(self.config.segment_num <= _MAX_SEGMENTS), f'Segment does not exist, requested segment {self.config.segment_num}, but max segment num is {_MAX_SEGMENTS}'
+        assert(self.config.segment_num < NUM_SEGMENTS), f'Segment does not exist, requested segment {self.config.segment_num}, but max segment num is {NUM_SEGMENTS - 1}'
         train_path = dl_manager.download_and_extract(_TRAIN_DOWNLOAD_URL.format(self.config.segment_num))
         return [
             datasets.SplitGenerator(name=datasets.Split.TRAIN, gen_kwargs={"filepath": train_path}),
