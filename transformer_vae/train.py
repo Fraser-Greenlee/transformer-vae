@@ -3,7 +3,6 @@
 """
 import logging
 import inspect
-import subprocess
 import os
 import shutil
 import sys
