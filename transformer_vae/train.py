@@ -378,37 +378,41 @@ def preprocess_datasets(training_args, data_args, tokenizer, datasets):
 
     # tokenize all the texts.
 
-    # ensure I don't try to re-tokenize the data
-    import pdb
-    pdb.set_trace()
-
     if training_args.do_train:
         column_names = datasets["train"].column_names
     else:
         column_names = datasets[data_args.validation_name].column_names
-    if data_args.text_column is not None:
-        text_column_name = data_args.text_column
+
+    # ensure I don't try to re-tokenize the data
+    import pdb
+    pdb.set_trace()
+
+    if 'input_ids' in column_names:
+        tokenized_datasets = datasets
     else:
-        text_column_name = "text" if "text" in column_names else column_names[0]
+        if data_args.text_column is not None:
+            text_column_name = data_args.text_column
+        else:
+            text_column_name = "text" if "text" in column_names else column_names[0]
 
-    if text_column_name != "text":
-        logger.warning(f'Using column "{text_column_name}" as text column.')
+        if text_column_name != "text":
+            logger.warning(f'Using column "{text_column_name}" as text column.')
 
-    if tokenizer.pad_token_id is None:
-        def tokenize_function(examples):
-            return tokenizer(examples[text_column_name], truncation=True, return_overflowing_tokens=data_args.learn_segments, stride=data_args.segments_stride)
-    else:
-        def tokenize_function(examples):
-            return tokenizer(examples[text_column_name], padding="max_length", truncation=True, return_overflowing_tokens=data_args.learn_segments, stride=data_args.segments_stride)
+        if tokenizer.pad_token_id is None:
+            def tokenize_function(examples):
+                return tokenizer(examples[text_column_name], truncation=True, return_overflowing_tokens=data_args.learn_segments, stride=data_args.segments_stride)
+        else:
+            def tokenize_function(examples):
+                return tokenizer(examples[text_column_name], padding="max_length", truncation=True, return_overflowing_tokens=data_args.learn_segments, stride=data_args.segments_stride)
 
-    tokenized_datasets = datasets.map(
-        tokenize_function,
-        batched=True,
-        batch_size=training_args.per_device_train_batch_size,
-        num_proc=data_args.preprocessing_num_workers,
-        remove_columns=[text_column_name] if not data_args.learn_segments else column_names,
-        load_from_cache_file=not data_args.overwrite_cache,
-    )
+        tokenized_datasets = datasets.map(
+            tokenize_function,
+            batched=True,
+            batch_size=training_args.per_device_train_batch_size,
+            num_proc=data_args.preprocessing_num_workers,
+            remove_columns=[text_column_name] if not data_args.learn_segments else column_names,
+            load_from_cache_file=not data_args.overwrite_cache,
+        )
 
     if training_args.n_tokenized_segments:
         save_segmented_dataset(training_args.n_tokenized_segments, data_args.dataset_name, tokenized_datasets)
