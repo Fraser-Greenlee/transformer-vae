@@ -384,10 +384,10 @@ def preprocess_datasets(training_args, data_args, tokenizer, datasets):
         column_names = datasets[data_args.validation_name].column_names
 
     # ensure I don't try to re-tokenize the data
-    import pdb
-    pdb.set_trace()
+    logger.warning('Column names:', column_names)
 
     if 'input_ids' in column_names:
+        logger.warning('tokenized_datasets = datasets')
         tokenized_datasets = datasets
     else:
         if data_args.text_column is not None:
