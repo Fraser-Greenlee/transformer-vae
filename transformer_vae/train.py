@@ -169,6 +169,7 @@ class DataTrainingArguments:
         default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
     )
     text_column: Optional[str] = field(default=None, metadata={"help": "Use this dataset column as 'text'."})
+    input_ids_column: Optional[str] = field(default=None, metadata={"help": "Use this dataset column as input token ids."})
     train_file: Optional[str] = field(default=None, metadata={"help": "The input training data file (a text file)."})
     validation_file: Optional[str] = field(
         default=None,
@@ -384,7 +385,11 @@ def preprocess_datasets(training_args, data_args, tokenizer, datasets):
         column_names = datasets[data_args.validation_name].column_names
 
     # ensure I don't try to re-tokenize the data
-    logger.warning('Column names:', column_names)
+    # TODO rename token_ids to input_ids
+    # input_ids_column
+    import pdb
+    pdb.set_trace()
+    logger.warning(f'Column names: {column_names}')
 
     if 'input_ids' in column_names:
         logger.warning('tokenized_datasets = datasets')

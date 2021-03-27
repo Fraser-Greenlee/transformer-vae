@@ -6,3 +6,4 @@ dont_clean_up_tokenization_spaces
 validation_name=train
 max_validation_size=100
 sample_from_latent
+input_ids_column=token_ids
