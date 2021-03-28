@@ -393,6 +393,8 @@ def preprocess_datasets(training_args, data_args, tokenizer, datasets):
 
     # tokenize
     if data_args.input_ids_column:
+        logger.warning(f'Renaming "{data_args.input_ids_column}" to "input_ids".')
+
         def rename(row):
             row['input_ids'] = row[data_args.input_ids_column]
             del row[data_args.input_ids_column]
