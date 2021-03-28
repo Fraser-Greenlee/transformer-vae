@@ -778,3 +778,38 @@ class TrainTests(TestCasePlus):
             result = main()
             self.assertGreater(result["eval_loss"], 0.0)
             self.assertNotIn("epoch", result)
+
+    def test_train_already_tokenized(self):
+        stream_handler = logging.StreamHandler(sys.stdout)
+        logger.addHandler(stream_handler)
+
+        tmp_dir = self.get_auto_remove_tmp_dir()
+        testargs = f"""
+            train.py
+            --train_file ./tests/fixtures/tokenised_dataset.json
+            --validation_file ./tests/fixtures/tokenised_dataset.json
+            --do_train
+            --do_eval
+            --tokenizer_name=gpt2
+            --input_ids_column=token_ids
+            --add_special_tokens
+            --per_device_train_batch_size 2
+            --per_device_eval_batch_size 2
+            --num_train_epochs 1
+            --set_seq_size 37
+            --latent_size 77
+            --output_dir {tmp_dir}
+            --overwrite_output_dir
+            """.split()
+
+        if torch.cuda.device_count() > 1:
+            # Skipping because there are not enough batches to train the model + would need a drop_last to work.
+            return
+
+        if torch_device != "cuda":
+            testargs.append("--no_cuda")
+
+        with patch.object(sys, "argv", testargs):
+            result = main()
+            self.assertGreater(result["eval_loss"], 0.0)
+            self.assertNotIn("epoch", result)

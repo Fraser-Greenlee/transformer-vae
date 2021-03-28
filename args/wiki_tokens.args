@@ -1,9 +1,10 @@
 dataset_name=./datasets/wiki_sentences
 set_seq_size=64
 generate_max_len=64
-tokenizer_name=gpt2
 dont_clean_up_tokenization_spaces
 validation_name=train
 max_validation_size=100
 sample_from_latent
+tokenizer_name=gpt2
 input_ids_column=token_ids
+add_special_tokens

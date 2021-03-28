@@ -9,6 +9,7 @@ import sys
 from dataclasses import dataclass, field, make_dataclass
 from typing import Optional, Any
 import numpy as np
+import torch
 from tqdm import tqdm
 
 from datasets import load_dataset
@@ -137,6 +138,12 @@ fields = [
         'cache_dir', str, field(
             default=None,
             metadata={"help": "Cache directory."},
+        )
+    ),
+    (
+        'add_special_tokens', bool, field(
+            default=False,
+            metadata={"help": "Add these special tokens to the tokenizer: {'pad_token': '<PAD>', 'bos_token': '<BOS>', 'eos_token': '<EOS>'}"},
         )
     )
 ] + [
@@ -355,6 +362,13 @@ def load_model_and_tokenizer(model_args):
         logger.info("Training new model from scratch")
         model = Funnel_T5_VAE_Model(config)
 
+    if model_args.add_special_tokens:
+        special_tokens_dict = {'pad_token': '<PAD>', 'bos_token': '<BOS>', 'eos_token': '<EOS>'}
+        num_added_tokens = tokenizer.add_special_tokens(special_tokens_dict)
+        print('We have added', num_added_tokens, 'tokens to GPT2')
+        model.resize_token_embeddings(len(tokenizer))
+        assert tokenizer.pad_token == '<PAD>'
+
     if model_args.set_seq_size:
         tokenizer.model_max_length = model_args.set_seq_size
     tokenizer.mask_token = tokenizer.unk_token
@@ -377,23 +391,36 @@ def preprocess_datasets(training_args, data_args, tokenizer, datasets):
 
             datasets = datasets.map(add_class_column, remove_columns=[data_args.classification_column])
 
-    # tokenize all the texts.
+    # tokenize
+    if data_args.input_ids_column:
+        def rename(row):
+            row['input_ids'] = row[data_args.input_ids_column]
+            del row[data_args.input_ids_column]
+            return row
+        datasets = datasets.map(rename)
 
     if training_args.do_train:
         column_names = datasets["train"].column_names
     else:
         column_names = datasets[data_args.validation_name].column_names
 
-    # ensure I don't try to re-tokenize the data
-    # TODO rename token_ids to input_ids
-    # input_ids_column
-    import pdb
-    pdb.set_trace()
-    logger.warning(f'Column names: {column_names}')
-
     if 'input_ids' in column_names:
-        logger.warning('tokenized_datasets = datasets')
-        tokenized_datasets = datasets
+        logger.warning('Using given token ids.')
+
+        def ready_for_training(examples):
+            return tokenizer.batch_encode_plus(
+                examples['input_ids'],
+                padding="max_length", truncation=True, return_overflowing_tokens=data_args.learn_segments,
+                stride=data_args.segments_stride, is_split_into_words=True
+            )
+
+        tokenized_datasets = datasets.map(
+            ready_for_training,
+            batched=True,
+            batch_size=training_args.per_device_train_batch_size,
+            num_proc=data_args.preprocessing_num_workers,
+            load_from_cache_file=not data_args.overwrite_cache,
+        )
     else:
         if data_args.text_column is not None:
             text_column_name = data_args.text_column
@@ -461,6 +488,9 @@ def main():
     set_seed(training_args.seed)
 
     datasets = get_datasets(data_args)
+    if data_args.input_ids_column and model_args.use_fast_tokenizer:
+        logger.warning('Disabling fast tokenizer as dataset is already tokenized.')
+        model_args.use_fast_tokenizer = False
 
     model, tokenizer = load_model_and_tokenizer(model_args)
 

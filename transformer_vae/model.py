@@ -76,6 +76,7 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
         self.decoder = modify_t5_stack(t5_transformer.decoder, config)
         self.lm_head = t5_transformer.lm_head
         self.shared_embedding = t5_transformer.shared
+        self.decoder.embed_tokens = None
         self.decoder_start_token_id = self.config.t5.decoder_start_token_id
         assert (
             self.decoder_start_token_id is not None
@@ -93,6 +94,12 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
 
     def get_input_embeddings(self):
         return self.shared_embedding
+
+    def get_output_embeddings(self):
+        return self.lm_head
+
+    def set_output_embeddings(self, new_embeddings):
+        self.lm_head = new_embeddings
 
     def set_input_embeddings(self, new_embeddings):
         self.shared_embedding = new_embeddings
@@ -283,7 +290,7 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
         lm_logits = None
         if decoder_input_ids is not None:
             decoder_outputs = self.decoder(
-                input_ids=decoder_input_ids, encoder_hidden_states=upsampled_encoding, use_cache=use_cache, output_hidden_states=output_hidden_states, return_dict=True, grad_chk_pnt_rate=self.config.decoder_grad_chk_pnt_rate
+                inputs_embeds=self.shared_embedding(decoder_input_ids), encoder_hidden_states=upsampled_encoding, use_cache=use_cache, output_hidden_states=output_hidden_states, return_dict=True, grad_chk_pnt_rate=self.config.decoder_grad_chk_pnt_rate
             )
 
             sequence_output = decoder_outputs.last_hidden_state
