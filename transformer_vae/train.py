@@ -392,26 +392,19 @@ def preprocess_datasets(training_args, data_args, tokenizer, datasets):
             datasets = datasets.map(add_class_column, remove_columns=[data_args.classification_column])
 
     # tokenize
-    if data_args.input_ids_column:
-        logger.warning(f'Renaming "{data_args.input_ids_column}" to "input_ids".')
-
-        def rename(row):
-            row['input_ids'] = row[data_args.input_ids_column]
-            del row[data_args.input_ids_column]
-            return row
-        datasets = datasets.map(rename)
-
     if training_args.do_train:
         column_names = datasets["train"].column_names
     else:
         column_names = datasets[data_args.validation_name].column_names
 
-    if 'input_ids' in column_names:
+    if 'input_ids' in column_names or data_args.input_ids_column:
         logger.warning('Using given token ids.')
+        if not data_args.input_ids_column:
+            data_args.input_ids_column = 'input_ids'
 
         def ready_for_training(examples):
             return tokenizer.batch_encode_plus(
-                examples['input_ids'],
+                examples[data_args.input_ids_column],
                 padding="max_length", truncation=True, return_overflowing_tokens=data_args.learn_segments,
                 stride=data_args.segments_stride, is_split_into_words=True
             )
