@@ -23,13 +23,14 @@ _TRAIN_DOWNLOAD_URL = r"https://storage.googleapis.com/t-vae/wikipedia_json_64_f
 class WikiSentencesConfig(datasets.BuilderConfig):
     """BuilderConfig for WikiSentences."""
 
-    def __init__(self, segment=None, **kwargs):
+    def __init__(self, segment=None, max_num_samples=None, **kwargs):
         """BuilderConfig for WikiSentences.
         Args:
           segment_num: keyword argument to specify the segment of the dataset to load
           **kwargs: keyword arguments forwarded to super.
         """
         self.segment = segment
+        self.max_num_samples = max_num_samples
         super(WikiSentencesConfig, self).__init__(**kwargs)
 
 
@@ -41,6 +42,12 @@ class WikiSentences(datasets.GeneratorBasedBuilder):
             name=f"segment_{i}",
             description=f"Segment {i+1}/{NUM_SEGMENTS} of WikiSentences Dataset for interpolating on natural language.",
             segment=i
+        ) for i in range(NUM_SEGMENTS)
+    ] + [
+        WikiSentencesConfig(
+            name=f"10k_segment_{i}",
+            description=f"Segment {i+1}/{NUM_SEGMENTS} of WikiSentences Dataset for interpolating on natural language.",
+            segment=i, max_num_samples=10_000
         ) for i in range(NUM_SEGMENTS)
     ]
 
@@ -69,3 +76,5 @@ class WikiSentences(datasets.GeneratorBasedBuilder):
         with open(filepath, encoding="utf-8") as json_lines_file:
             for id_, line in enumerate(json_lines_file):
                 yield id_, json.loads(line)
+                if id_ >= self.config.max_num_samples:
+                    break
