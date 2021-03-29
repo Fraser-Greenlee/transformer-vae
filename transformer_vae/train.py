@@ -453,6 +453,7 @@ def preprocess_datasets(training_args, data_args, tokenizer, datasets):
         exit()
 
     if training_args.do_eval and training_args.max_validation_size:
+        assert(data_args.validation_name != 'train'), "Attempting to overwrite train dataset segment with test data, stopping."
         tokenized_datasets[data_args.validation_name] = tokenized_datasets[data_args.validation_name].train_test_split(
             training_args.max_validation_size
         )["test"]

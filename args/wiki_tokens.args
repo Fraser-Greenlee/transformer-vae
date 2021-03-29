@@ -2,7 +2,7 @@ dataset_name=./datasets/wiki_sentences
 set_seq_size=64
 generate_max_len=64
 dont_clean_up_tokenization_spaces
-validation_name=train
+validation_name=test
 max_validation_size=100
 sample_from_latent
 tokenizer_name=gpt2
