@@ -45,9 +45,9 @@ class WikiSentences(datasets.GeneratorBasedBuilder):
         ) for i in range(NUM_SEGMENTS)
     ] + [
         WikiSentencesConfig(
-            name=f"10k_segment_{i}",
+            name=f"1M_segment_{i}",
             description=f"Segment {i+1}/{NUM_SEGMENTS} of WikiSentences Dataset for interpolating on natural language.",
-            segment=i, max_num_samples=10_000
+            segment=i, max_num_samples=1_000_000
         ) for i in range(NUM_SEGMENTS)
     ]
 

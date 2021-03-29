@@ -8,3 +8,4 @@ sample_from_latent
 tokenizer_name=gpt2
 input_ids_column=token_ids
 add_special_tokens
+num_train_epochs=1
