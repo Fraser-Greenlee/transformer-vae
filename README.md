@@ -7,7 +7,7 @@
 Transformer-VAE's learn smooth latent spaces of discrete sequences without any explicit rules in their decoders.
 
 This can be used for program synthesis, drug discovery, music generation and much more!
-To lean more about how it works checkout [this blog post](https://fraser-greenlee.github.io/2020/08/13/Transformers-as-Variational-Autoencoders.html).
+To lean more about how it works checkout [this blog post](http://fras.uk/ml/large%20prior-free%20models/transformer-vae/2020/08/13/Transformers-as-Variational-Autoencoders.html).
 
 If you notice any issues please reach out and open an issue! I'll try to get back to you ASAP.
 
