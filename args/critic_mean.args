@@ -1,2 +1,0 @@
-transformer_critic_name funnel-transformer/intermediate
-critic_type mean
