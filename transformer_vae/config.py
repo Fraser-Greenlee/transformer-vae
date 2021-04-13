@@ -46,8 +46,6 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
             NOTE: Every input sequence must be padded to be equal to this length.
         t5_name (:obj:`str`, `optional`, defaults to t5-base):
             Name of the Transformer model to use as a decoder.
-        transformer_critic_name (:obj:`str`, `optional`, defaults to None):
-            Name of the Transformer model to use as an advisery on interpolations.
         *** Training Args ***
         reg_schedule_k (:obj:`float`, `optional`, defaults to 0.0025):
             Multiplied by global_step in a sigmoid, more gradually increase regulariser loss weight.
@@ -78,8 +76,6 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         t5_name="t5-base",
         vae_encoder_model='',
         vae_decoder_model='',
-        critic_type='',
-        critic_name='',
         set_seq_size=60,
         decoder_start_token_id=0,
         dont_use_reg_loss=False,
@@ -170,16 +166,6 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         self.reg_schedule_b = reg_schedule_b
         self.use_extra_logs = use_extra_logs
 
-        # critic model
-        self.critic = None
-        if critic_name:
-            self.critic_type = critic_type
-            if 'critic' not in kwargs:
-                self.critic = AutoConfig.from_pretrained(critic_name, cache_dir=cache_dir)
-            else:
-                self.critic = FunnelConfig(**kwargs.pop('critic'))
-            assertEqual(self.t5.d_model, self.critic.d_model, "Funnel & T5 transformers have different dimensions.")
-
         # misc
         self.use_cache = getattr(self.funnel, "use_cache", False)
 
@@ -194,6 +180,4 @@ class Funnel_T5_VAE_Config(PretrainedConfig):
         output["funnel"] = self.funnel.to_dict()
         output["model_type"] = self.__class__.model_type
         output['t5'] = self.t5.to_dict()
-        if self.critic:
-            output['critic'] = self.critic.to_dict()
         return output
