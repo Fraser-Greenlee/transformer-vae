@@ -240,46 +240,6 @@ class VAE_Trainer(trainer_script.Trainer):
             self._svm_classification(latents_with_class)
         # self._t_sne(latents_with_class)
 
-    def get_loss(self, outputs, labels):
-        """
-        How the loss is computed by Trainer. By default, all models return the loss in the first element.
-        """
-        # Save past state if it exists
-        # TODO: this needs to be fixed and made cleaner later.
-        if self.args.past_index >= 0:
-            self._past = outputs[self.args.past_index]
-
-        if labels is not None:
-            return self.label_smoother(outputs, labels)
-        else:
-            # We don't use .loss here since the model may return tuples instead of ModelOutput.
-            return outputs["loss"] if isinstance(outputs, dict) else outputs[0]
-
-    def get_loss_grad(self, outputs, labels):
-        if self.use_amp:
-            with autocast():
-                loss = self.get_loss(outputs, labels)
-        else:
-            loss = self.get_loss(outputs, labels)
-
-        if self.args.n_gpu > 1:
-            loss = loss.mean()  # mean() to average on multi-gpu parallel training
-
-        if self.args.gradient_accumulation_steps > 1:
-            loss = loss / self.args.gradient_accumulation_steps
-
-        if self.use_amp:
-            self.scaler.scale(loss).backward()
-        elif self.use_apex:
-            with amp.scale_loss(loss, self.optimizer) as scaled_loss:
-                scaled_loss.backward()
-        elif self.deepspeed:
-            self.deepspeed.backward(loss)
-        else:
-            loss.backward()
-
-        return loss.detach()
-
     @staticmethod
     def gradual_interpolation_inputs(latent_start, latent_end, device, interpolate_all_at_once):
         ratios = torch.arange(0, 1.1, 0.1, device=device)
@@ -320,89 +280,6 @@ class VAE_Trainer(trainer_script.Trainer):
         model.config.use_extra_logs = old
 
         return interp_latent, interp_outputs.reconstructed_encoding, interp_outputs.hidden_states[-1], interp_ratio
-
-    def training_interpolation_step(self, final_decoder_hidden_states, latent, model):
-        '''
-            Sample interpolations to add additional losses.
-
-            None of these have substantially improved interpolation quality yet.
-        '''
-        interpolated_latent, reconstructed_encoding, interpolated_last_hidden_state, target_a = self.prepare_interpolation_data(latent, model)
-        interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
-
-        if self.args.cycle_loss:
-            # minimise cosine error between latent code & re-encoded latent code `latent VS Encode(Decode(latent))`
-            target = 1.0 * torch.ones(interpolated_latent.size(0), device=self.args.device)
-            old = model.config.use_extra_logs
-            model.config.use_extra_logs = False
-            cycle_loss = torch.nn.CosineEmbeddingLoss()(
-                model(inputs_embeds=interpolated_last_hidden_state).latent, interpolated_latent, target
-            )
-            model.config.use_extra_logs = old
-            cycle_loss *= self.args.cycle_weight
-            cycle_loss /= interpolated_latent.size(0)
-            cycle_loss.backward(retain_graph=True)
-            model.latest_logs['cycle_loss'] = model.latest_logs.get('cycle_loss', 0) + cycle_loss.item()
-        elif self.args.vae_cycle_loss:
-            target = 1.0 * torch.ones(interpolated_latent.size(0), device=self.args.device)
-            old = model.config.use_extra_logs
-            model.config.use_extra_logs = False
-            cycle_loss = torch.nn.CosineEmbeddingLoss()(
-                model.vae(reconstructed_encoding, skip_reg_loss=True).latent, interpolated_latent, target
-            )
-            model.config.use_extra_logs = old
-            cycle_loss *= self.args.cycle_weight
-            cycle_loss /= interpolated_latent.size(0)
-            cycle_loss.backward(retain_graph=True)
-            model.latest_logs['cycle_loss'] = model.latest_logs.get('cycle_loss', 0) + cycle_loss.item()
-
-        if model.critic:
-            if self.state.global_step > self.args.min_critic_steps:
-                # update model
-                # accumulate compute graph on critic loss variable
-                critic_loss_on_model = model.critic(interpolated_last_hidden_state).mean() * self.args.advisery_weight / interpolated_last_hidden_state.size(0)
-                # get gradients of the output only w.r.t the inputs and not model.critic
-                critic_loss_to_last_hidden = autograd.grad(outputs=critic_loss_on_model, inputs=interpolated_last_hidden_state, only_inputs=True, retain_graph=True)
-                # acumulate gradient in VAE model (will only be the VAE-decoder)
-                interpolated_last_hidden_state.backward(critic_loss_to_last_hidden, retain_graph=True)
-                model.latest_logs['critic_loss_on_model'] = model.latest_logs.get('critic_loss_on_model', 0) + critic_loss_on_model.item()
-
-            # update critic
-            # real samples
-            final_decoder_hidden_states.size(), latent.size()
-            critic_loss = model.critic(final_decoder_hidden_states, torch.zeros((latent.size(0), 1), device=self.args.device)).mean()
-            # interpolate samples
-            interpolated_last_hidden_state_d = interpolated_last_hidden_state.detach()
-            critic_loss += model.critic(interpolated_last_hidden_state_d, target_a.detach().view(-1, 1)).mean()
-            # average between the 2 losses
-            critic_loss /= 2 * latent.size(0)
-            critic_loss.backward(retain_graph=True)  # accumulate gradient on critic
-            model.latest_logs['critic_loss'] = model.latest_logs.get('critic_loss', 0) + critic_loss.item()
-
-    def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
-        """
-        Perform a training step on a batch of inputs.
-
-        Adds adviserial loss when using critic model.
-        Adv is currently put on/off single GPU, will need to switch for multi-GPU training.
-        """
-        model.train()
-        inputs = self._prepare_inputs(inputs)
-
-        if self.label_smoother is not None and "labels" in inputs:
-            labels = inputs.pop("labels")
-        else:
-            labels = None
-        outputs = model(**inputs, output_hidden_states=True)
-
-        if (hasattr(model, 'critic') and model.critic) or self.args.cycle_loss:
-            pos = self.args.train_batch_size * (self.state.global_step % self.args.interpolate_training_step_rate)
-            self.latent_stack[pos:pos + self.args.train_batch_size] = outputs.latent.detach()
-            self.final_decoder_hidden_state_stack[pos:pos + self.args.train_batch_size] = outputs.decoder_hidden_states[-1].detach()
-            if self.state.global_step > 0 and pos == 0:
-                self.training_interpolation_step(self.final_decoder_hidden_state_stack, self.latent_stack, model)
-
-        return self.get_loss_grad(outputs, labels)
 
     def evaluate(self, eval_dataset: Optional[Dataset] = None) -> Dict[str, float]:
         """
