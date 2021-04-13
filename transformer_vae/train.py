@@ -64,29 +64,13 @@ class VAE_TrainingArguments(TrainingArguments):
         default=False,
         metadata={"help": "Test using latent codes for unsupervised classification."},
     )
-    cycle_loss: bool = field(
-        default=False,
-        metadata={"help": "Encourage the encoder & decoder to produce a bijective mapping. Feeds the final decoder hidden state to the encoder and compares the latent codes."},
-    )
-    vae_cycle_loss: bool = field(
-        default=False,
-        metadata={"help": "Encourage the encoder & decoder to produce a bijective mapping. Feeds the final decoder hidden state to the encoder and compares the latent codes."},
-    )
     advisery_weight: int = field(
-        default=1,
-        metadata={"help": "Encourage the encoder & decoder to produce a bijective mapping. Feeds the final decoder hidden state to the encoder and compares the latent codes."},
-    )
-    cycle_weight: int = field(
         default=1,
         metadata={"help": "Encourage the encoder & decoder to produce a bijective mapping. Feeds the final decoder hidden state to the encoder and compares the latent codes."},
     )
     interpolate_training_step_rate: int = field(
         default=1,
         metadata={"help": "Run a batch of iterpolation losses every N steps."},
-    )
-    min_critic_steps: int = field(
-        default=1_000,
-        metadata={"help": "Start updating the model with the critic loss after N steps."},
     )
     render_text_image: bool = field(
         default=False,
