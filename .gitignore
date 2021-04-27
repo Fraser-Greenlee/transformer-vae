@@ -42,3 +42,9 @@ wandb
 .dccache
 
 *_segments/
+
+# legacy scripts
+legacy/
+
+
+venv/

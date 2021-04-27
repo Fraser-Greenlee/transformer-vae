@@ -16,7 +16,8 @@ contents = file_to_string(package, "__init__.py")
 __version__ = re.search(r'__version__ = "([.\d]+)"', contents).group(1)
 
 install_requires = [
-    "datasets==1.4.1",
+    "datasets[s3]>=1.5.0",
+    'sagemaker>=2.31.0'
     "transformers",
     "wandb",
     "torch==1.8.0",
