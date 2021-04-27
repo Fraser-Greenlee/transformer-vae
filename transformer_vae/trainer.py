@@ -1,34 +1,23 @@
 import time
-from typing import Optional, Dict, List, Tuple, Union, Any
+from typing import Optional, Dict, List
 import wandb
 import numpy as np
 import torch
-from torch import nn, autograd
 from torch.utils.data import Dataset
 from torch.utils.data.sampler import RandomSampler
 from torch.utils.data.dataloader import DataLoader
-from torch.cuda.amp import autocast
 
 from transformers import trainer as trainer_script
 from transformers.utils import logging
-from transformers.optimization import AdamW, get_scheduler
 from transformers.integrations import (
     WandbCallback,
     is_wandb_available,
-    is_fairscale_available,
     TensorBoardCallback,
     CometCallback,
     AzureMLCallback,
     MLflowCallback,
 )
-from transformers.file_utils import is_apex_available
-if is_apex_available():
-    from apex import amp
 
-if is_fairscale_available():
-    from fairscale.optim import OSS
-
-from transformer_vae.optimizers import FixedAdafactor
 from transformer_vae.sequence_checks import SEQ_CHECKS
 from transformer_vae.trainer_callback import WandbCallbackUseModelLogs
 from transformer_vae.sklearn import train_svm
@@ -51,14 +40,6 @@ class VAE_Trainer(trainer_script.Trainer):
     text_to_array = None
 
     def __init__(self, model=None, args=None, custom_methods={}, **kwargs):
-        self.latent_stack = torch.zeros(
-            args.interpolate_training_step_rate * args.train_batch_size, model.config.latent_size,
-            dtype=torch.float, device=args.device
-        )
-        self.final_decoder_hidden_state_stack = torch.zeros(
-            args.interpolate_training_step_rate * args.train_batch_size, model.config.t5.n_positions, model.config.t5.d_model,
-            dtype=torch.float, device=args.device
-        )
         self.clean_tkn_spaces = not args.dont_clean_up_tokenization_spaces
         if args.render_text_image:
             assert 'custom_text_to_array' in custom_methods
@@ -66,53 +47,6 @@ class VAE_Trainer(trainer_script.Trainer):
         super().__init__(model, args, **kwargs)
         self.remove_callback(WandbCallback)
         self.add_callback(WandbCallbackUseModelLogs)
-
-    def create_optimizer_and_scheduler(self, num_training_steps: int):
-        """
-        Edited to use fixed Adafactor.
-
-        Setup the optimizer and the learning rate scheduler.
-
-        We provide a reasonable default that works well. If you want to use something else, you can pass a tuple in the
-        Trainer's init through :obj:`optimizers`, or subclass and override this method in a subclass.
-        """
-        if self.optimizer is None:
-            no_decay = ["bias", "LayerNorm.weight"]
-            optimizer_grouped_parameters = [
-                {
-                    "params": [p for n, p in self.model.named_parameters() if not any(nd in n for nd in no_decay)],
-                    "weight_decay": self.args.weight_decay,
-                },
-                {
-                    "params": [p for n, p in self.model.named_parameters() if any(nd in n for nd in no_decay)],
-                    "weight_decay": 0.0,
-                },
-            ]
-            optimizer_cls = FixedAdafactor if self.args.adafactor else AdamW
-            if self.args.adafactor:
-                optimizer_kwargs = {"scale_parameter": False, "relative_step": False}
-            else:
-                optimizer_kwargs = {
-                    "betas": (self.args.adam_beta1, self.args.adam_beta2),
-                    "eps": self.args.adam_epsilon,
-                }
-            optimizer_kwargs["lr"] = self.args.learning_rate
-            if self.sharded_ddp:
-                self.optimizer = OSS(
-                    params=optimizer_grouped_parameters,
-                    optim=optimizer_cls,
-                    **optimizer_kwargs,
-                )
-            else:
-                self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
-
-        if self.lr_scheduler is None:
-            self.lr_scheduler = get_scheduler(
-                self.args.lr_scheduler_type,
-                self.optimizer,
-                num_warmup_steps=self.args.warmup_steps,
-                num_training_steps=num_training_steps,
-            )
 
     def _tokens_from_latent(self, latent):
         with torch.no_grad():
@@ -178,26 +112,6 @@ class VAE_Trainer(trainer_script.Trainer):
                 step=self.state.global_step
             )
 
-    def _random_samples(self):
-        raise NotImplementedError('Not sampling from true prioir here.')
-        # TODO This should be random samples from the models prior but in an MMD-VAE the prior doesn't actually match a gaussian so this needs to change.
-        table = wandb.Table(columns=["Text", "Valid"])
-        seq_check_results = 0
-        seq_check = SEQ_CHECKS[self.args.seq_check]
-        latent_points = torch.randn(25, self.model.config.latent_size, device=self.model.device)
-        texts = self._text_from_latent(latent_points)
-        for txt in texts:
-            valid = seq_check(txt)
-            table.add_data(txt, valid)
-            seq_check_results += int(valid)
-
-        wandb.log({"random points": table}, step=self.state.global_step)
-        if self.args.seq_check:
-            wandb.log(
-                {'random samples passing seq check': seq_check_results / latent_points.size(0)},
-                step=self.state.global_step
-            )
-
     def _latent_with_class(self, eval_dataset):
         dataloader = self.get_eval_dataloader(eval_dataset)
         latents_with_class = []
@@ -234,7 +148,6 @@ class VAE_Trainer(trainer_script.Trainer):
         eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
         if self.args.sample_from_latent:
             self._interpolate_samples(eval_dataset)
-            # self._random_samples()  Not using
         if self.args.test_classification:
             latents_with_class = self._latent_with_class(eval_dataset)
             self._svm_classification(latents_with_class)
@@ -258,38 +171,17 @@ class VAE_Trainer(trainer_script.Trainer):
         interpolations = slerp(rep_ratios, latent_start.repeat(11, 1), latent_end.repeat(11, 1))
         return interpolations.view(11, num_latent_tokens, latent_token_dim), ratios
 
-    def random_interpolation_inputs(self, latent):
-        batch_size = latent.size(0)
-        interpolation_ratios = 0.5 - (torch.rand(batch_size, device=self.args.device) - 0.5).abs()
-        latent_interpolated = slerp(interpolation_ratios, latent, latent[::-1])
-        return latent_interpolated, interpolation_ratios
-
-    def prepare_interpolation_data(self, latent, model):
-        '''
-        For optimising model interpolations directly, find interpolated latent codes with their ratio.
-        Produces 1 interpolation for every 2 samples.
-        '''
-        original_latent = latent.detach()
-        original_latent.requires_grad = True
-        interp_latent, interp_ratio = self.random_interpolation_inputs(original_latent)
-        tokens = self._tokens_from_latent(interp_latent)
-        # don't log interpolation inference
-        old = model.config.use_extra_logs
-        model.config.use_extra_logs = False
-        interp_outputs = model(decoder_input_ids=tokens, latent=interp_latent, output_hidden_states=True)
-        model.config.use_extra_logs = old
-
-        return interp_latent, interp_outputs.reconstructed_encoding, interp_outputs.hidden_states[-1], interp_ratio
-
-    def evaluate(self, eval_dataset: Optional[Dataset] = None) -> Dict[str, float]:
+    def evaluate(
+        self,
+        eval_dataset: Optional[Dataset] = None,
+        ignore_keys: Optional[List[str]] = None,
+        metric_key_prefix: str = "eval",
+    ) -> Dict[str, float]:
         """
         Run evaluation and returns metrics.
 
         Adds extra VAE tests:
         - Interpolation between samples in latent space.
-        - Random latent codes from normal distribution.
-        if class column provided?
-        - tSNE plots with class-label colouring.
         """
         if self.state.global_step < wandb.run.history._step:
             self.state.global_step = wandb.run.history._step
@@ -299,89 +191,8 @@ class VAE_Trainer(trainer_script.Trainer):
                 self.model.eval()
                 self._evaluate_latent_samples(eval_dataset=eval_dataset)
             generate_time = time.time() - start_eval
-        output_metrics = super().evaluate(eval_dataset=eval_dataset)
+        output_metrics = super().evaluate(eval_dataset=eval_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
         if is_wandb_available():
             wandb.log({"eval_get_test_loss_time": time.time() - start_eval + generate_time}, step=self.state.global_step)  # type: ignore
             wandb.log({"eval_generate_time": generate_time}, step=self.state.global_step)  # type: ignore
         return output_metrics
-
-    def prediction_step(
-        self,
-        model: nn.Module,
-        inputs: Dict[str, Union[torch.Tensor, Any]],
-        prediction_loss_only: bool,
-        ignore_keys: Optional[List[str]] = None,
-    ) -> Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]:
-        # FIX ISSUE https://github.com/huggingface/transformers/issues/9057
-        """
-        Perform an evaluation step on :obj:`model` using obj:`inputs`.
-
-        Subclass and override to inject custom behavior.
-
-        Args:
-            model (:obj:`nn.Module`):
-                The model to evaluate.
-            inputs (:obj:`Dict[str, Union[torch.Tensor, Any]]`):
-                The inputs and targets of the model.
-
-                The dictionary will be unpacked before being fed to the model. Most models expect the targets under the
-                argument :obj:`labels`. Check your model's documentation for all accepted arguments.
-            prediction_loss_only (:obj:`bool`):
-                Whether or not to return the loss only.
-            ignore_keys (:obj:`Lst[str]`, `optional`):
-                A list of keys in the output of your model (if it is a dictionary) that should be ignored when
-                gathering predictions.
-
-        Return:
-            Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]: A tuple with the loss, logits and
-            labels (each being optional).
-        """
-        has_labels = all(inputs.get(k) is not None for k in self.label_names)
-        inputs = self._prepare_inputs(inputs)
-        if ignore_keys is None:
-            if hasattr(self.model, "config"):
-                ignore_keys = getattr(self.model.config, "keys_to_ignore_at_inference", [])
-            else:
-                ignore_keys = []
-
-        with torch.no_grad():
-            if self.use_amp:
-                with trainer_script.autocast():
-                    outputs = model(**inputs)
-            else:
-                outputs = model(**inputs)
-
-            if has_labels:
-                if isinstance(outputs, dict):
-                    loss = outputs["loss"].mean().detach()
-                    logits = (outputs.get("logits", None),)
-                else:
-                    loss = outputs[0].mean().detach()
-                    logits = outputs[1:]
-            else:
-                loss = None
-                if isinstance(outputs, dict):
-                    logits = (outputs.get("logits", None),)
-                else:
-                    logits = outputs
-
-        if prediction_loss_only:
-            return (loss, None, None)
-
-        logits = trainer_script.nested_detach(logits)
-        if len(logits) == 1:
-            logits = logits[0]
-
-        if has_labels:
-            labels = trainer_script.nested_detach(tuple(inputs.get(name) for name in self.label_names))
-            if len(labels) == 1:
-                labels = labels[0]
-        else:
-            labels = None
-
-        if logits is not None:
-            logits = logits
-        if labels is not None:
-            labels = labels
-
-        return (loss, logits, labels)
