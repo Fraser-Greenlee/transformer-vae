@@ -1,11 +1,12 @@
 format:
 	black -l 120 -t py37 .
 
-setup-env:
-	# virtualenv t_vae_env -p python3
+reset-venv:
+	rm -fr venv/
+	virtualenv venv
 
-activate:
-	# source t_vae_env/bin/activate
+install:
+	python setup.py install
 
 test:
 	black --check -l 120 -t py37 .

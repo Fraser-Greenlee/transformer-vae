@@ -15,17 +15,9 @@ def file_to_string(*path):
 contents = file_to_string(package, "__init__.py")
 __version__ = re.search(r'__version__ = "([.\d]+)"', contents).group(1)
 
-install_requires = [
-    "datasets[s3]>=1.5.0",
-    'sagemaker>=2.31.0'
-    "transformers",
-    "wandb",
-    "torch==1.8.0",
-    "sklearn",  # for SVM
-    "torch-dct"
-]
+install_requires = file_to_string('requirements.txt').split()
 
-tests_require = ["pytest", "flake8", "flake8-mypy", "black", "twine"]
+tests_require = file_to_string('requirements-dev.txt').split()
 
 setup(
     name=package,
