@@ -126,7 +126,7 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
         self.decoder = t5_transformer.decoder
         self.lm_head = t5_transformer.lm_head
         self.shared_embedding = t5_transformer.shared
-        self.decoder.embed_tokens = None
+        self.decoder.embed_tokens = self.shared_embedding
         self.decoder_start_token_id = self.config.t5.decoder_start_token_id
         assert (
             self.decoder_start_token_id is not None
