@@ -324,6 +324,9 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
         # unused args
         class_label=None,
         label=None,
+        decoder_head_mask=None,
+        head_mask=None,
+        output_attentions=None,
         **unused_kwargs
     ):
         if self.model_parallel:
@@ -404,7 +407,7 @@ class Funnel_T5_VAE_Model(PreTrainedModel):
             attention_mask=decoder_attention_mask,
             inputs_embeds=decoder_inputs_embeds,
             past_key_values=past_key_values,
-            encoder_hidden_states=hidden_states,
+            encoder_hidden_states=upsampled_encoding,
             encoder_attention_mask=attention_mask,
             head_mask=decoder_head_mask,
             encoder_head_mask=head_mask,
