@@ -76,3 +76,22 @@ Wiki Sentences
 ```bash
 !cd transformer-vae; python run_experiment.py wiki_tokens batch_medium eval 32_latent --dataset_config_name=1M_segment_0
 ```
+
+## DeepSpeed
+
+For using deepspeed, found model size increase wasn't worth it.
+
+```bash
+# install deepspeed
+!pip install ninja
+!ninja --version
+!pip install deepspeed
+!ds_report
+
+!pip uninstall -y pyarrow
+!pip install --upgrade pyarrow
+
+!pip uninstall -y datasets
+!pip install -U datasets
+!pip install mpi4py
+```
