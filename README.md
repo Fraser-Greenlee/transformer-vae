@@ -21,6 +21,7 @@ cd transformer-vae; python setup.py -q install
 ## Running
 
 The model uses Weights and Biasis for logging. Ensure you have the following enviroment variables set before running:
+
 ```bash
 WANDB_API_KEY=791c072dd3f0d33aed57e13af6ba86d312cc68c0
 WANDB_WATCH=false
@@ -52,23 +53,26 @@ Max run specs (12GB GPU):
 * Large model,
   * 30seq, 5 batch size
 
+MNIST base:
 
-MNIST base (no latent samples):
 ```bash
-cd transformer-vae; python run_experiment.py mnist_base tenth_5_tkn grad_check_pnt batch_small window200 funnel_small
-```
-
-MNIST small:
-```bash
-cd transformer-vae; python run_experiment.py mnist_small tenth_5_tkn batch_small eval
+!cd transformer-vae; python run_experiment.py mnist_base tenth_5_tkn grad_check_pnt batch_small eval window200 funnel_small
 ```
 
 Python Lines
+
 ```bash
-cd transformer-vae; python run_experiment.py syntax tenth_5_tkn batch_large 30Seq eval
+!cd transformer-vae; python run_experiment.py syntax tenth_5_tkn batch_large 30Seq eval
 ```
 
 News Headlines
+
 ```bash
-cd transformer-vae; python run_experiment.py semantics tenth_5_tkn batch_large 30Seq eval
+!cd transformer-vae; python run_experiment.py semantics tenth_5_tkn batch_large 30Seq eval
+```
+
+Wiki Sentences
+
+```bash
+!cd transformer-vae; python run_experiment.py wiki_tokens batch_medium eval 32_latent --dataset_config_name=1M_segment_0
 ```
