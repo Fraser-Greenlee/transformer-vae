@@ -6,7 +6,7 @@ reset-venv:
 	virtualenv venv
 
 install:
-	python setup.py install
+	pip install -r requirements.txt
 
 test:
 	black --check -l 120 -t py37 .
@@ -16,8 +16,8 @@ test-one-case:
 	# python -m pytest -s -v ./tests/test_train.py::TrainTests::test_train_txt
 
 install-dev:
-	pip uninstall -y transformer_vae
-	pip install -e .[test]
+	pip install -r requirements-dev.txt
+	pip install -r requirements.txt
 
 publish:
 	python setup.py sdist bdist_wheel

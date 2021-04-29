@@ -3,4 +3,4 @@ transformers==4.4.2
 datasets[s3]==1.5.0
 wandb
 sklearn
-torch-dc
+torch-dct
