@@ -1,15 +1,28 @@
-# Transformer-VAE
+# Transformer-VAE (FLAX)
 
-![Diagram of the a python State Autoencoder](https://github.com/Fraser-Greenlee/transformer-vae/blob/master/t-vae.png)
-
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1S8sUSkc_7ON00HDnse1MUXTTflo59VxA?usp=sharing)
+![Diagram of the a python State Autoencoder](t-vae.png)
 
 Transformer-VAE's learn smooth latent spaces of discrete sequences without any explicit rules in their decoders.
 
 This can be used for program synthesis, drug discovery, music generation and much more!
+
 To lean more about how it works checkout [this blog post](http://fras.uk/ml/large%20prior-free%20models/transformer-vae/2020/08/13/Transformers-as-Variational-Autoencoders.html).
 
 If you notice any issues please reach out and open an issue! I'll try to get back to you ASAP.
+
+## How does this work?
+
+Currenlty the takes a transformer encoder and decoder and puts a VAE between them.
+
+![.](images/basics.png)
+
+The VAE forms a compressed latent code which allows interpolating on the training data.
+
+![.](images/latent_tokens.png)
+
+For regulatisation an MMD loss is used instead of KL Divergence which reduces posterior collapse.
+
+![.](images/reg_loss.png)
 
 ## Install
 
