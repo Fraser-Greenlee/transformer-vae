@@ -12,11 +12,13 @@ The model will be trained in english.
 
 ## Model
 
-Starting from T5-large?
+T5-base, this will match with the Optimus model.
 
 ## Datasets
 
 Use the wikipedia sentences dataset from OPTIMUS.
+
+This comes tokenized so we'll need to use its tokenizer with T5.
 
 https://github.com/ChunyuanLI/Optimus/blob/master/download_datasets.md
 
